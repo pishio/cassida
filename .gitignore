@@ -1,0 +1,18 @@
+node_modules
+dist
+.DS_Store
+*.log
+.vite
+coverage
+.turbo
+.idea
+.vscode
+
+# Local AI tooling artifacts (do not publish)
+.claude/
+.claude.json
+CLAUDE.md
+.cursor/
+.cursorrules
+.aider*
+.continue/
