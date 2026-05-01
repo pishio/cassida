@@ -16,10 +16,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
-    "@fss/compiler": "workspace:*"
+    "@fss/compiler": "workspace:*",
+    "csstype": "^3.1.3"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

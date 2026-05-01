@@ -1,35 +1,81 @@
 import {
+  canonicalSpec,
   compileOps,
   defaultRegistry,
+  type CanonicalSpec,
   type Op,
   type Registry,
 } from '@fss/compiler';
+import type * as CSS from 'csstype';
 
 /**
- * Runtime `fss()` chain.
+ * Method shape derived from the canonical spec table.
  *
- * - In production, the build-time transform replaces `{...fss().foo()...}`
- *   spread expressions with a static `{className: "fss-xxx"}` object, and
- *   this runtime is never reached for the rewritten call sites.
- * - In dev, or when an argument is non-literal (e.g. `fss().color(theme.fg)`)
- *   so the parser cannot statically resolve the chain, the chain object is
- *   spread directly into JSX. The spread reads the enumerable `style`
- *   getter and the chain materializes as inline style. This keeps the
- *   Single-Class principle for static chains while keeping dynamic chains
- *   functional without a class explosion.
- *
- * Method handles (`color`, `marginTop`, ...) are non-enumerable so they
- * never leak into the spread; only `style` (and, when set by the
- * transform, `className`) are.
+ * Each method's argument signature is extracted from the spec's typed
+ * `format` function via `Parameters<...>`, so adding a property to the
+ * spec automatically adds a typed method here. The mapped type is shallow
+ * (one `infer` per key, no recursion); TS-server cost stays flat.
  */
-export interface FssChain {
-  readonly style: Readonly<Record<string, string>>;
-  readonly [method: string]: unknown;
+type ChainMethodsFromSpec<S> = {
+  [K in keyof S]: S[K] extends { format: (...args: infer A) => string }
+    ? (...args: A) => FssChain
+    : never;
+};
+
+/**
+ * Method set generated from the default canonical spec. This is the
+ * baseline surface for `fss()` chains.
+ */
+export type DefaultChainMethods = ChainMethodsFromSpec<CanonicalSpec>;
+
+/**
+ * Extension hook for downstream consumers.
+ *
+ * Users who add their own methods via `extendRegistry()` augment this
+ * interface in their own `.d.ts` to surface those methods on the chain
+ * with full type-checking — no plugin generic propagation required.
+ *
+ * ```ts
+ * // app/fss.d.ts
+ * declare module '@fss/core' {
+ *   interface FssChainExtensions {
+ *     brandColor(value: 'primary' | 'secondary'): FssChain;
+ *   }
+ * }
+ * ```
+ */
+export interface FssChainExtensions {}
+
+/**
+ * Terminal members read by JSX spread. `style` is a `CSS.Properties` object
+ * (camelCase keys, csstype-typed values); `className` is filled in only by
+ * the build-time transform — at runtime this is always undefined and the
+ * spread carries `style` instead.
+ */
+export interface FssChainTerminus {
+  readonly style: Readonly<CSS.Properties>;
+  readonly className?: string;
 }
+
+/**
+ * Full chain type: typed canonical methods, user extensions, and the JSX
+ * spread targets. The intersection means user augmentations of
+ * `FssChainExtensions` automatically propagate to every chain.
+ */
+export type FssChain = DefaultChainMethods & FssChainExtensions & FssChainTerminus;
 
 const cssToCamel = (prop: string): string =>
   prop.replace(/-([a-z])/g, (_match: string, c: string) => c.toUpperCase());
 
+/**
+ * Runtime `fss()` builder.
+ *
+ * - Production: build-time transform replaces `{...fss().a().b()}` with
+ *   `{className: "fss-xxx"}`. This runtime is unreached for those sites.
+ * - Dev / dynamic chains: spread reads the enumerable `style` getter,
+ *   chain materializes as inline style. Method handles are non-enumerable
+ *   so `color`, `marginTop`, etc. never leak as React props.
+ */
 export function fss(registry: Registry = defaultRegistry): FssChain {
   const ops: Op[] = [];
   const chain = Object.create(null) as Record<string, unknown>;
@@ -41,7 +87,7 @@ export function fss(registry: Registry = defaultRegistry): FssChain {
       configurable: false,
       value: (...args: unknown[]): FssChain => {
         ops.push({ method, args });
-        return chain as FssChain;
+        return chain as unknown as FssChain;
       },
     });
   }
@@ -49,17 +95,18 @@ export function fss(registry: Registry = defaultRegistry): FssChain {
   Object.defineProperty(chain, 'style', {
     enumerable: true,
     configurable: false,
-    get(): Readonly<Record<string, string>> {
+    get(): Readonly<CSS.Properties> {
       const { bag } = compileOps(ops, { registry });
       const style: Record<string, string> = {};
       for (const k of Object.keys(bag)) {
         style[cssToCamel(k)] = bag[k]!;
       }
-      return Object.freeze(style);
+      return Object.freeze(style) as Readonly<CSS.Properties>;
     },
   });
 
-  return chain as FssChain;
+  return chain as unknown as FssChain;
 }
 
-export type { Op, Registry } from '@fss/compiler';
+export { canonicalSpec };
+export type { CanonicalSpec, CanonicalMethodName, Op, Registry } from '@fss/compiler';

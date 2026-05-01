@@ -27,8 +27,13 @@ describe('runtime fss()', () => {
     });
   });
 
-  it('handles aliases identically to canonicals', () => {
-    const a = { ...fss().mt(10) };
+  it('handles aliases identically to canonicals (runtime-only)', () => {
+    // Aliases are runtime sugar; the canonical FssChain type intentionally
+    // does not surface them. Access via index to bypass TS narrowing —
+    // this mirrors what JS users get and what the parser allows.
+    type AliasChain = Record<string, (...args: unknown[]) => unknown>;
+    const aliasChain = fss() as unknown as AliasChain;
+    const a = { ...(aliasChain['mt']!(10) as { style: object }) };
     const b = { ...fss().marginTop(10) };
     expect(a).toEqual(b);
   });

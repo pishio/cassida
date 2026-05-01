@@ -1,3 +1,5 @@
+import { canonicalSpec } from './property-spec.js';
+
 export type Formatter = (...args: readonly unknown[]) => string;
 
 export interface RegistryEntry {
@@ -17,100 +19,24 @@ export interface RegistryEntry {
 export type Registry = Readonly<Record<string, RegistryEntry>>;
 export type AliasMap = Readonly<Record<string, string>>;
 
-const length = (n: unknown, unit: unknown = 'px'): string => {
-  if (typeof n === 'number') {
-    const u = typeof unit === 'string' ? unit : 'px';
-    return n === 0 ? '0' : `${n}${u}`;
-  }
-  if (typeof n === 'string') return n;
-  throw new TypeError(`[fss] expected number | string for length, got ${typeof n}`);
-};
-
-const passthrough = (v: unknown): string => {
-  if (v == null) throw new TypeError('[fss] value cannot be null/undefined');
-  return String(v);
-};
-
-const lengthEntry = (property: string): RegistryEntry => ({
-  property,
-  format: (n, u) => length(n, u),
-  syntax: '<length>',
-});
-
-const colorEntry = (property: string): RegistryEntry => ({
-  property,
-  format: (v) => passthrough(v),
-  syntax: '<color>',
-});
-
-const rawEntry = (property: string): RegistryEntry => ({
-  property,
-  format: (v) => passthrough(v),
-});
-
 /**
- * Canonical method set: long-form, CSS-aligned names only.
- * This is the documented surface and the form `compileOps` outputs in errors.
+ * Canonical method set, derived from `canonicalSpec`. The format functions
+ * carry strict csstype-based parameter types in the spec; here they're
+ * stored under the type-erased `Formatter` shape because the runtime
+ * lookup path receives `unknown[]` from the parser.
  */
-export const defaultCanonicals: Registry = Object.freeze({
-  // colors
-  color: colorEntry('color'),
-  backgroundColor: colorEntry('background-color'),
-  borderColor: colorEntry('border-color'),
-
-  // margin
-  margin: lengthEntry('margin'),
-  marginTop: lengthEntry('margin-top'),
-  marginRight: lengthEntry('margin-right'),
-  marginBottom: lengthEntry('margin-bottom'),
-  marginLeft: lengthEntry('margin-left'),
-
-  // padding
-  padding: lengthEntry('padding'),
-  paddingTop: lengthEntry('padding-top'),
-  paddingRight: lengthEntry('padding-right'),
-  paddingBottom: lengthEntry('padding-bottom'),
-  paddingLeft: lengthEntry('padding-left'),
-
-  // size
-  width: lengthEntry('width'),
-  height: lengthEntry('height'),
-  minWidth: lengthEntry('min-width'),
-  minHeight: lengthEntry('min-height'),
-  maxWidth: lengthEntry('max-width'),
-  maxHeight: lengthEntry('max-height'),
-
-  // typography
-  fontFamily: rawEntry('font-family'),
-  fontSize: lengthEntry('font-size'),
-  fontWeight: rawEntry('font-weight'),
-  lineHeight: rawEntry('line-height'),
-  textAlign: rawEntry('text-align'),
-
-  // layout
-  display: rawEntry('display'),
-  position: rawEntry('position'),
-  top: lengthEntry('top'),
-  right: lengthEntry('right'),
-  bottom: lengthEntry('bottom'),
-  left: lengthEntry('left'),
-  zIndex: rawEntry('z-index'),
-
-  // flex
-  flexDirection: rawEntry('flex-direction'),
-  justifyContent: rawEntry('justify-content'),
-  alignItems: rawEntry('align-items'),
-  gap: lengthEntry('gap'),
-
-  // border
-  borderRadius: lengthEntry('border-radius'),
-  borderWidth: lengthEntry('border-width'),
-  borderStyle: rawEntry('border-style'),
-
-  // misc
-  opacity: rawEntry('opacity'),
-  cursor: rawEntry('cursor'),
-});
+export const defaultCanonicals: Registry = Object.freeze(
+  Object.fromEntries(
+    Object.entries(canonicalSpec).map(([name, spec]) => {
+      const entry: RegistryEntry = {
+        property: spec.property,
+        format: spec.format as unknown as Formatter,
+        ...('syntax' in spec && spec.syntax !== undefined ? { syntax: spec.syntax } : {}),
+      };
+      return [name, entry];
+    }),
+  ),
+);
 
 /**
  * Optional shorthands. Aliases are pure typing-sugar: each one resolves
@@ -119,7 +45,9 @@ export const defaultCanonicals: Registry = Object.freeze({
  * `margin-top` declaration via LIFO.
  *
  * Aliases never appear as the source of truth in errors or output; the
- * canonical is always the documented form.
+ * canonical is always the documented form, and the canonical chain type
+ * (FssChain in @fss/core) does not surface aliases unless the user
+ * augments it explicitly.
  */
 export const defaultAliases: AliasMap = Object.freeze({
   bg: 'backgroundColor',
@@ -159,10 +87,10 @@ export function expandAliases(canonicals: Registry, aliases: AliasMap): Registry
 }
 
 /**
- * The runtime registry: canonicals + default aliases, flattened.
- * Lookup is O(1); aliases and canonicals are indistinguishable at the
- * point of use. Use `defaultCanonicals` and `defaultAliases` directly
- * if you need to know which is which (docs, codegen, etc.).
+ * The runtime registry: canonicals + default aliases, flattened. Lookup
+ * is O(1); aliases and canonicals are indistinguishable at the point of
+ * use. Use `defaultCanonicals` and `defaultAliases` directly if you need
+ * to know which is which (docs, codegen, etc.).
  */
 export const defaultRegistry: Registry = expandAliases(defaultCanonicals, defaultAliases);
 

@@ -7,6 +7,8 @@ export {
   expandAliases,
   extendRegistry,
 } from './registry.js';
+export { canonicalSpec } from './property-spec.js';
+export type { CanonicalSpec, CanonicalMethodName } from './property-spec.js';
 export { Canonicalizer } from './canonicalizer.js';
 export { hash, DEFAULT_PREFIX, DEFAULT_LENGTH } from './hasher.js';
 export type { HashOptions } from './hasher.js';
