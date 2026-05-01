@@ -16,6 +16,7 @@ describe('transform — static fss() chains in JSX spread', () => {
     expect(r.code).not.toMatch(/fss\(\)/);
     expect(r.rules).toHaveLength(1);
     expect(r.rules[0]!.bag).toEqual({ color: 'red' });
+    expect(r.rules[0]!.dynamics).toHaveLength(0);
   });
 
   it('LIFO-collapses chains so output bag matches the last write', () => {
@@ -25,26 +26,6 @@ describe('transform — static fss() chains in JSX spread', () => {
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.bag).toEqual({ color: 'blue' });
-  });
-
-  it('skips chains with non-literal arguments (runtime fallback)', () => {
-    const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ c }: { c: string }) => <div {...fss().color(c)} />;
-    `;
-    const r = transform(src, opts);
-    expect(r.transformed).toBe(false);
-    expect(r.rules).toHaveLength(0);
-    expect(r.code).toBe(src);
-  });
-
-  it('skips chains rooted at non-imported "fss" identifiers', () => {
-    const src = `
-      const fss = () => ({});
-      export const App = () => <div {...fss().color("red")} />;
-    `;
-    const r = transform(src, opts);
-    expect(r.transformed).toBe(false);
   });
 
   it('honors renamed imports', () => {
@@ -113,7 +94,7 @@ describe('transform — static fss() chains in JSX spread', () => {
     expect(r.rules[0]!.className).toBe(r.rules[1]!.className);
   });
 
-  it('only treats unprefixed property access (not computed) as a chain method', () => {
+  it('only treats unprefixed property access as a chain method', () => {
     const src = `
       import { fss } from '@fss/core';
       const k = "color";
@@ -121,5 +102,142 @@ describe('transform — static fss() chains in JSX spread', () => {
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
+  });
+
+  it('skips chains rooted at non-imported "fss" identifiers', () => {
+    const src = `
+      const fss = () => ({});
+      export const App = () => <div {...fss().color("red")} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(false);
+  });
+});
+
+describe('transform — dynamic chains', () => {
+  it('promotes a dynamic arg to a CSS variable + inline style entry', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ c }: { c: string }) => <div {...fss().color(c)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules).toHaveLength(1);
+    expect(r.rules[0]!.dynamics).toHaveLength(1);
+    expect(r.rules[0]!.dynamics[0]!.property).toBe('color');
+    // Output should contain a className= and a style with the var
+    expect(r.code).toMatch(/className=("|')fss-[0-9a-f]{8}\1/);
+    expect(r.code).toMatch(/"--fss-[0-9a-f]{8}-color":\s*c/);
+    expect(r.code).not.toMatch(/fss\(\)\.color/);
+  });
+
+  it('shares the className across structurally identical dynamic chains', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ a, b }: { a: string; b: string }) => (
+        <div>
+          <span {...fss().color(a)} />
+          <span {...fss().color(b)} />
+        </div>
+      );
+    `;
+    const r = transform(src, opts);
+    expect(r.rules).toHaveLength(2);
+    expect(r.rules[0]!.className).toBe(r.rules[1]!.className);
+  });
+
+  it('produces a different className when static and dynamic mix differently', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ c }: { c: string }) => (
+        <div>
+          <span {...fss().color("red")} />
+          <span {...fss().color(c)} />
+        </div>
+      );
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.className).not.toBe(r.rules[1]!.className);
+  });
+
+  it('bails on mixed literal+dynamic args within one op', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ n }: { n: number }) => <div {...fss().marginTop(n, "em")} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(false);
+    expect(r.code).toBe(src);
+  });
+
+  it('throws on multiple {...fss()} spreads on the same element', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss().color("red")} {...fss().marginTop(10)} />;
+    `;
+    expect(() => transform(src, opts)).toThrow(/Multiple \{\.\.\.fss\(\)\} spreads/);
+  });
+});
+
+describe('transform — JSX surgery (style merge / className concat)', () => {
+  it('concats existing string className with FSS hash', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div className="my-btn" {...fss().color("red")} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.code).toMatch(/className=("|')my-btn fss-[0-9a-f]{8}\1/);
+  });
+
+  it('concats dynamic className expressions via template literal', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ x }: { x: string }) => <div className={x} {...fss().color("red")} />;
+    `;
+    const r = transform(src, opts);
+    // Generated code uses a template literal: \`${x} fss-XXX\`
+    expect(r.code).toMatch(/className=\{`\$\{x\} fss-[0-9a-f]{8}`\}/);
+  });
+
+  it('keeps existing user style when there are no dynamics and FSS does not conflict', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div style={{opacity:0.5}} {...fss().color("red")} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.code).toMatch(/style=\{\{\s*opacity:\s*0\.5\s*\}\}/);
+  });
+
+  it('drops user static style key when FSS wins (spread is later)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div style={{color:"green"}} {...fss().color("red")} />;
+    `;
+    const r = transform(src, opts);
+    // user's color: "green" should be dropped from the merged style;
+    // since FSS color is static (not dynamic), no style attribute is needed at all
+    expect(r.code).not.toMatch(/color:\s*"green"/);
+    // but the className must carry the fss class
+    expect(r.code).toMatch(/className=("|')fss-[0-9a-f]{8}\1/);
+  });
+
+  it('preserves user style when user wins (spread is earlier)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss().color("red")} style={{color:"green"}} />;
+    `;
+    const r = transform(src, opts);
+    // user's color: "green" survives because their style attr is later
+    expect(r.code).toMatch(/style=\{\{\s*color:\s*"green"\s*\}\}/);
+  });
+
+  it('merges static user style with FSS dynamic vars', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ c }: { c: string }) => <div style={{opacity:0.5}} {...fss().color(c)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.code).toMatch(/opacity:\s*0\.5/);
+    expect(r.code).toMatch(/"--fss-[0-9a-f]{8}-color":\s*c/);
   });
 });

@@ -14,6 +14,13 @@ export interface RegistryEntry {
   readonly syntax?: string;
   readonly initialValue?: string;
   readonly inherits?: boolean;
+  /**
+   * Whether this property is a meaningful candidate for `@property`
+   * emission *when its value is dynamic*. Continuous-interpolation
+   * properties (lengths, colors, numbers) are typically true; enum-valued
+   * properties (display, position, ...) are typically false.
+   */
+  readonly animatable?: boolean;
 }
 
 export type Registry = Readonly<Record<string, RegistryEntry>>;
@@ -31,7 +38,11 @@ export const defaultCanonicals: Registry = Object.freeze(
       const entry: RegistryEntry = {
         property: spec.property,
         format: spec.format as unknown as Formatter,
+        animatable: spec.animatable,
         ...('syntax' in spec && spec.syntax !== undefined ? { syntax: spec.syntax } : {}),
+        ...('initialValue' in spec && spec.initialValue !== undefined
+          ? { initialValue: spec.initialValue }
+          : {}),
       };
       return [name, entry];
     }),
@@ -43,11 +54,6 @@ export const defaultCanonicals: Registry = Object.freeze(
  * to the *same RegistryEntry reference* as its canonical, so behavior is
  * identical and `mt(10).marginTop(20)` collapses correctly to a single
  * `margin-top` declaration via LIFO.
- *
- * Aliases never appear as the source of truth in errors or output; the
- * canonical is always the documented form, and the canonical chain type
- * (FssChain in @fss/core) does not surface aliases unless the user
- * augments it explicitly.
  */
 export const defaultAliases: AliasMap = Object.freeze({
   bg: 'backgroundColor',
