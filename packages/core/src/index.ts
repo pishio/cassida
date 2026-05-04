@@ -87,6 +87,27 @@ export interface ChainModifiers extends ZeroArgModifiers {
 }
 
 /**
+ * Escape-hatch chain method for properties outside FSS's safe surface
+ * (CSS shorthands, vendor prefixes, custom properties like `--brand-*`).
+ *
+ * Bypasses the registry, the shorthand-policy guard, and family
+ * tracking. Numeric values are NOT auto-unitized — the user is
+ * expected to pass a fully-formed CSS value string. Pairs naturally
+ * with `fss.unsafe(...)` for preset injection.
+ *
+ * `keyof CSS.PropertiesHyphen` provides IDE autocomplete for standard
+ * kebab-case property names; `(string & {})` preserves that
+ * autocomplete while still accepting any other string (for custom
+ * properties or browser experiments).
+ */
+export interface ChainSetMethod {
+  set(
+    key: keyof CSS.PropertiesHyphen | (string & {}),
+    value: string | number,
+  ): FssChain;
+}
+
+/**
  * Extension hook for downstream consumers.
  *
  * Users who add their own methods via `extendRegistry()` augment this
@@ -132,6 +153,7 @@ export type FssChain =
   & DefaultChainMethods
   & GeneratedChainMethods
   & ChainModifiers
+  & ChainSetMethod
   & FssChainExtensions
   & FssChainTerminus;
 
@@ -302,6 +324,22 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
         ? { kind: 'pseudo', selector }
         : { kind: 'raw', selector };
       ops.push({ scope, ops: innerOps });
+      return chain as unknown as FssChain;
+    },
+  });
+
+  // Escape hatch — direct CSS property write that bypasses the
+  // registry. Pairs with `fss.unsafe(preset)`. camelCase keys are
+  // converted to kebab-case so `set('paddingTop', '10px')` and
+  // `set('padding-top', '10px')` produce the same bag (and therefore
+  // the same className) — matching `paddingTop(10)` exactly when the
+  // value is unit-included.
+  Object.defineProperty(chain, 'set', {
+    enumerable: false,
+    writable: false,
+    configurable: false,
+    value: (key: string, value: string | number): FssChain => {
+      ops.push({ property: camelToKebab(key), value: String(value) });
       return chain as unknown as FssChain;
     },
   });

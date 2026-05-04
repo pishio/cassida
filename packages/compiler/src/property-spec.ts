@@ -360,6 +360,40 @@ export const canonicalSpec = {
     animatable: false,
     format: (v: CSS.Property.Cursor): string => passthrough(v),
   },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Opaque shorthands. These CSS shorthands are accepted as
+  // single-property writes — the user passes the *whole* CSS string
+  // (`'fade 1s ease'` for animation) and FSS does not decompose into
+  // longhand subproperties.
+  //
+  // Crucially, FSS does NOT expose the matching longhands
+  // (`animationDuration`, `transitionProperty`, `transformOrigin`,
+  // etc.). That means the canonical-vs-longhand co-occurrence
+  // problem can't arise — there's nothing on the chain that could
+  // collide with these in the bag — so the family-tracking guard is
+  // structurally unnecessary.
+  //
+  // `transform` is `animatable: true` (it's the most-animated CSS
+  // property in modern UIs); the other two are discrete shorthands
+  // that don't interpolate as a single whole.
+  animation: {
+    property: 'animation',
+    animatable: false,
+    format: (v: CSS.Property.Animation): string => passthrough(v),
+  },
+  transition: {
+    property: 'transition',
+    animatable: false,
+    format: (v: CSS.Property.Transition): string => passthrough(v),
+  },
+  transform: {
+    property: 'transform',
+    syntax: '<transform-list>',
+    initialValue: 'none',
+    animatable: true,
+    format: (v: CSS.Property.Transform): string => passthrough(v),
+  },
 } as const satisfies Record<string, RawSpec>;
 
 export type CanonicalSpec = typeof canonicalSpec;

@@ -438,6 +438,109 @@ describe('transform — fss.unsafe(preset) bypass', () => {
   });
 });
 
+describe('transform — .set(key, value) escape hatch', () => {
+  it('emits a RawOp with kebab-case key and stringified value', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss().set('paddingTop', '10px')} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.tree.bag).toEqual({ 'padding-top': '10px' });
+  });
+
+  it('produces the same className as the canonical method when value matches', () => {
+    const a = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().paddingTop(10)} />;`,
+      opts,
+    );
+    const b = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().set('padding-top', '10px')} />;`,
+      opts,
+    );
+    expect(a.rules[0]!.className).toBe(b.rules[0]!.className);
+  });
+
+  it('camelCase and kebab-case keys both kebabize to the same bag key', () => {
+    const camel = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().set('paddingTop', '10px')} />;`,
+      opts,
+    );
+    const kebab = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().set('padding-top', '10px')} />;`,
+      opts,
+    );
+    expect(camel.rules[0]!.className).toBe(kebab.rules[0]!.className);
+  });
+
+  it('numbers are passed through without unit conversion (raw contract)', () => {
+    const r = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().set('--scale', 1.5)} />;`,
+      opts,
+    );
+    expect(r.rules[0]!.tree.bag).toEqual({ '--scale': '1.5' });
+  });
+
+  it('vendor-prefixed and custom-property keys pass through', () => {
+    const r = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().set('-webkit-tap-highlight-color', 'transparent').set('--brand', '#f0f')} />;`,
+      opts,
+    );
+    expect(r.rules[0]!.tree.bag).toEqual({
+      '-webkit-tap-highlight-color': 'transparent',
+      '--brand': '#f0f',
+    });
+  });
+
+  it('bails to runtime when key or value is non-confident', () => {
+    const r = transform(
+      `import { fss } from '@fss/core';
+       export const A = ({ k, v }: { k: string; v: string }) => <div {...fss().set(k, v)} />;`,
+      opts,
+    );
+    expect(r.transformed).toBe(false);
+  });
+});
+
+describe('transform — opaque shorthands (animation / transition / transform)', () => {
+  it('transform accepts a full transform-list string', () => {
+    const r = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().transform('rotate(2deg) scale(1.05)')} />;`,
+      opts,
+    );
+    expect(r.rules[0]!.tree.bag).toEqual({ transform: 'rotate(2deg) scale(1.05)' });
+    expect(r.rules[0]!.dynamics).toHaveLength(0);
+  });
+
+  it('transition accepts a full shorthand string', () => {
+    const r = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().transition('opacity .2s ease-out')} />;`,
+      opts,
+    );
+    expect(r.rules[0]!.tree.bag).toEqual({ transition: 'opacity .2s ease-out' });
+  });
+
+  it('transform is animatable (dynamic value emits @property)', () => {
+    const r = transform(
+      `import { fss } from '@fss/core';
+       export const A = ({ rot }: { rot: string }) => <div {...fss().transform(rot)} />;`,
+      opts,
+    );
+    expect(r.rules[0]!.dynamics).toHaveLength(1);
+    expect(r.rules[0]!.dynamics[0]!.property).toBe('transform');
+    expect(r.rules[0]!.dynamics[0]!.animatable).toBe(true);
+    expect(r.rules[0]!.dynamics[0]!.syntax).toBe('<transform-list>');
+  });
+});
+
 describe('transform — JSX surgery (style merge / className concat)', () => {
   it('concats existing string className with FSS hash', () => {
     const src = `

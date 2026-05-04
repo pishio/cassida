@@ -273,6 +273,26 @@ function walkChain(
         break;
       }
 
+      if (methodName === 'set') {
+        // .set(key, value) — direct CSS property write, bypasses registry.
+        // Both args must be confidently-evaluable; non-confident
+        // arguments fall through to the runtime fallback for now.
+        // (Phase 7: extend RawOp to carry dynamic source IDs.)
+        if (argPaths.length !== 2) return null;
+        const keyEval = argPaths[0]!.evaluate();
+        if (!keyEval.confident || typeof keyEval.value !== 'string') return null;
+        const valEval = argPaths[1]!.evaluate();
+        if (!valEval.confident) return null;
+        const valid = EvaluatedPrimitiveSchema.safeParse(valEval.value);
+        if (!valid.success) return null;
+        ops.push({
+          property: camelToKebab(keyEval.value),
+          value: String(valid.data),
+        });
+        current = memberPath.get('object');
+        continue;
+      }
+
       if (methodName in canonicalModifiers) {
         if (argPaths.length !== 1) return null;
         const innerOps = collectFromCallback(argPaths[0]!, ctx);

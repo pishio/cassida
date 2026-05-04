@@ -77,6 +77,33 @@ export default function App() {
         registry validation. Use sparingly.
       </div>
 
+      <div
+        {...fss()
+          .marginTop(16)
+          .padding(12)
+          .backgroundColor('#fff')
+          .transform('rotate(-1deg) scale(0.99)')
+          .transition('transform .2s ease-out')
+          .hover(c => c.transform('rotate(0deg) scale(1)'))}
+      >
+        Phase 6c-3: opaque <code>transform</code> + <code>transition</code>
+        shorthands. Hover the box; the transform animates because
+        <code>transform</code> is animatable in the spec.
+      </div>
+
+      <div
+        {...fss()
+          .marginTop(16)
+          .padding(12)
+          .set('--brand-scale', 1.5)
+          .set('-webkit-tap-highlight-color', 'transparent')
+          .backgroundColor('#fff')}
+      >
+        Phase 6c-3: <code>set('--brand-scale', 1.5)</code> writes a CSS custom
+        property; <code>set('-webkit-tap-highlight-color', 'transparent')</code>
+        reaches a vendor-only API that lightningcss won't autoprefix.
+      </div>
+
       <button
         {...fss()
           .padding(12)
