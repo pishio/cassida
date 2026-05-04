@@ -4,6 +4,11 @@
 
 # Cassida
 
+[![@cassida/core](https://img.shields.io/npm/v/%40cassida%2Fcore?label=%40cassida%2Fcore&color=2ea44f)](https://www.npmjs.com/package/@cassida/core)
+[![@cassida/vite-plugin](https://img.shields.io/npm/v/%40cassida%2Fvite-plugin?label=%40cassida%2Fvite-plugin&color=2ea44f)](https://www.npmjs.com/package/@cassida/vite-plugin)
+[![@cassida/plugin-hover-fix](https://img.shields.io/npm/v/%40cassida%2Fplugin-hover-fix?label=%40cassida%2Fplugin-hover-fix&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-hover-fix)
+[![license MIT](https://img.shields.io/npm/l/%40cassida%2Fcore?color=blue)](./LICENSE)
+
 > **One element, one class — compiled, not cascaded.**
 
 A build-time CSS-in-JS compiler. Cassida collapses every styling chain to **exactly one class per element** via LIFO resolution at build time; the browser never computes specificity for Cassida-generated rules. Every `:hover`, `@media`, and nested rule sits inside a single `@layer cas` cascade layer with one stable class hash.
@@ -38,7 +43,15 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
-**Pre-1.0**: API is stable across the documented surface but published versions are 0.x. Expect breaking changes between minor versions until 1.0. The feature set described below is implemented and covered by 172+ unit tests.
+**v0.1.0** — first public release.
+The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0. The feature set described below is implemented and covered by 172+ unit tests across 5 packages.
+
+```bash
+pnpm add @cassida/core
+pnpm add -D @cassida/vite-plugin
+# optional plugin
+pnpm add -D @cassida/plugin-hover-fix
+```
 
 ## Table of contents
 
