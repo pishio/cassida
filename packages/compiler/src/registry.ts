@@ -21,6 +21,18 @@ export interface RegistryEntry {
    * properties (display, position, ...) are typically false.
    */
   readonly animatable?: boolean;
+  /**
+   * If this entry IS a CSS shorthand that covers a family of longhands,
+   * the family identifier (e.g. `'padding'`, `'margin'`, `'inset'`).
+   * Used by the Canonicalizer's `shorthand.policy` check to detect
+   * shorthand ↔ longhand co-occurrence within a single scope.
+   */
+  readonly shorthandFamily?: string;
+  /**
+   * If this entry IS a longhand of a shorthand family, the family
+   * identifier. Mirrors `shorthandFamily` from the other side.
+   */
+  readonly longhandFamily?: string;
 }
 
 export type Registry = Readonly<Record<string, RegistryEntry>>;
@@ -42,6 +54,12 @@ export const defaultCanonicals: Registry = Object.freeze(
         ...('syntax' in spec && spec.syntax !== undefined ? { syntax: spec.syntax } : {}),
         ...('initialValue' in spec && spec.initialValue !== undefined
           ? { initialValue: spec.initialValue }
+          : {}),
+        ...('shorthandFamily' in spec && spec.shorthandFamily !== undefined
+          ? { shorthandFamily: spec.shorthandFamily }
+          : {}),
+        ...('longhandFamily' in spec && spec.longhandFamily !== undefined
+          ? { longhandFamily: spec.longhandFamily }
           : {}),
       };
       return [name, entry];

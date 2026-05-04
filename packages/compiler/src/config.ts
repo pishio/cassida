@@ -9,6 +9,13 @@ import { z } from 'zod';
 
 const MediaSortSchema = z.enum(['mobile-first', 'desktop-first']);
 const CssModeSchema = z.enum(['rule-per-class', 'shared-by-declaration']);
+const ShorthandPolicySchema = z.enum(['strict', 'shorthand-first', 'lenient']);
+
+const ShorthandSchema = z
+  .object({
+    policy: ShorthandPolicySchema.optional(),
+  })
+  .strict();
 
 const HashSchema = z
   .object({
@@ -52,6 +59,7 @@ export const FssConfigSchema = z
     hash: HashSchema.optional(),
     media: MediaSchema.optional(),
     css: CssSchema.optional(),
+    shorthand: ShorthandSchema.optional(),
   })
   .strict();
 
@@ -59,6 +67,7 @@ export const FssConfigSchema = z
 export type FssConfig = z.infer<typeof FssConfigSchema>;
 export type MediaSort = z.infer<typeof MediaSortSchema>;
 export type CssMode = z.infer<typeof CssModeSchema>;
+export type ShorthandPolicy = z.infer<typeof ShorthandPolicySchema>;
 
 /**
  * Fully-populated config — the form consumed by the emitter, parser,
@@ -83,6 +92,9 @@ export interface ResolvedFssConfig {
       readonly targets: string;
     };
   };
+  readonly shorthand: {
+    readonly policy: ShorthandPolicy;
+  };
 }
 
 export const defaultConfig: ResolvedFssConfig = Object.freeze({
@@ -102,6 +114,9 @@ export const defaultConfig: ResolvedFssConfig = Object.freeze({
       minify: true,
       targets: 'defaults',
     }),
+  }),
+  shorthand: Object.freeze({
+    policy: 'strict' as const,
   }),
 }) satisfies ResolvedFssConfig;
 
@@ -140,6 +155,9 @@ export function mergeConfig(
           targets:
             layer.css?.lightningcss?.targets ?? acc.css.lightningcss.targets,
         },
+      },
+      shorthand: {
+        policy: layer.shorthand?.policy ?? acc.shorthand.policy,
       },
     };
   }

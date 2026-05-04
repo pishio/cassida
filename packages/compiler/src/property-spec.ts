@@ -47,6 +47,10 @@ type RawSpec = {
   readonly syntax?: string;
   readonly initialValue?: string;
   readonly animatable: boolean;
+  /** Family ID if this entry is a shorthand (e.g. `'padding'`). */
+  readonly shorthandFamily?: string;
+  /** Family ID if this entry is a longhand (e.g. `'padding'`). */
+  readonly longhandFamily?: string;
   readonly format: (...args: never[]) => string;
 };
 
@@ -74,12 +78,16 @@ export const canonicalSpec = {
     format: (v: CSS.Property.BorderColor): string => passthrough(v),
   },
 
-  // margin — animatable lengths
+  // margin family — shorthand + longhands. The shorthand is allowed
+  // because Canonicalizer's shorthand.policy (default 'strict')
+  // prevents the cascade-vs-LIFO bug by forbidding shorthand ↔
+  // longhand co-occurrence within a single scope.
   margin: {
     property: 'margin',
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    shorthandFamily: 'margin',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   marginTop: {
@@ -87,6 +95,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'margin',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   marginRight: {
@@ -94,6 +103,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'margin',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   marginBottom: {
@@ -101,6 +111,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'margin',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   marginLeft: {
@@ -108,15 +119,17 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'margin',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
 
-  // padding — animatable lengths
+  // padding family — shorthand + longhands.
   padding: {
     property: 'padding',
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    shorthandFamily: 'padding',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   paddingTop: {
@@ -124,6 +137,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'padding',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   paddingRight: {
@@ -131,6 +145,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'padding',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   paddingBottom: {
@@ -138,6 +153,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'padding',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   paddingLeft: {
@@ -145,6 +161,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'padding',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
 
@@ -236,11 +253,21 @@ export const canonicalSpec = {
     animatable: false,
     format: (v: CSS.Property.Position): string => passthrough(v),
   },
+  // inset family — shorthand + 4 longhands (top/right/bottom/left).
+  inset: {
+    property: 'inset',
+    syntax: '<length>',
+    initialValue: '0',
+    animatable: true,
+    shorthandFamily: 'inset',
+    format: (n: LenArg, unit?: string): string => length(n, unit),
+  },
   top: {
     property: 'top',
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'inset',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   right: {
@@ -248,6 +275,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'inset',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   bottom: {
@@ -255,6 +283,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'inset',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   left: {
@@ -262,6 +291,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'inset',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   zIndex: {

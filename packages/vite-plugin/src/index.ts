@@ -130,6 +130,7 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
         registry,
         filename: cleanId,
         importSource: resolved.importSource,
+        shorthandPolicy: resolved.shorthand.policy,
       });
 
       if (!result.transformed) {

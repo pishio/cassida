@@ -157,6 +157,109 @@ describe('Canonicalizer.collapse — scoped ops', () => {
   });
 });
 
+describe('Canonicalizer.collapse — shorthand policy', () => {
+  it('strict policy (default) rejects shorthand → longhand in same scope', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [10] },
+        { method: 'paddingTop', args: [20] },
+      ]),
+    ).toThrow(/longhand "paddingTop" cannot follow shorthand "padding"/);
+  });
+
+  it('strict policy rejects longhand → shorthand in same scope (the latent-bug direction)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'paddingTop', args: [20] },
+        { method: 'padding', args: [10] },
+      ]),
+    ).toThrow(/shorthand "padding" cannot follow longhand "paddingTop"/);
+  });
+
+  it('shorthand-first policy rejects shorthand → longhand but allows longhand → shorthand', () => {
+    const c = new Canonicalizer(defaultRegistry, 'shorthand-first');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [10] },
+        { method: 'paddingTop', args: [20] },
+      ]),
+    ).toThrow(/longhand "paddingTop" cannot follow shorthand "padding"/);
+    // Reverse direction is allowed
+    expect(() =>
+      c.collapse([
+        { method: 'paddingTop', args: [20] },
+        { method: 'padding', args: [10] },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('lenient policy allows both directions', () => {
+    const c = new Canonicalizer(defaultRegistry, 'lenient');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [10] },
+        { method: 'paddingTop', args: [20] },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      c.collapse([
+        { method: 'paddingTop', args: [20] },
+        { method: 'padding', args: [10] },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('scope boundary resets the family-tracking sets (strict)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [10] },
+        {
+          scope: { kind: 'media', query: '(min-width: 768px)' },
+          ops: [{ method: 'paddingTop', args: [20] }],
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('strict policy applies independently inside each modifier scope', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        {
+          scope: { kind: 'pseudo', selector: ':hover' },
+          ops: [
+            { method: 'padding', args: [10] },
+            { method: 'paddingTop', args: [20] },
+          ],
+        },
+      ]),
+    ).toThrow(/longhand "paddingTop" cannot follow shorthand "padding"/);
+  });
+
+  it('different families do not interact (margin vs padding)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [10] },
+        { method: 'marginTop', args: [20] },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('inset family: top is a longhand of inset', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'inset', args: [10] },
+        { method: 'top', args: [0] },
+      ]),
+    ).toThrow(/longhand "top" cannot follow shorthand "inset"/);
+  });
+});
+
 describe('Canonicalizer.canonicalKey', () => {
   it('is order-independent (same chain shape → same key)', () => {
     const a = canon.canonicalKey(

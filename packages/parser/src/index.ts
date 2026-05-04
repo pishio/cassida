@@ -15,6 +15,7 @@ import {
   type Op,
   type Registry,
   type Scope,
+  type ShorthandPolicy,
 } from '@fss/compiler';
 import { pathAs } from './path-guard.js';
 
@@ -35,6 +36,11 @@ export interface TransformOptions {
    * Defaults to `@fss/core`. Renamed imports (`{ fss as ff }`) are honored.
    */
   readonly importSource?: string;
+  /**
+   * Policy for shorthand ↔ longhand co-occurrence within a single scope.
+   * Forwarded to `compileOps`. Defaults to `'strict'`.
+   */
+  readonly shorthandPolicy?: ShorthandPolicy;
 }
 
 export interface TransformResult {
@@ -127,7 +133,10 @@ export function transform(source: string, options: TransformOptions): TransformR
         );
       }
 
-      const compiled = compileOps(ops, { registry: options.registry });
+      const compiled = compileOps(ops, {
+        registry: options.registry,
+        ...(options.shorthandPolicy !== undefined ? { shorthandPolicy: options.shorthandPolicy } : {}),
+      });
       rules.push(compiled);
 
       let spreadIdx = -1;

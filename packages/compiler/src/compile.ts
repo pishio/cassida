@@ -11,6 +11,7 @@ import type { Registry } from './registry.js';
 import { Canonicalizer } from './canonicalizer.js';
 import { hash, type HashOptions } from './hasher.js';
 import { defaultPropertyMeta, type PropertyMeta } from './property-spec.js';
+import type { ShorthandPolicy } from './config.js';
 
 export interface CompileOptions extends HashOptions {
   readonly registry: Registry;
@@ -22,6 +23,11 @@ export interface CompileOptions extends HashOptions {
    * descriptors.
    */
   readonly propertyMeta?: Readonly<Record<string, PropertyMeta>>;
+  /**
+   * Policy for shorthand ↔ longhand co-occurrence within a single
+   * scope. Defaults to `'strict'`. See `ShorthandPolicy` in `config.ts`.
+   */
+  readonly shorthandPolicy?: ShorthandPolicy;
 }
 
 /**
@@ -35,7 +41,7 @@ export interface CompileOptions extends HashOptions {
  * parser uses these to populate the element's inline style.
  */
 export function compileOps(ops: readonly Op[], options: CompileOptions): CompiledRule {
-  const canon = new Canonicalizer(options.registry);
+  const canon = new Canonicalizer(options.registry, options.shorthandPolicy ?? 'strict');
   const rawTree = canon.collapse(ops);
   const canonical = canon.canonicalKey(rawTree);
   const className = hash(canonical, options);

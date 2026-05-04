@@ -98,6 +98,18 @@ export default function App() {
       >
         Nested: hover only changes background past 768px (resize, then hover).
       </div>
+
+      <div
+        {...fss()
+          .marginTop(16)
+          .padding(12)
+          .backgroundColor('#fff8e1')
+          .media('(min-width: 768px)', c => c.paddingTop(32))}
+      >
+        Shorthand-then-longhand across a scope boundary: padding(12) here,
+        paddingTop(32) only inside @media. Strict policy permits this because
+        the longhand sits in a separate scope.
+      </div>
     </main>
   );
 }

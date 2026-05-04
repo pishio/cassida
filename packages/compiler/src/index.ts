@@ -51,5 +51,6 @@ export type {
   ResolvedFssConfig,
   MediaSort,
   CssMode,
+  ShorthandPolicy,
 } from './config.js';
 export { cssToCamel } from './util.js';

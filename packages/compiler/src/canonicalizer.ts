@@ -8,7 +8,8 @@ import {
   type Scope,
   type ScopeBag,
 } from './types.js';
-import type { Registry } from './registry.js';
+import type { Registry, RegistryEntry } from './registry.js';
+import type { ShorthandPolicy } from './config.js';
 
 /**
  * Walks an `Op[]` chain, LIFO-collapsing each scope's declarations and
@@ -24,12 +25,21 @@ import type { Registry } from './registry.js';
  * applying property-level LIFO inside the merged scope.
  */
 export class Canonicalizer {
-  constructor(private readonly registry: Registry) {}
+  constructor(
+    private readonly registry: Registry,
+    private readonly policy: ShorthandPolicy = 'strict',
+  ) {}
 
   collapse(ops: readonly Op[], scope: Scope | null = null): ScopeBag {
     const bag: Record<string, string> = {};
     const slots: Record<string, string> = {};
     const childOpsByKey = new Map<string, { scope: Scope; ops: Op[] }>();
+    // Per-scope tracking for shorthand ↔ longhand co-occurrence.
+    // Recursion into ScopedOps creates a fresh `collapse` invocation
+    // with its own local `seenShorthand` / `seenLonghand`, so the
+    // `media`/`hover`/`on` scope automatically reset the constraint.
+    const seenShorthand = new Map<string, string>();
+    const seenLonghand = new Map<string, string>();
 
     for (const op of ops) {
       if (isMethodOp(op)) {
@@ -39,6 +49,8 @@ export class Canonicalizer {
             `[fss] unknown method "${op.method}". Add it to the registry or check for typos.`,
           );
         }
+
+        this.checkShorthandPolicy(op.method, entry, seenShorthand, seenLonghand);
 
         const dynamics = op.args.filter(isDynamic) as readonly DynamicArg[];
 
@@ -82,6 +94,64 @@ export class Canonicalizer {
       slots,
       children,
     };
+  }
+
+  /**
+   * Apply the configured shorthand-policy check. Throws when the user
+   * mixes shorthand and longhand of the same family within a single
+   * scope in a way the policy forbids. The error message names both
+   * methods and points at the three escape hatches: modifier callback,
+   * looser `policy` config, or sticking to one form.
+   */
+  private checkShorthandPolicy(
+    methodName: string,
+    entry: RegistryEntry,
+    seenShorthand: Map<string, string>,
+    seenLonghand: Map<string, string>,
+  ): void {
+    if (this.policy === 'lenient') {
+      // No-op, but still record so downstream code can introspect if needed.
+      if (entry.shorthandFamily) seenShorthand.set(entry.shorthandFamily, methodName);
+      if (entry.longhandFamily) seenLonghand.set(entry.longhandFamily, methodName);
+      return;
+    }
+
+    // longhand → shorthand check (strict only — the bug-prone direction).
+    if (entry.shorthandFamily) {
+      const family = entry.shorthandFamily;
+      const conflicting = seenLonghand.get(family);
+      if (this.policy === 'strict' && conflicting !== undefined) {
+        throw new Error(this.policyError('shorthand', methodName, conflicting, family));
+      }
+      seenShorthand.set(family, methodName);
+    }
+
+    // shorthand → longhand check (always — both 'strict' and 'shorthand-first').
+    if (entry.longhandFamily) {
+      const family = entry.longhandFamily;
+      const conflicting = seenShorthand.get(family);
+      if (conflicting !== undefined) {
+        throw new Error(this.policyError('longhand', methodName, conflicting, family));
+      }
+      seenLonghand.set(family, methodName);
+    }
+  }
+
+  private policyError(
+    incomingKind: 'shorthand' | 'longhand',
+    incomingMethod: string,
+    earlierMethod: string,
+    family: string,
+  ): string {
+    const prior = incomingKind === 'shorthand' ? 'longhand' : 'shorthand';
+    return (
+      `[fss] ${incomingKind} "${incomingMethod}" cannot follow ${prior} "${earlierMethod}" ` +
+      `in the same scope (family: "${family}", policy: "${this.policy}"). ` +
+      `Resolve via one of:\n` +
+      `  • Use a modifier callback (.media(...), .hover(...), .on(...)) to scope them separately.\n` +
+      `  • Set "shorthand.policy" to "shorthand-first" or "lenient" in fss.config.json.\n` +
+      `  • Stick to a single form (only shorthand, or only longhands) in this scope.`
+    );
   }
 
   /**
