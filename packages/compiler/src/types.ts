@@ -27,7 +27,7 @@ export function isDynamic(v: unknown): v is DynamicArg {
 export const DYNAMIC_PLACEHOLDER = ' <FSS_DYN> ';
 
 /**
- * A method call captured from a `fss()` chain, e.g. `color('red')`.
+ * A method call captured from a `cas()` chain, e.g. `color('red')`.
  */
 export interface MethodOp {
   readonly method: string;

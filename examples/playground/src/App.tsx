@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { fss, type FssChain } from '@fss/core';
+import { cas, type CassChain } from '@cassida/core';
 
 // Phase 6c-2: same-file style mixins. Compose via plain functions.
-const withCard = (c: FssChain) =>
+const withCard = (c: CassChain) =>
   c.padding(16).borderRadius(8).backgroundColor('#fff');
 
-const withInteractive = (c: FssChain) =>
+const withInteractive = (c: CassChain) =>
   c.cursor('pointer').transition('transform .15s ease-out')
     .hover(h => h.transform('translateY(-1px)'));
 
@@ -27,29 +27,29 @@ export default function App() {
   const dynamicColor = `hsl(${hue} 80% 55%)`;
 
   return (
-    <main {...fss().padding(BASE * 3, 'px').maxWidth(720)}>
-      <h1 {...fss().color('red').fontSize(28)}>
+    <main {...cas().padding(BASE * 3, 'px').maxWidth(720)}>
+      <h1 {...cas().color('red').fontSize(28)}>
         Hello FSS — this should be red.
       </h1>
 
-      <p {...fss().color('#444').marginTop(BASE)}>
+      <p {...cas().color('#444').marginTop(BASE)}>
         path.evaluate sees BASE = 8, so this margin-top is statically{' '}
         <code>8px</code>. No CSS variable, no inline style — just a hash class.
       </p>
 
-      <p {...fss().color('blue').color('green')}>
+      <p {...cas().color('blue').color('green')}>
         LIFO check: green wins, blue is gone from CSS entirely.
       </p>
 
-      <h2 {...fss().color(theme.primary).marginTop(24).fontSize(20)}>
+      <h2 {...cas().color(theme.primary).marginTop(24).fontSize(20)}>
         Dynamic value (theme.primary)
       </h2>
-      <p {...fss().color(theme.accent)}>
+      <p {...cas().color(theme.accent)}>
         theme.accent → CSS variable. Inspect: single class with{' '}
         <code>color: var(...)</code>; the actual color is in inline style.
       </p>
 
-      <p {...fss().color(dynamicColor).marginTop(16)}>
+      <p {...cas().color(dynamicColor).marginTop(16)}>
         Slider-driven <code>hsl({hue}, 80%, 55%)</code>. Move the slider:
       </p>
       <input
@@ -60,10 +60,10 @@ export default function App() {
         onChange={(e) => setHue(Number(e.target.value))}
       />
 
-      <h2 {...fss().marginTop(32).fontSize(20)}>Phase 2 — modifiers</h2>
+      <h2 {...cas().marginTop(32).fontSize(20)}>Phase 2 — modifiers</h2>
 
       <div
-        {...fss()
+        {...cas()
           .marginTop(16)
           .accentColor('crimson')
           .aspectRatio('16/9')
@@ -73,8 +73,8 @@ export default function App() {
         Phase 6b — auto-generated methods (aspectRatio, accentColor) work end-to-end.
       </div>
 
-      <div {...fss(cardPreset).marginTop(16).color('#222')}>
-        Phase 6c-1: <code>fss(cardPreset)</code> — preset constant injected at
+      <div {...cas(cardPreset).marginTop(16).color('#222')}>
+        Phase 6c-1: <code>cas(cardPreset)</code> — preset constant injected at
         the chain root, then refined with chain methods. Same hash whether the
         preset lives in this file or another.
       </div>
@@ -86,7 +86,7 @@ export default function App() {
       </div>
 
       <div
-        {...fss()
+        {...cas()
           .marginTop(16)
           .padding(12)
           .backgroundColor('#fff')
@@ -100,7 +100,7 @@ export default function App() {
       </div>
 
       <div
-        {...fss()
+        {...cas()
           .marginTop(16)
           .padding(12)
           .set('--brand-scale', 1.5)
@@ -112,14 +112,14 @@ export default function App() {
         reaches a vendor-only API that lightningcss won't autoprefix.
       </div>
 
-      <button {...withInteractive(withCard(fss())).marginTop(16).fontSize(14)}>
-        Phase 6c-2: <code>withInteractive(withCard(fss())).fontSize(14)</code>
+      <button {...withInteractive(withCard(cas())).marginTop(16).fontSize(14)}>
+        Phase 6c-2: <code>withInteractive(withCard(cas())).fontSize(14)</code>
         — nested same-file function composition. The mixins layer in source
         order, then chain methods refine. One element, one class, one hash.
       </button>
 
       <button
-        {...fss()
+        {...cas()
           .padding(12)
           .borderRadius(6)
           .borderWidth(0)
@@ -135,7 +135,7 @@ export default function App() {
       </button>
 
       <p
-        {...fss()
+        {...cas()
           .marginTop(16)
           .fontSize(14)
           .media('(min-width: 1024px)', c => c.fontSize(24))
@@ -149,7 +149,7 @@ export default function App() {
 
       <a
         href="#nope"
-        {...fss()
+        {...cas()
           .color('#1a73e8')
           .on(':visited', c => c.color('#673ab7'))
           .hover(c => c.color('#0d4aa3'))}
@@ -158,7 +158,7 @@ export default function App() {
       </a>
 
       <div
-        {...fss()
+        {...cas()
           .marginTop(16)
           .padding(12)
           .backgroundColor('#fafafa')
@@ -170,7 +170,7 @@ export default function App() {
       </div>
 
       <div
-        {...fss()
+        {...cas()
           .marginTop(16)
           .padding(12)
           .backgroundColor('#fff8e1')

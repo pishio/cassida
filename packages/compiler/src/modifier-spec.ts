@@ -4,7 +4,7 @@ import type { Scope } from './types.js';
  * Canonical zero-arg modifier methods. Each shorthand resolves to a
  * fixed `Scope` and is invoked as `chain.<method>(c => ...)`.
  *
- * The chain runtime in `@fss/core` injects a method on `FssChain` for
+ * The chain runtime in `@cassida/core` injects a method on `CassChain` for
  * each entry here; the parser detects them by name (just like canonical
  * style methods). The arg-taking modifiers `media(query, cb)` and
  * `on(selector, cb)` are special-cased and not in this table.

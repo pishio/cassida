@@ -48,17 +48,17 @@ export type { CompileOptions } from './compile.js';
 export { CssEmitter } from './emitter.js';
 export type { CssEmitterOptions } from './emitter.js';
 export { applyPlugins, mapScopeBag, wrapInMediaScope } from './plugin.js';
-export type { FssPlugin, PluginContext } from './plugin.js';
+export type { CassPlugin, PluginContext } from './plugin.js';
 export {
   defaultConfig,
   mergeConfig,
-  parseFssConfig,
-  FssConfigSchema,
+  parseCassConfig,
+  CassConfigSchema,
   EvaluatedPrimitiveSchema,
 } from './config.js';
 export type {
-  FssConfig,
-  ResolvedFssConfig,
+  CassConfig,
+  ResolvedCassConfig,
   MediaSort,
   CssMode,
   ShorthandPolicy,

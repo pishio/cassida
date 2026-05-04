@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const DEFAULT_PREFIX = 'fss-';
+export const DEFAULT_PREFIX = 'cas-';
 export const DEFAULT_LENGTH = 8;
 
 export interface HashOptions {

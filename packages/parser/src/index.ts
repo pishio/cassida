@@ -12,14 +12,14 @@ import {
   isDynamic,
   type CompiledRule,
   type DynamicSlot,
-  type FssPlugin,
+  type CassPlugin,
   type MethodOp,
   type Op,
   type RawOp,
   type Registry,
   type Scope,
   type ShorthandPolicy,
-} from '@fss/compiler';
+} from '@cassida/compiler';
 import { pathAs } from './path-guard.js';
 
 // Babel's ESM packaging exposes the function under `.default` when imported
@@ -36,7 +36,7 @@ export interface TransformOptions {
   readonly filename?: string;
   /**
    * The module specifier to recognize as the source of the `fss` import.
-   * Defaults to `@fss/core`. Renamed imports (`{ fss as ff }`) are honored.
+   * Defaults to `@cassida/core`. Renamed imports (`{ fss as ff }`) are honored.
    */
   readonly importSource?: string;
   /**
@@ -49,7 +49,7 @@ export interface TransformOptions {
    * receives the post-collapse `ScopeBag` tree and returns a new
    * one; the className is derived from the post-plugin form.
    */
-  readonly plugins?: readonly FssPlugin[];
+  readonly plugins?: readonly CassPlugin[];
 }
 
 export interface TransformResult {
@@ -68,7 +68,7 @@ interface WalkContext {
 }
 
 export function transform(source: string, options: TransformOptions): TransformResult {
-  const importSource = options.importSource ?? '@fss/core';
+  const importSource = options.importSource ?? '@cassida/core';
 
   const plugins: ParserPlugin[] = ['jsx'];
   if (/\.tsx?$/.test(options.filename ?? '')) plugins.push('typescript');
@@ -80,24 +80,32 @@ export function transform(source: string, options: TransformOptions): TransformR
   if (options.filename !== undefined) parseOpts.sourceFilename = options.filename;
   const ast = parse(source, parseOpts);
 
-  // First pass: collect every local name bound to the `fss` named import.
-  const fssBindings = new Set<string>();
+  // First pass: collect every local name bound to a Cassida chain
+  // entry point (`cas`, `css`, or `cassida` — all aliases for the same
+  // function in @cassida/core). Default-export imports are also
+  // accepted (`import cas from '@cassida/core'`).
+  const chainEntryNames = new Set(['cas', 'css', 'cassida']);
+  const casBindings = new Set<string>();
   traverse(ast, {
     ImportDeclaration(path) {
       if (path.node.source.value !== importSource) return;
       for (const spec of path.node.specifiers) {
+        if (t.isImportDefaultSpecifier(spec)) {
+          casBindings.add(spec.local.name);
+          continue;
+        }
         if (
           t.isImportSpecifier(spec) &&
           t.isIdentifier(spec.imported) &&
-          spec.imported.name === 'fss'
+          chainEntryNames.has(spec.imported.name)
         ) {
-          fssBindings.add(spec.local.name);
+          casBindings.add(spec.local.name);
         }
       }
     },
   });
 
-  if (fssBindings.size === 0) {
+  if (casBindings.size === 0) {
     return { code: source, rules: [], map: null, transformed: false };
   }
 
@@ -112,33 +120,33 @@ export function transform(source: string, options: TransformOptions): TransformR
       // path.get('argument') on a typed NodePath<JSXSpreadAttribute>
       // returns NodePath<Expression>; no cast needed.
       const argPath = path.get('argument');
-      const ops = walkChain(argPath, fssBindings, ctx);
+      const ops = walkChain(argPath, casBindings, ctx);
       if (!ops) return;
 
       const opening = path.parent;
       if (!t.isJSXOpeningElement(opening)) return;
 
-      // Reject multiple {...fss()} spreads on the same element.
+      // Reject multiple {...cas()} spreads on the same element.
       const probeCtx: WalkContext = {
         dynamicSources: new Map(),
         counter: { n: 0 },
       };
-      const otherFssSpreads = opening.attributes.filter((a) => {
+      const otherCasSpreads = opening.attributes.filter((a) => {
         if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
         let probed: Op[] | null = null;
         path.parentPath?.traverse({
           JSXSpreadAttribute(p) {
             if (p.node === a) {
-              probed = walkChain(p.get('argument'), fssBindings, probeCtx);
+              probed = walkChain(p.get('argument'), casBindings, probeCtx);
               p.stop();
             }
           },
         });
         return probed !== null;
       });
-      if (otherFssSpreads.length > 0) {
+      if (otherCasSpreads.length > 0) {
         throw path.buildCodeFrameError(
-          '[fss] Multiple {...fss()} spreads on the same JSX element are not supported. Combine them into a single chain.',
+          '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
         );
       }
 
@@ -172,16 +180,16 @@ export function transform(source: string, options: TransformOptions): TransformR
         }
       }
 
-      const fssWins = spreadIdx > styleIdx;
-      const fssBaseCssProps = Object.keys(compiled.tree.bag);
+      const casWins = spreadIdx > styleIdx;
+      const casBaseCssProps = Object.keys(compiled.tree.bag);
 
       const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, compiled.className);
       const styleResult = decideStyleAttr(
         existingStyleAttr,
         compiled.dynamics,
-        fssBaseCssProps,
+        casBaseCssProps,
         dynamicSources,
-        fssWins,
+        casWins,
       );
 
       const newAttrs: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
@@ -215,7 +223,7 @@ export function transform(source: string, options: TransformOptions): TransformR
 }
 
 /**
- * Walks a `fss().a().b()...` chain backward from the outermost call,
+ * Walks a `cas().a().b()...` chain backward from the outermost call,
  * accumulating ops in source order. Modifiers (`hover`, `focus`,
  * `media`, `on`, …) recurse into their callback's body.
  *
@@ -249,7 +257,7 @@ function walkChain(
     const calleePath = callPath.get('callee');
 
     // Branch A: callee is `obj.method(...)` — descend the chain or
-    // intercept the special `fss.unsafe(preset)` chain root.
+    // intercept the special `cas.unsafe(preset)` chain root.
     const memberPath = pathAs(calleePath, t.isMemberExpression);
     if (memberPath && !memberPath.node.computed) {
       const propertyPath = pathAs(memberPath.get('property'), t.isIdentifier);
@@ -257,7 +265,7 @@ function walkChain(
       const methodName = propertyPath.node.name;
       const argPaths = callPath.get('arguments');
 
-      // Special case: `fss.unsafe(preset)` at the chain root. Detected
+      // Special case: `cas.unsafe(preset)` at the chain root. Detected
       // when the member-object is the chain-root identifier itself
       // (i.e. `fss`, not a callback param) AND the property is
       // `unsafe`. The preset object is expanded into RawOps which
@@ -332,9 +340,9 @@ function walkChain(
       continue;
     }
 
-    // Branch B: callee is the chain root identifier `fss()`.
-    const fssIdPath = pathAs(calleePath, t.isIdentifier);
-    if (fssIdPath && chainRoots.has(fssIdPath.node.name)) {
+    // Branch B: callee is the chain root identifier `cas()`.
+    const casIdPath = pathAs(calleePath, t.isIdentifier);
+    if (casIdPath && chainRoots.has(casIdPath.node.name)) {
       if (callPath.node.arguments.length === 0) break;
       if (callPath.node.arguments.length !== 1) return null;
       const argPaths = callPath.get('arguments');
@@ -351,12 +359,12 @@ function walkChain(
     }
 
     // Branch C: callee is an Identifier that's NOT a chain root.
-    // Treat as same-file function composition: `withCard(fss())` etc.
+    // Treat as same-file function composition: `withCard(cas())` etc.
     // The function must be a 1-param const arrow / function declaration
     // whose body is a chain rooted at the param. The function's body
     // ops are appended to the argument's ops in source order.
-    if (fssIdPath) {
-      const composed = tryFunctionComposition(callPath, fssIdPath, chainRoots, ctx);
+    if (casIdPath) {
+      const composed = tryFunctionComposition(callPath, casIdPath, chainRoots, ctx);
       if (composed === null) return null;
       // Push reversed so the composition lands first after the final reverse.
       for (let i = composed.length - 1; i >= 0; i--) ops.push(composed[i]!);
@@ -371,7 +379,7 @@ function walkChain(
 
 /**
  * Attempts to resolve a same-file function composition like
- * `withCard(fss())` or `withCard(withTheme(fss()))`. Returns the
+ * `withCard(cas())` or `withCard(withTheme(cas()))`. Returns the
  * composed source-ordered Op list or null if the call doesn't fit
  * the supported pattern.
  *
@@ -550,7 +558,7 @@ function inferScope(
 
 /**
  * Expand a confidently-evaluated preset object into a list of
- * MethodOps for the safe `fss(preset)` path. Each key becomes a
+ * MethodOps for the safe `cas(preset)` path. Each key becomes a
  * method call against the registry. Null/undefined values are
  * skipped (idiomatic "unset" syntax). Unknown / blacklisted keys
  * are not pre-checked here — the canonicalizer will surface them
@@ -571,7 +579,7 @@ function expandSafePreset(value: Record<string, unknown>): MethodOp[] | null {
  * (passed through, including vendor prefixes like `-webkit-foo`).
  * Values are stringified as-is. Bypasses the registry, the
  * shorthand-policy guard, and family tracking — that's the contract
- * of `fss.unsafe`.
+ * of `cas.unsafe`.
  */
 function expandUnsafePreset(value: Record<string, unknown>): RawOp[] {
   const ops: RawOp[] = [];
@@ -661,19 +669,19 @@ interface StyleDecision {
 function decideStyleAttr(
   existing: t.JSXAttribute | null,
   dynamics: readonly DynamicSlot[],
-  fssCssProps: readonly string[],
+  casCssProps: readonly string[],
   dynamicSources: ReadonlyMap<string, t.Expression>,
-  fssWins: boolean,
+  casWins: boolean,
 ): StyleDecision {
-  const fssCamelProps = new Set(fssCssProps.map(cssToCamel));
+  const casCamelProps = new Set(casCssProps.map(cssToCamel));
   const existingExpr = getExistingStyleExpr(existing);
 
   let mustReplace = dynamics.length > 0;
-  if (!mustReplace && fssWins && existingExpr !== null && t.isObjectExpression(existingExpr)) {
+  if (!mustReplace && casWins && existingExpr !== null && t.isObjectExpression(existingExpr)) {
     for (const p of existingExpr.properties) {
       if (t.isObjectProperty(p) && !p.computed) {
         const key = getStaticKeyName(p.key);
-        if (key !== null && fssCamelProps.has(key)) {
+        if (key !== null && casCamelProps.has(key)) {
           mustReplace = true;
           break;
         }
@@ -685,10 +693,10 @@ function decideStyleAttr(
     return { attr: null, replacesExisting: false };
   }
 
-  const fssVarProps: t.ObjectProperty[] = dynamics.map((slot) => {
+  const casVarProps: t.ObjectProperty[] = dynamics.map((slot) => {
     const value = dynamicSources.get(slot.sourceId);
     if (!value) {
-      throw new Error(`[fss] internal: missing source AST for slot ${slot.sourceId}`);
+      throw new Error(`[cassida] internal: missing source AST for slot ${slot.sourceId}`);
     }
     return t.objectProperty(t.stringLiteral(slot.varName), value);
   });
@@ -697,9 +705,9 @@ function decideStyleAttr(
   if (existingExpr !== null) {
     if (t.isObjectExpression(existingExpr)) {
       for (const p of existingExpr.properties) {
-        if (fssWins && t.isObjectProperty(p) && !p.computed) {
+        if (casWins && t.isObjectProperty(p) && !p.computed) {
           const key = getStaticKeyName(p.key);
-          if (key !== null && fssCamelProps.has(key)) continue;
+          if (key !== null && casCamelProps.has(key)) continue;
         }
         if (t.isObjectProperty(p) || t.isSpreadElement(p)) {
           userProps.push(p);
@@ -710,9 +718,9 @@ function decideStyleAttr(
     }
   }
 
-  const props: (t.ObjectProperty | t.SpreadElement)[] = fssWins
-    ? [...userProps, ...fssVarProps]
-    : [...fssVarProps, ...userProps];
+  const props: (t.ObjectProperty | t.SpreadElement)[] = casWins
+    ? [...userProps, ...casVarProps]
+    : [...casVarProps, ...userProps];
 
   if (props.length === 0) {
     return { attr: null, replacesExisting: true };

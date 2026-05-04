@@ -1,9 +1,9 @@
 import {
   mapScopeBag,
   wrapInMediaScope,
-  type FssPlugin,
+  type CassPlugin,
   type ScopeBag,
-} from '@fss/compiler';
+} from '@cassida/compiler';
 
 export interface HoverFixOptions {
   /**
@@ -31,7 +31,7 @@ const DEFAULT_SELECTORS: readonly string[] = [':hover'];
  * even though it has no real cursor.
  *
  * Example:
- *   fss().hover(c => c.color('red'))
+ *   cas().hover(c => c.color('red'))
  *
  * Without plugin → `.fss-X:hover { color: red }`
  *   → on iOS, color stays red after tap until next tap
@@ -44,12 +44,12 @@ const DEFAULT_SELECTORS: readonly string[] = [':hover'];
  * tree → different canonical key), so caches are invalidated cleanly
  * when toggling the plugin.
  */
-export default function hoverFix(options: HoverFixOptions = {}): FssPlugin {
+export default function hoverFix(options: HoverFixOptions = {}): CassPlugin {
   const query = options.query ?? DEFAULT_QUERY;
   const selectors = new Set(options.selectors ?? DEFAULT_SELECTORS);
 
   return {
-    name: '@fss/plugin-hover-fix',
+    name: '@cassida/plugin-hover-fix',
     transform(tree: ScopeBag): ScopeBag {
       return mapScopeBag(tree, (node) => {
         const scope = node.scope;

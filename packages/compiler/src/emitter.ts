@@ -53,7 +53,7 @@ export class CssEmitter {
     const previous = this.seen.get(className);
     if (previous !== undefined && previous !== canonical) {
       throw new Error(
-        `[fss] hash collision on "${className}":\n  prev: ${previous}\n  curr: ${canonical}`,
+        `[cassida] hash collision on "${className}":\n  prev: ${previous}\n  curr: ${canonical}`,
       );
     }
     this.seen.set(className, canonical);

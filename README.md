@@ -22,7 +22,7 @@ Single-Class, Build-Time-Resolved CSS-in-JS.
 
 ## Status
 
-🚧 Pre-alpha — `@fss/compiler` 着手段階。
+🚧 Pre-alpha — `@cassida/compiler` 着手段階。
 
 ## Packages
 

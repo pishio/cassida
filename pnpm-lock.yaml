@@ -14,7 +14,7 @@ importers:
 
   examples/playground:
     dependencies:
-      '@fss/core':
+      '@cassida/core':
         specifier: workspace:*
         version: link:../../packages/core
       react:
@@ -24,10 +24,10 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
     devDependencies:
-      '@fss/plugin-hover-fix':
+      '@cassida/plugin-hover-fix':
         specifier: workspace:*
         version: link:../../packages/plugin-hover-fix
-      '@fss/vite-plugin':
+      '@cassida/vite-plugin':
         specifier: workspace:*
         version: link:../../packages/vite-plugin
       '@types/react':
@@ -79,7 +79,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@fss/compiler':
+      '@cassida/compiler':
         specifier: workspace:*
         version: link:../compiler
       csstype:
@@ -110,7 +110,7 @@ importers:
       '@babel/types':
         specifier: ^7.26.0
         version: 7.29.0
-      '@fss/compiler':
+      '@cassida/compiler':
         specifier: workspace:*
         version: link:../compiler
     devDependencies:
@@ -132,7 +132,7 @@ importers:
 
   packages/plugin-hover-fix:
     dependencies:
-      '@fss/compiler':
+      '@cassida/compiler':
         specifier: workspace:*
         version: link:../compiler
     devDependencies:
@@ -148,10 +148,10 @@ importers:
 
   packages/vite-plugin:
     dependencies:
-      '@fss/compiler':
+      '@cassida/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@fss/parser':
+      '@cassida/parser':
         specifier: workspace:*
         version: link:../parser
       browserslist:

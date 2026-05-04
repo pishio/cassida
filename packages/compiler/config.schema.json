@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "FssConfig",
-  "description": "FSS (Functional Style Sheet) configuration. Place this at the project root as fss.config.json. Every field is optional; missing fields fall back to FSS defaults.",
+  "title": "CassConfig",
+  "description": "FSS (Functional Style Sheet) configuration. Place this at the project root as cassida.config.json. Every field is optional; missing fields fall back to FSS defaults.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -17,7 +17,7 @@
     "importSource": {
       "type": "string",
       "description": "Module specifier the parser recognizes as the source of `fss`. Renamed imports (`{ fss as ff }`) are honored automatically.",
-      "default": "@fss/core"
+      "default": "@cassida/core"
     },
     "hash": {
       "type": "object",
@@ -27,7 +27,7 @@
         "prefix": {
           "type": "string",
           "description": "Prefix prepended to every generated class name.",
-          "default": "fss-"
+          "default": "cas-"
         },
         "length": {
           "type": "integer",

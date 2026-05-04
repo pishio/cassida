@@ -3,15 +3,15 @@ import {
   EvaluatedPrimitiveSchema,
   defaultConfig,
   mergeConfig,
-  parseFssConfig,
-  type FssConfig,
+  parseCassConfig,
+  type CassConfig,
 } from '../src/config.js';
 
 describe('defaultConfig', () => {
   it('has the documented defaults', () => {
-    expect(defaultConfig.layer).toBe('fss');
-    expect(defaultConfig.importSource).toBe('@fss/core');
-    expect(defaultConfig.hash.prefix).toBe('fss-');
+    expect(defaultConfig.layer).toBe('cas');
+    expect(defaultConfig.importSource).toBe('@cassida/core');
+    expect(defaultConfig.hash.prefix).toBe('cas-');
     expect(defaultConfig.hash.length).toBe(8);
     expect(defaultConfig.media.sort).toBe('mobile-first');
     expect(defaultConfig.css.mode).toBe('rule-per-class');
@@ -31,7 +31,7 @@ describe('mergeConfig', () => {
   it('overrides flat fields', () => {
     const r = mergeConfig({ importSource: '@my/css' });
     expect(r.importSource).toBe('@my/css');
-    expect(r.layer).toBe('fss');
+    expect(r.layer).toBe('cas');
   });
 
   it('preserves explicit null for layer (no @layer wrap)', () => {
@@ -40,8 +40,8 @@ describe('mergeConfig', () => {
   });
 
   it('treats undefined as "not set" — keeps prior value', () => {
-    const a: FssConfig = { layer: 'app' };
-    const b: FssConfig = { layer: undefined };
+    const a: CassConfig = { layer: 'app' };
+    const b: CassConfig = { layer: undefined };
     const r = mergeConfig(a, b);
     expect(r.layer).toBe('app');
   });
@@ -51,7 +51,7 @@ describe('mergeConfig', () => {
       hash: { length: 12 },
       media: { sort: 'desktop-first' },
     });
-    expect(r.hash.prefix).toBe('fss-');
+    expect(r.hash.prefix).toBe('cas-');
     expect(r.hash.length).toBe(12);
     expect(r.media.sort).toBe('desktop-first');
   });
@@ -74,13 +74,13 @@ describe('mergeConfig', () => {
   });
 });
 
-describe('parseFssConfig', () => {
+describe('parseCassConfig', () => {
   it('accepts a fully-omitted config (empty object)', () => {
-    expect(parseFssConfig({})).toEqual({});
+    expect(parseCassConfig({})).toEqual({});
   });
 
   it('accepts a fully-populated valid config', () => {
-    const cfg = parseFssConfig({
+    const cfg = parseCassConfig({
       $schema: './schema.json',
       layer: 'app',
       importSource: '@my/css',
@@ -93,38 +93,38 @@ describe('parseFssConfig', () => {
   });
 
   it('preserves explicit null for layer', () => {
-    expect(parseFssConfig({ layer: null }).layer).toBeNull();
+    expect(parseCassConfig({ layer: null }).layer).toBeNull();
   });
 
   it('rejects unknown top-level fields with a clear error', () => {
-    expect(() => parseFssConfig({ unknwonTypo: 1 })).toThrow(
+    expect(() => parseCassConfig({ unknwonTypo: 1 })).toThrow(
       /invalid configuration[\s\S]*unknwonTypo/,
     );
   });
 
   it('rejects unknown nested fields too', () => {
-    expect(() => parseFssConfig({ hash: { typo: 'x' } })).toThrow(
+    expect(() => parseCassConfig({ hash: { typo: 'x' } })).toThrow(
       /hash[\s\S]*typo/,
     );
   });
 
   it('rejects out-of-range hash.length', () => {
-    expect(() => parseFssConfig({ hash: { length: 1 } })).toThrow(/length/);
-    expect(() => parseFssConfig({ hash: { length: 100 } })).toThrow(/length/);
+    expect(() => parseCassConfig({ hash: { length: 1 } })).toThrow(/length/);
+    expect(() => parseCassConfig({ hash: { length: 100 } })).toThrow(/length/);
   });
 
   it('rejects non-integer hash.length', () => {
-    expect(() => parseFssConfig({ hash: { length: 8.5 } })).toThrow(/length/);
+    expect(() => parseCassConfig({ hash: { length: 8.5 } })).toThrow(/length/);
   });
 
   it('rejects invalid media.sort enum value', () => {
-    expect(() => parseFssConfig({ media: { sort: 'random' } })).toThrow(/sort/);
+    expect(() => parseCassConfig({ media: { sort: 'random' } })).toThrow(/sort/);
   });
 
   it('weaves sourcePath into the error heading', () => {
     expect(() =>
-      parseFssConfig({ unknwonTypo: 1 }, '/proj/fss.config.json'),
-    ).toThrow(/in \/proj\/fss\.config\.json/);
+      parseCassConfig({ unknwonTypo: 1 }, '/proj/cassida.config.json'),
+    ).toThrow(/in \/proj\/cassida\.config\.json/);
   });
 });
 

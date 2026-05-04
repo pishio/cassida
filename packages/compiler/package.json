@@ -1,7 +1,7 @@
 {
-  "name": "@fss/compiler",
+  "name": "@cassida/compiler",
   "version": "0.0.0",
-  "description": "FSS build-time CSS resolver: registry, canonicalizer, hasher, emitter.",
+  "description": "Cassida build-time CSS resolver: registry, canonicalizer, hasher, emitter.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

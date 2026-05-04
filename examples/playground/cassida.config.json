@@ -1,6 +1,6 @@
 {
   "$schema": "../../packages/compiler/config.schema.json",
-  "layer": "fss",
+  "layer": "cas",
   "media": {
     "sort": "mobile-first"
   },

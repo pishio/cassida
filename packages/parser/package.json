@@ -1,7 +1,7 @@
 {
-  "name": "@fss/parser",
+  "name": "@cassida/parser",
   "version": "0.0.0",
-  "description": "FSS Babel-based AST transform: detects fss() chains in JSX spread and rewrites them to static className attributes.",
+  "description": "Cassida Babel-based AST transform: detects cas() chains in JSX spread and rewrites them to static className attributes.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
     "@babel/parser": "^7.26.2",
     "@babel/traverse": "^7.25.9",
     "@babel/types": "^7.26.0",
-    "@fss/compiler": "workspace:*"
+    "@cassida/compiler": "workspace:*"
   },
   "devDependencies": {
     "@types/babel__generator": "^7.6.8",

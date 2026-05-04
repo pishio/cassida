@@ -15,7 +15,7 @@ describe('CssEmitter', () => {
   it('wraps rules in @layer fss by default', () => {
     const e = new CssEmitter();
     e.add(compile([{ method: 'color', args: ['blue'] }]));
-    expect(e.emit()).toMatch(/^@layer fss\{\.fss-[0-9a-f]{8}\{color:blue;?\}\}$/);
+    expect(e.emit()).toMatch(/^@layer fss\{\.cas-[0-9a-f]{8}\{color:blue;?\}\}$/);
   });
 
   it('uses a custom layer name', () => {
@@ -27,7 +27,7 @@ describe('CssEmitter', () => {
   it('skips the @layer wrap when layer is null', () => {
     const e = new CssEmitter({ layer: null });
     e.add(compile([{ method: 'color', args: ['blue'] }]));
-    expect(e.emit()).toMatch(/^\.fss-[0-9a-f]{8}\{color:blue;?\}$/);
+    expect(e.emit()).toMatch(/^\.cas-[0-9a-f]{8}\{color:blue;?\}$/);
   });
 
   it('deduplicates identical rules across calls', () => {
@@ -83,7 +83,7 @@ describe('CssEmitter — dynamic values & @property', () => {
     const rule = compile([{ method: 'color', args: [dyn('s0')] }]);
     e.add(rule);
     const out = e.emit();
-    expect(out).toMatch(/^@property --fss-[0-9a-f]{8}-color\{[^}]+\}@layer fss\{/);
+    expect(out).toMatch(/^@property --cas-[0-9a-f]{8}-color\{[^}]+\}@layer fss\{/);
     expect(out).toContain('syntax:"<color>"');
     expect(out).toContain('inherits:false');
     expect(out).toContain('initial-value:transparent');
@@ -94,7 +94,7 @@ describe('CssEmitter — dynamic values & @property', () => {
     const rule = compile([{ method: 'color', args: [dyn('s0')] }]);
     e.add(rule);
     const out = e.emit();
-    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{color:var\(--fss-[0-9a-f]{8}-color\);?\}/);
+    expect(out).toMatch(/\.cas-[0-9a-f]{8}\{color:var\(--cas-[0-9a-f]{8}-color\);?\}/);
   });
 
   it('skips @property emission for non-animatable dynamic slots', () => {
@@ -121,8 +121,8 @@ describe('CssEmitter — dynamic values & @property', () => {
       ]),
     );
     const out = e.emit();
-    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{color:blue;?\}/);
-    expect(out).toMatch(/\.fss-[0-9a-f]{8}:hover\{color:red;?\}/);
+    expect(out).toMatch(/\.cas-[0-9a-f]{8}\{color:blue;?\}/);
+    expect(out).toMatch(/\.cas-[0-9a-f]{8}:hover\{color:red;?\}/);
   });
 
   it('hoists @media blocks to top level when a class has them', () => {
@@ -134,8 +134,8 @@ describe('CssEmitter — dynamic values & @property', () => {
       ]),
     );
     const out = e.emit();
-    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{font-size:14px;?\}/);
-    expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.fss-[0-9a-f]{8}\{font-size:20px;?\}\}/);
+    expect(out).toMatch(/\.cas-[0-9a-f]{8}\{font-size:14px;?\}/);
+    expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.cas-[0-9a-f]{8}\{font-size:20px;?\}\}/);
   });
 
   it('sorts min-width media queries mobile-first by default (numeric ascending)', () => {
@@ -226,7 +226,7 @@ describe('CssEmitter — dynamic values & @property', () => {
       ]),
     );
     const out = e.emit();
-    expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.fss-[0-9a-f]{8}:hover\{color:red;?\}\}/);
+    expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.cas-[0-9a-f]{8}:hover\{color:red;?\}\}/);
   });
 
   it('mixes static and dynamic declarations in the same rule', () => {
@@ -239,6 +239,6 @@ describe('CssEmitter — dynamic values & @property', () => {
     );
     const out = e.emit();
     expect(out).toMatch(/color:red/);
-    expect(out).toMatch(/margin-top:var\(--fss-[0-9a-f]{8}-margin-top\)/);
+    expect(out).toMatch(/margin-top:var\(--cas-[0-9a-f]{8}-margin-top\)/);
   });
 });

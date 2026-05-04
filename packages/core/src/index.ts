@@ -9,7 +9,7 @@ import {
   type Op,
   type Registry,
   type Scope,
-} from '@fss/compiler';
+} from '@cassida/compiler';
 import type * as CSS from 'csstype';
 
 /**
@@ -21,7 +21,7 @@ import type * as CSS from 'csstype';
  */
 type ChainMethodsFromSpec<S> = {
   [K in keyof S]: S[K] extends { format: (...args: infer A) => string }
-    ? (...args: A) => FssChain
+    ? (...args: A) => CassChain
     : never;
 };
 
@@ -33,14 +33,14 @@ type ChainMethodsFromSpec<S> = {
  * call signature whose accepted args is the *union* of each branch's
  * args. If we declared `color` in BOTH a typed (csstype) and a
  * permissive (string | number) form, the intersection would let
- * `fss().color(123)` typecheck — loosening the curated typing. By
+ * `cas().color(123)` typecheck — loosening the curated typing. By
  * dropping overlapping keys, we let hand-crafted entries reign for
  * their domain and the generated set fills only the genuine gaps.
  */
 type ChainMethodsFromGenerated<S, EXCLUDE extends string | number | symbol> = {
   [K in keyof S as K extends EXCLUDE ? never : K]: (
     value: string | number,
-  ) => FssChain;
+  ) => CassChain;
 };
 
 /**
@@ -52,7 +52,7 @@ export type DefaultChainMethods = ChainMethodsFromSpec<CanonicalSpec>;
  * Method set generated from the mdn-data-derived spec table. Includes
  * every standard CSS property (~460 entries, vendor and non-standard
  * stripped). Hand-crafted methods of the same name override these via
- * the FssChain intersection so curated typing wins.
+ * the CassChain intersection so curated typing wins.
  */
 export type GeneratedChainMethods = ChainMethodsFromGenerated<
   GeneratedSpecMap,
@@ -65,25 +65,25 @@ export type GeneratedChainMethods = ChainMethodsFromGenerated<
  * Returning the chain is conventional but not required (return value
  * is ignored).
  */
-export type ScopedCallback = (chain: FssChain) => FssChain | unknown;
+export type ScopedCallback = (chain: CassChain) => CassChain | unknown;
 
 /**
  * Modifier methods are zero-arg shorthands for common scopes
  * (`hover`, `focus`, `before`, `darkMode`, ...) plus two arg-taking
  * generics (`media(query, cb)` and `on(selector, cb)`).
  *
- * Inside the callback, `c` is a fresh `FssChain` whose method calls
+ * Inside the callback, `c` is a fresh `CassChain` whose method calls
  * push ops into the modifier's sub-scope. The outer chain wraps those
  * inner ops in a `ScopedOp` and pushes it to its own ops list when the
  * callback returns.
  */
 type ZeroArgModifiers = {
-  [K in keyof typeof canonicalModifiers]: (cb: ScopedCallback) => FssChain;
+  [K in keyof typeof canonicalModifiers]: (cb: ScopedCallback) => CassChain;
 };
 
 export interface ChainModifiers extends ZeroArgModifiers {
-  on(selector: string, cb: ScopedCallback): FssChain;
-  media(query: string, cb: ScopedCallback): FssChain;
+  on(selector: string, cb: ScopedCallback): CassChain;
+  media(query: string, cb: ScopedCallback): CassChain;
 }
 
 /**
@@ -93,7 +93,7 @@ export interface ChainModifiers extends ZeroArgModifiers {
  * Bypasses the registry, the shorthand-policy guard, and family
  * tracking. Numeric values are NOT auto-unitized — the user is
  * expected to pass a fully-formed CSS value string. Pairs naturally
- * with `fss.unsafe(...)` for preset injection.
+ * with `cas.unsafe(...)` for preset injection.
  *
  * `keyof CSS.PropertiesHyphen` provides IDE autocomplete for standard
  * kebab-case property names; `(string & {})` preserves that
@@ -104,7 +104,7 @@ export interface ChainSetMethod {
   set(
     key: keyof CSS.PropertiesHyphen | (string & {}),
     value: string | number,
-  ): FssChain;
+  ): CassChain;
 }
 
 /**
@@ -114,14 +114,14 @@ export interface ChainSetMethod {
  * interface in their own `.d.ts` to surface those methods on the chain.
  *
  * ```ts
- * declare module '@fss/core' {
- *   interface FssChainExtensions {
- *     brandColor(value: 'primary' | 'secondary'): FssChain;
+ * declare module '@cassida/core' {
+ *   interface CassChainExtensions {
+ *     brandColor(value: 'primary' | 'secondary'): CassChain;
  *   }
  * }
  * ```
  */
-export interface FssChainExtensions {}
+export interface CassChainExtensions {}
 
 /**
  * Terminal members read by JSX spread. `style` is a `CSS.Properties`
@@ -129,7 +129,7 @@ export interface FssChainExtensions {}
  * in only by the build-time transform — at runtime this is undefined
  * and the spread carries `style` instead.
  */
-export interface FssChainTerminus {
+export interface CassChainTerminus {
   readonly style: Readonly<CSS.Properties>;
   readonly className?: string;
 }
@@ -137,7 +137,7 @@ export interface FssChainTerminus {
 /**
  * Full chain type: typed canonical style methods, modifiers, user
  * extensions, and the JSX spread targets. The intersection means user
- * augmentations of `FssChainExtensions` automatically propagate.
+ * augmentations of `CassChainExtensions` automatically propagate.
  */
 /**
  * Full chain type. Order of intersection matters: later items in the
@@ -149,22 +149,22 @@ export interface FssChainTerminus {
  * gap-filling methods exist but don't tighten / loosen the curated
  * ones beyond what they already declare.
  */
-export type FssChain =
+export type CassChain =
   & DefaultChainMethods
   & GeneratedChainMethods
   & ChainModifiers
   & ChainSetMethod
-  & FssChainExtensions
-  & FssChainTerminus;
+  & CassChainExtensions
+  & CassChainTerminus;
 
 const cssToCamel = (prop: string): string =>
   prop.replace(/-([a-z])/g, (_match: string, c: string) => c.toUpperCase());
 
 /**
  * CSS shorthands intentionally absent from the FSS canonical surface.
- * Keys here are rejected from `SafePreset` (the `fss(preset)` arg type)
+ * Keys here are rejected from `SafePreset` (the `cas(preset)` arg type)
  * — users wanting these values must explicitly route through
- * `fss.unsafe(...)`, mirroring Rust's `unsafe` block contract.
+ * `cas.unsafe(...)`, mirroring Rust's `unsafe` block contract.
  */
 type BlacklistedSafeKeys =
   | 'background'
@@ -188,14 +188,14 @@ type BlacklistedSafeKeys =
   | 'gridTemplate';
 
 /**
- * Strictly-typed preset shape for the safe `fss(preset)` overload.
+ * Strictly-typed preset shape for the safe `cas(preset)` overload.
  * csstype-typed CSS values, blacklisted shorthands removed at the
  * type level so they don't autocomplete and can't be written.
  */
 export type SafePreset = Partial<Omit<CSS.Properties, BlacklistedSafeKeys>>;
 
 /**
- * Permissive preset shape for `fss.unsafe(preset)`. Accepts any
+ * Permissive preset shape for `cas.unsafe(preset)`. Accepts any
  * string key; intended for blacklisted shorthands, vendor-prefixed
  * properties, and CSS custom properties (`--foo`). The contract is
  * "you're past the safety guarantees, write raw CSS at your own
@@ -211,9 +211,9 @@ const camelToKebab = (s: string): string => {
 };
 
 /**
- * Runtime `fss()` builder.
+ * Runtime `cas()` builder.
  *
- * - Production: build-time transform replaces `{...fss().a().b()}` with
+ * - Production: build-time transform replaces `{...cas().a().b()}` with
  *   `{className: "fss-xxx"}` (and `style` for dynamics). This runtime
  *   is unreached for those sites.
  * - Dev / dynamic chains: spread reads the enumerable `style` getter,
@@ -221,26 +221,26 @@ const camelToKebab = (s: string): string => {
  *   so they don't leak as React props.
  *
  * Overloads:
- *   - `fss()` — empty chain
- *   - `fss(preset)` — start from a typed preset (safe; blacklisted
+ *   - `cas()` — empty chain
+ *   - `cas(preset)` — start from a typed preset (safe; blacklisted
  *     shorthands are excluded from the type and routed through
- *     `fss.unsafe`)
- *   - `fss.unsafe(preset)` — bypass the safety net; preset can include
+ *     `cas.unsafe`)
+ *   - `cas.unsafe(preset)` — bypass the safety net; preset can include
  *     blacklisted shorthands, vendor properties, and CSS custom props
  */
-export interface FssBuilder {
-  (): FssChain;
-  (preset: SafePreset): FssChain;
+export interface CassBuilder {
+  (): CassChain;
+  (preset: SafePreset): CassChain;
   /**
    * Escape hatch for properties outside FSS's safe surface (CSS
    * shorthands like `background`, vendor-prefixed, custom `--foo`).
    * Bypasses registry validation, shorthand-policy, and family
    * tracking — the user takes responsibility for the resulting CSS.
    */
-  readonly unsafe: (preset: UnsafePreset) => FssChain;
+  readonly unsafe: (preset: UnsafePreset) => CassChain;
 }
 
-function fssCall(preset?: SafePreset): FssChain {
+function casCall(preset?: SafePreset): CassChain {
   const ops: Op[] = [];
   if (preset) {
     for (const [key, val] of Object.entries(preset)) {
@@ -251,7 +251,7 @@ function fssCall(preset?: SafePreset): FssChain {
   return makeChain(defaultRegistry, ops, true);
 }
 
-function fssUnsafe(preset: UnsafePreset): FssChain {
+function casUnsafe(preset: UnsafePreset): CassChain {
   const ops: Op[] = [];
   for (const [key, val] of Object.entries(preset)) {
     if (val === null || val === undefined) continue;
@@ -260,11 +260,28 @@ function fssUnsafe(preset: UnsafePreset): FssChain {
   return makeChain(defaultRegistry, ops, true);
 }
 
-export const fss: FssBuilder = Object.assign(fssCall, {
-  unsafe: fssUnsafe,
-}) as FssBuilder;
+/**
+ * Cassida's chain entry point.
+ *
+ * Three names refer to the *same* implementation:
+ *   - `cas`     — primary, brand-aligned, 3-letter (matches the
+ *                 muscle memory of FSS's `cas()` predecessor)
+ *   - `css`     — backronym "Cassida Single Style" — for those who
+ *                 prefer the CSS-native naming. Note: this collides
+ *                 with `css` from emotion / vanilla-extract; if you
+ *                 use those alongside Cassida, prefer `cas` or alias
+ *                 explicitly: `import { css as cs } from '@cassida/core'`.
+ *   - `cassida` — long form for explicit code styles
+ */
+export const cas: CassBuilder = Object.assign(casCall, {
+  unsafe: casUnsafe,
+}) as CassBuilder;
 
-function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
+export { cas as css };
+export { cas as cassida };
+export default cas;
+
+function makeChain(registry: Registry, ops: Op[], isRoot: boolean): CassChain {
   const chain = Object.create(null) as Record<string, unknown>;
 
   // Style methods. The runtime registry already merges hand-crafted
@@ -275,9 +292,9 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
       enumerable: false,
       writable: false,
       configurable: false,
-      value: (...args: unknown[]): FssChain => {
+      value: (...args: unknown[]): CassChain => {
         ops.push({ method, args });
-        return chain as unknown as FssChain;
+        return chain as unknown as CassChain;
       },
     });
   }
@@ -288,11 +305,11 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
       enumerable: false,
       writable: false,
       configurable: false,
-      value: (cb: ScopedCallback): FssChain => {
+      value: (cb: ScopedCallback): CassChain => {
         const innerOps: Op[] = [];
         cb(makeChain(registry, innerOps, false));
         ops.push({ scope, ops: innerOps });
-        return chain as unknown as FssChain;
+        return chain as unknown as CassChain;
       },
     });
   }
@@ -302,12 +319,12 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
     enumerable: false,
     writable: false,
     configurable: false,
-    value: (query: string, cb: ScopedCallback): FssChain => {
+    value: (query: string, cb: ScopedCallback): CassChain => {
       const innerOps: Op[] = [];
       cb(makeChain(registry, innerOps, false));
       const scope: Scope = { kind: 'media', query };
       ops.push({ scope, ops: innerOps });
-      return chain as unknown as FssChain;
+      return chain as unknown as CassChain;
     },
   });
 
@@ -315,7 +332,7 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
     enumerable: false,
     writable: false,
     configurable: false,
-    value: (selector: string, cb: ScopedCallback): FssChain => {
+    value: (selector: string, cb: ScopedCallback): CassChain => {
       const innerOps: Op[] = [];
       cb(makeChain(registry, innerOps, false));
       const scope: Scope = selector.trim().startsWith('@media')
@@ -324,12 +341,12 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
         ? { kind: 'pseudo', selector }
         : { kind: 'raw', selector };
       ops.push({ scope, ops: innerOps });
-      return chain as unknown as FssChain;
+      return chain as unknown as CassChain;
     },
   });
 
   // Escape hatch — direct CSS property write that bypasses the
-  // registry. Pairs with `fss.unsafe(preset)`. camelCase keys are
+  // registry. Pairs with `cas.unsafe(preset)`. camelCase keys are
   // converted to kebab-case so `set('paddingTop', '10px')` and
   // `set('padding-top', '10px')` produce the same bag (and therefore
   // the same className) — matching `paddingTop(10)` exactly when the
@@ -338,9 +355,9 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
     enumerable: false,
     writable: false,
     configurable: false,
-    value: (key: string, value: string | number): FssChain => {
+    value: (key: string, value: string | number): CassChain => {
       ops.push({ property: camelToKebab(key), value: String(value) });
-      return chain as unknown as FssChain;
+      return chain as unknown as CassChain;
     },
   });
 
@@ -362,7 +379,7 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
     });
   }
 
-  return chain as unknown as FssChain;
+  return chain as unknown as CassChain;
 }
 
 export { canonicalSpec };
@@ -371,4 +388,4 @@ export type {
   CanonicalMethodName,
   Op,
   Registry,
-} from '@fss/compiler';
+} from '@cassida/compiler';

@@ -7,39 +7,39 @@ import {
   CssEmitter,
   defaultRegistry,
   mergeConfig,
-  parseFssConfig,
+  parseCassConfig,
   type CompiledRule,
-  type FssConfig,
-  type FssPlugin,
+  type CassConfig,
+  type CassPlugin,
   type Registry,
-  type ResolvedFssConfig,
-} from '@fss/compiler';
-import { transform } from '@fss/parser';
+  type ResolvedCassConfig,
+} from '@cassida/compiler';
+import { transform } from '@cassida/parser';
 import type { Plugin, ViteDevServer } from 'vite';
 
 /**
  * One virtual CSS module per source file, keyed by the file's resolved id.
- * The plugin injects an `import "virtual:fss.css?file=<encoded id>"` at the
+ * The plugin injects an `import "virtual:cassida.css?file=<encoded id>"` at the
  * top of every transformed JSX file, so the CSS for that file is loaded
  * by Rollup *after* its transform completes — which sidesteps the load /
  * transform race that a single shared virtual module suffers in build mode.
  */
-const VIRTUAL_PREFIX = 'virtual:fss.css?file=';
+const VIRTUAL_PREFIX = 'virtual:cassida.css?file=';
 const RESOLVED_PREFIX = '\0' + VIRTUAL_PREFIX;
-const CONFIG_FILENAME = 'fss.config.json';
+const CONFIG_FILENAME = 'cassida.config.json';
 
 /**
  * Plugin options exposed to `vite.config.ts`. Anything declared in
- * `FssConfig` (the JSON-serializable shape) can also live in a
- * `fss.config.json` at the project root; plugin options take precedence
+ * `CassConfig` (the JSON-serializable shape) can also live in a
+ * `cassida.config.json` at the project root; plugin options take precedence
  * over the file. `registry` and `include` are runtime-only and have no
  * file-config equivalent.
  */
-export interface FssPluginOptions extends FssConfig {
+export interface CassPluginOptions extends CassConfig {
   readonly registry?: Registry;
   readonly include?: RegExp;
   /**
-   * Build-time FSS plugins (e.g. `@fss/plugin-hover-fix`). Each
+   * Build-time FSS plugins (e.g. `@cassida/plugin-hover-fix`). Each
    * plugin receives the post-collapse `ScopeBag` tree and returns a
    * new one; the className is derived from the post-plugin form. So
    * enabling or disabling a plugin will change every affected hash —
@@ -48,16 +48,16 @@ export interface FssPluginOptions extends FssConfig {
    * Plugins are not config-file serializable (they're functions), so
    * this option lives on the inline plugin options only.
    */
-  readonly plugins?: readonly FssPlugin[];
+  readonly plugins?: readonly CassPlugin[];
 }
 
-export default function fss(options: FssPluginOptions = {}): Plugin {
+export default function cassida(options: CassPluginOptions = {}): Plugin {
   const include = options.include ?? /\.[jt]sx$/;
   const registry = options.registry ?? defaultRegistry;
 
   // Filled in `configResolved`; until then we use the in-memory defaults
   // so unit-test usages without a Vite config still work.
-  let resolved: ResolvedFssConfig = mergeConfig(extractConfig(options));
+  let resolved: ResolvedCassConfig = mergeConfig(extractConfig(options));
 
   const rulesByFile = new Map<string, readonly CompiledRule[]>();
   let server: ViteDevServer | undefined;
@@ -105,13 +105,13 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
   }
 
   return {
-    name: 'fss',
+    name: 'cassida',
     enforce: 'pre',
 
     configResolved(viteConfig) {
       projectRoot = viteConfig.root;
       const fileCfg = loadFileConfig(projectRoot);
-      // Resolution priority: defaults < fss.config.json < plugin options.
+      // Resolution priority: defaults < cassida.config.json < plugin options.
       resolved = mergeConfig(fileCfg, extractConfig(options));
       cachedTargets = resolveTargets(resolved.css.lightningcss.targets, projectRoot);
     },
@@ -169,19 +169,19 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
 
 /**
  * Extract the JSON-friendly config slice from plugin options and run
- * it through the same Zod validator as `fss.config.json`. Drops
+ * it through the same Zod validator as `cassida.config.json`. Drops
  * runtime-only fields (`registry`, `include`) so the result can be
  * fed cleanly into `mergeConfig`. Inline options receive the same
  * validation guarantees as the file: typos and out-of-range values
  * surface as a single error at plugin construction time.
  */
-function extractConfig(options: FssPluginOptions): FssConfig | undefined {
+function extractConfig(options: CassPluginOptions): CassConfig | undefined {
   const { registry, include, plugins, ...cfg } = options;
   void registry;
   void include;
   void plugins;
   if (Object.keys(cfg).length === 0) return undefined;
-  return parseFssConfig(cfg, '<vite.config.ts plugin options>');
+  return parseCassConfig(cfg, '<vite.config.ts plugin options>');
 }
 
 /**
@@ -196,7 +196,7 @@ function extractConfig(options: FssPluginOptions): FssConfig | undefined {
 function postProcessLightningCss(
   css: string,
   filename: string,
-  resolved: ResolvedFssConfig,
+  resolved: ResolvedCassConfig,
   targets: Targets | null,
 ): string {
   const result = lightningTransform({
@@ -238,7 +238,7 @@ function resolveTargets(configTargets: string, root: string): Targets | null {
   }
 }
 
-function loadFileConfig(root: string): FssConfig | undefined {
+function loadFileConfig(root: string): CassConfig | undefined {
   const path = resolve(root, CONFIG_FILENAME);
   if (!existsSync(path)) return undefined;
   let raw: string;
@@ -246,7 +246,7 @@ function loadFileConfig(root: string): FssConfig | undefined {
     raw = readFileSync(path, 'utf-8');
   } catch (e) {
     throw new Error(
-      `[fss] failed to read ${path}: ${(e as Error).message}`,
+      `[cassida] failed to read ${path}: ${(e as Error).message}`,
     );
   }
   let json: unknown;
@@ -254,10 +254,10 @@ function loadFileConfig(root: string): FssConfig | undefined {
     json = JSON.parse(raw);
   } catch (e) {
     throw new Error(
-      `[fss] failed to parse ${path}: ${(e as Error).message}`,
+      `[cassida] failed to parse ${path}: ${(e as Error).message}`,
     );
   }
   // Zod-validated at the I/O boundary — typos in the file surface as
   // build-time errors with a precise field path.
-  return parseFssConfig(json, path);
+  return parseCassConfig(json, path);
 }

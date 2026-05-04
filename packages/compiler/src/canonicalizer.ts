@@ -47,7 +47,7 @@ export class Canonicalizer {
         const entry = this.registry[op.method];
         if (!entry) {
           throw new Error(
-            `[fss] unknown method "${op.method}". Add it to the registry or check for typos.`,
+            `[cassida] unknown method "${op.method}". Add it to the registry or check for typos.`,
           );
         }
 
@@ -63,7 +63,7 @@ export class Canonicalizer {
 
         if (op.args.length !== 1 || dynamics.length !== 1) {
           throw new Error(
-            `[fss] mixed/multi-dynamic args are not supported in this phase; method "${op.method}"`,
+            `[cassida] mixed/multi-dynamic args are not supported in this phase; method "${op.method}"`,
           );
         }
 
@@ -87,7 +87,7 @@ export class Canonicalizer {
         // RawOps bypass the registry entirely. They sit in the bag as
         // pre-formatted CSS declarations. Shorthand-policy and family
         // tracking deliberately do NOT apply — the user already opted
-        // out of the safety net by routing through `fss.unsafe`.
+        // out of the safety net by routing through `cas.unsafe`.
         bag[op.property] = op.value;
         delete slots[op.property];
         continue;
@@ -156,11 +156,11 @@ export class Canonicalizer {
   ): string {
     const prior = incomingKind === 'shorthand' ? 'longhand' : 'shorthand';
     return (
-      `[fss] ${incomingKind} "${incomingMethod}" cannot follow ${prior} "${earlierMethod}" ` +
+      `[cassida] ${incomingKind} "${incomingMethod}" cannot follow ${prior} "${earlierMethod}" ` +
       `in the same scope (family: "${family}", policy: "${this.policy}"). ` +
       `Resolve via one of:\n` +
       `  • Use a modifier callback (.media(...), .hover(...), .on(...)) to scope them separately.\n` +
-      `  • Set "shorthand.policy" to "shorthand-first" or "lenient" in fss.config.json.\n` +
+      `  • Set "shorthand.policy" to "shorthand-first" or "lenient" in cassida.config.json.\n` +
       `  • Stick to a single form (only shorthand, or only longhands) in this scope.`
     );
   }

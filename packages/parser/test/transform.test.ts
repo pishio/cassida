@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { transform } from '../src/index.js';
-import { defaultRegistry } from '@fss/compiler';
+import { defaultRegistry } from '@cassida/compiler';
 
 const opts = { registry: defaultRegistry, filename: 'App.tsx' };
 
-describe('transform — static fss() chains in JSX spread', () => {
+describe('transform — static cas() chains in JSX spread', () => {
   it('rewrites a simple chain to a className attribute', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().color("red")} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().color("red")} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
-    expect(r.code).toMatch(/className=("|')fss-[0-9a-f]{8}\1/);
+    expect(r.code).toMatch(/className=("|')cas-[0-9a-f]{8}\1/);
     expect(r.code).not.toMatch(/fss\(\)/);
     expect(r.rules).toHaveLength(1);
     expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
@@ -21,8 +21,8 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('LIFO-collapses chains so output bag matches the last write', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().color("red").color("blue")} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().color("red").color("blue")} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ color: 'blue' });
@@ -30,7 +30,7 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('honors renamed imports', () => {
     const src = `
-      import { fss as ff } from '@fss/core';
+      import { cas as ff } from '@cassida/core';
       export const App = () => <div {...ff().color("red")} />;
     `;
     const r = transform(src, opts);
@@ -40,8 +40,8 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('handles negative numeric literals', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().marginTop(-10, "em")} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().marginTop(-10, "em")} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ 'margin-top': '-10em' });
@@ -49,8 +49,8 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('handles plain template literals (no interpolation)', () => {
     const src = [
-      "import { fss } from '@fss/core';",
-      'export const App = () => <div {...fss().color(`red`)} />;',
+      "import { cas } from '@cassida/core';",
+      'export const App = () => <div {...cas().color(`red`)} />;',
     ].join('\n');
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
@@ -66,11 +66,11 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('handles multiple JSX sites in one file', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = () => (
         <div>
-          <span {...fss().color("red")} />
-          <span {...fss().color("blue")} />
+          <span {...cas().color("red")} />
+          <span {...cas().color("blue")} />
         </div>
       );
     `;
@@ -81,11 +81,11 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('produces identical classNames for identical bags within a file', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = () => (
         <div>
-          <span {...fss().color("red")} />
-          <span {...fss().color("red")} />
+          <span {...cas().color("red")} />
+          <span {...cas().color("red")} />
         </div>
       );
     `;
@@ -96,9 +96,9 @@ describe('transform — static fss() chains in JSX spread', () => {
 
   it('only treats unprefixed property access as a chain method', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const k = "color";
-      export const App = () => <div {...fss()[k]("red")} />;
+      export const App = () => <div {...cas()[k]("red")} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
@@ -107,7 +107,7 @@ describe('transform — static fss() chains in JSX spread', () => {
   it('skips chains rooted at non-imported "fss" identifiers', () => {
     const src = `
       const fss = () => ({});
-      export const App = () => <div {...fss().color("red")} />;
+      export const App = () => <div {...cas().color("red")} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
@@ -117,8 +117,8 @@ describe('transform — static fss() chains in JSX spread', () => {
 describe('transform — dynamic chains', () => {
   it('promotes a dynamic arg to a CSS variable + inline style entry', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ c }: { c: string }) => <div {...fss().color(c)} />;
+      import { cas } from '@cassida/core';
+      export const App = ({ c }: { c: string }) => <div {...cas().color(c)} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -126,18 +126,18 @@ describe('transform — dynamic chains', () => {
     expect(r.rules[0]!.dynamics).toHaveLength(1);
     expect(r.rules[0]!.dynamics[0]!.property).toBe('color');
     // Output should contain a className= and a style with the var
-    expect(r.code).toMatch(/className=("|')fss-[0-9a-f]{8}\1/);
-    expect(r.code).toMatch(/"--fss-[0-9a-f]{8}-color":\s*c/);
+    expect(r.code).toMatch(/className=("|')cas-[0-9a-f]{8}\1/);
+    expect(r.code).toMatch(/"--cas-[0-9a-f]{8}-color":\s*c/);
     expect(r.code).not.toMatch(/fss\(\)\.color/);
   });
 
   it('shares the className across structurally identical dynamic chains', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = ({ a, b }: { a: string; b: string }) => (
         <div>
-          <span {...fss().color(a)} />
-          <span {...fss().color(b)} />
+          <span {...cas().color(a)} />
+          <span {...cas().color(b)} />
         </div>
       );
     `;
@@ -148,11 +148,11 @@ describe('transform — dynamic chains', () => {
 
   it('produces a different className when static and dynamic mix differently', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = ({ c }: { c: string }) => (
         <div>
-          <span {...fss().color("red")} />
-          <span {...fss().color(c)} />
+          <span {...cas().color("red")} />
+          <span {...cas().color(c)} />
         </div>
       );
     `;
@@ -162,28 +162,28 @@ describe('transform — dynamic chains', () => {
 
   it('bails on mixed literal+dynamic args within one op', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ n }: { n: number }) => <div {...fss().marginTop(n, "em")} />;
+      import { cas } from '@cassida/core';
+      export const App = ({ n }: { n: number }) => <div {...cas().marginTop(n, "em")} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
     expect(r.code).toBe(src);
   });
 
-  it('throws on multiple {...fss()} spreads on the same element', () => {
+  it('throws on multiple {...cas()} spreads on the same element', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().color("red")} {...fss().marginTop(10)} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().color("red")} {...cas().marginTop(10)} />;
     `;
-    expect(() => transform(src, opts)).toThrow(/Multiple \{\.\.\.fss\(\)\} spreads/);
+    expect(() => transform(src, opts)).toThrow(/Multiple \{\.\.\.cas\(\)\} spreads/);
   });
 });
 
 describe('transform — modifiers (hover/focus/media/on)', () => {
   it('compiles a hover modifier into a scoped child', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <button {...fss().color('blue').hover(c => c.color('red'))} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <button {...cas().color('blue').hover(c => c.color('red'))} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -198,8 +198,8 @@ describe('transform — modifiers (hover/focus/media/on)', () => {
 
   it('compiles a media modifier with explicit query argument', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <p {...fss().fontSize(14).media('(min-width: 768px)', c => c.fontSize(20))} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <p {...cas().fontSize(14).media('(min-width: 768px)', c => c.fontSize(20))} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -214,9 +214,9 @@ describe('transform — modifiers (hover/focus/media/on)', () => {
 
   it('compiles nested modifiers (media inside hover)', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = () =>
-        <button {...fss().hover(c => c.media('(min-width: 768px)', c2 => c2.color('red')))} />;
+        <button {...cas().hover(c => c.media('(min-width: 768px)', c2 => c2.color('red')))} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -231,9 +231,9 @@ describe('transform — modifiers (hover/focus/media/on)', () => {
 
   it('on() with a raw attribute selector becomes a raw scope', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = () =>
-        <div {...fss().on('[data-state="open"]', c => c.color('red'))} />;
+        <div {...cas().on('[data-state="open"]', c => c.color('red'))} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -245,8 +245,8 @@ describe('transform — modifiers (hover/focus/media/on)', () => {
 
   it('on() with a pseudo-class selector becomes a pseudo scope', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <a {...fss().on(':visited', c => c.color('purple'))} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <a {...cas().on(':visited', c => c.color('purple'))} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.children[0]!.scope).toEqual({
@@ -257,11 +257,11 @@ describe('transform — modifiers (hover/focus/media/on)', () => {
 
   it('shares className for two structurally identical hover chains regardless of value', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       export const App = ({ a, b }: { a: string; b: string }) => (
         <div>
-          <button {...fss().hover(c => c.color(a))} />
-          <button {...fss().hover(c => c.color(b))} />
+          <button {...cas().hover(c => c.color(a))} />
+          <button {...cas().hover(c => c.color(b))} />
         </div>
       );
     `;
@@ -278,9 +278,9 @@ describe('transform — modifiers (hover/focus/media/on)', () => {
 describe('transform — path.evaluate() static evaluation', () => {
   it('evaluates simple constant arithmetic at build time', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const BASE = 8;
-      export const App = () => <div {...fss().marginTop(BASE * 2, "px")} />;
+      export const App = () => <div {...cas().marginTop(BASE * 2, "px")} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -290,9 +290,9 @@ describe('transform — path.evaluate() static evaluation', () => {
 
   it('evaluates string concatenation at build time', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const PRIMARY = '#ff';
-      export const App = () => <div {...fss().color(PRIMARY + '0000')} />;
+      export const App = () => <div {...cas().color(PRIMARY + '0000')} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ color: '#ff0000' });
@@ -301,8 +301,8 @@ describe('transform — path.evaluate() static evaluation', () => {
 
   it('falls back to dynamic when evaluation is not confident', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ c }: { c: string }) => <div {...fss().color(c)} />;
+      import { cas } from '@cassida/core';
+      export const App = ({ c }: { c: string }) => <div {...cas().color(c)} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -311,8 +311,8 @@ describe('transform — path.evaluate() static evaluation', () => {
 
   it('refuses to evaluate side-effecting expressions (Math.random) and falls back to dynamic with a stable hash', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().opacity(Math.random())} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().opacity(Math.random())} />;
     `;
     const r1 = transform(src, opts);
     const r2 = transform(src, opts);
@@ -325,8 +325,8 @@ describe('transform — path.evaluate() static evaluation', () => {
 
   it('Date.now() also stays dynamic and produces a deterministic class', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().marginTop(\`\${Date.now()}px\`)} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().marginTop(\`\${Date.now()}px\`)} />;
     `;
     const r1 = transform(src, opts);
     const r2 = transform(src, opts);
@@ -335,11 +335,11 @@ describe('transform — path.evaluate() static evaluation', () => {
   });
 });
 
-describe('transform — fss(preset) safe injection', () => {
+describe('transform — cas(preset) safe injection', () => {
   it('expands a literal preset object into MethodOps before later chain ops', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss({ padding: 16, color: 'red' }).marginTop(10)} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas({ padding: 16, color: 'red' }).marginTop(10)} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -352,8 +352,8 @@ describe('transform — fss(preset) safe injection', () => {
 
   it('LIFO collapses preset values when the chain overrides them', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss({ padding: 10 }).padding(20)} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas({ padding: 10 }).padding(20)} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ padding: '20px' });
@@ -361,9 +361,9 @@ describe('transform — fss(preset) safe injection', () => {
 
   it('resolves a const-bound preset via path.evaluate', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const card = { padding: 12, borderRadius: 8 };
-      export const App = () => <div {...fss(card).backgroundColor('#fff')} />;
+      export const App = () => <div {...cas(card).backgroundColor('#fff')} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({
@@ -375,8 +375,8 @@ describe('transform — fss(preset) safe injection', () => {
 
   it('bails (runtime fallback) when preset is non-confident', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ p }: { p: object }) => <div {...fss(p).color('red')} />;
+      import { cas } from '@cassida/core';
+      export const App = ({ p }: { p: object }) => <div {...cas(p).color('red')} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
@@ -384,18 +384,18 @@ describe('transform — fss(preset) safe injection', () => {
 
   it('throws when preset contains a blacklisted shorthand (registry rejects)', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss({ background: 'red' })} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas({ background: 'red' })} />;
     `;
     expect(() => transform(src, opts)).toThrow(/unknown method "background"/);
   });
 });
 
-describe('transform — fss.unsafe(preset) bypass', () => {
+describe('transform — cas.unsafe(preset) bypass', () => {
   it('expands an unsafe preset into RawOps that bypass the registry', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss.unsafe({ background: 'red' }).marginTop(10)} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas.unsafe({ background: 'red' }).marginTop(10)} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -407,8 +407,8 @@ describe('transform — fss.unsafe(preset) bypass', () => {
 
   it('camelCase keys are converted to kebab-case', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss.unsafe({ webkitTextFillColor: 'transparent' })} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas.unsafe({ webkitTextFillColor: 'transparent' })} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({
@@ -418,8 +418,8 @@ describe('transform — fss.unsafe(preset) bypass', () => {
 
   it('kebab-case keys (and vendor-prefixed) are passed through unchanged', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss.unsafe({ '-webkit-tap-highlight-color': 'transparent' })} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas.unsafe({ '-webkit-tap-highlight-color': 'transparent' })} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({
@@ -429,8 +429,8 @@ describe('transform — fss.unsafe(preset) bypass', () => {
 
   it('shorthand-policy does not apply to unsafe RawOps (deliberate by design)', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss.unsafe({ padding: '5px 10px', paddingTop: '20px' })} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas.unsafe({ padding: '5px 10px', paddingTop: '20px' })} />;
     `;
     // Unsafe writes go straight to the bag without registry/family
     // checks. The user opted out of the safety net.
@@ -441,8 +441,8 @@ describe('transform — fss.unsafe(preset) bypass', () => {
 describe('transform — .set(key, value) escape hatch', () => {
   it('emits a RawOp with kebab-case key and stringified value', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().set('paddingTop', '10px')} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().set('paddingTop', '10px')} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -451,13 +451,13 @@ describe('transform — .set(key, value) escape hatch', () => {
 
   it('produces the same className as the canonical method when value matches', () => {
     const a = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().paddingTop(10)} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().paddingTop(10)} />;`,
       opts,
     );
     const b = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().set('padding-top', '10px')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().set('padding-top', '10px')} />;`,
       opts,
     );
     expect(a.rules[0]!.className).toBe(b.rules[0]!.className);
@@ -465,13 +465,13 @@ describe('transform — .set(key, value) escape hatch', () => {
 
   it('camelCase and kebab-case keys both kebabize to the same bag key', () => {
     const camel = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().set('paddingTop', '10px')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().set('paddingTop', '10px')} />;`,
       opts,
     );
     const kebab = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().set('padding-top', '10px')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().set('padding-top', '10px')} />;`,
       opts,
     );
     expect(camel.rules[0]!.className).toBe(kebab.rules[0]!.className);
@@ -479,8 +479,8 @@ describe('transform — .set(key, value) escape hatch', () => {
 
   it('numbers are passed through without unit conversion (raw contract)', () => {
     const r = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().set('--scale', 1.5)} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().set('--scale', 1.5)} />;`,
       opts,
     );
     expect(r.rules[0]!.tree.bag).toEqual({ '--scale': '1.5' });
@@ -488,8 +488,8 @@ describe('transform — .set(key, value) escape hatch', () => {
 
   it('vendor-prefixed and custom-property keys pass through', () => {
     const r = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().set('-webkit-tap-highlight-color', 'transparent').set('--brand', '#f0f')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().set('-webkit-tap-highlight-color', 'transparent').set('--brand', '#f0f')} />;`,
       opts,
     );
     expect(r.rules[0]!.tree.bag).toEqual({
@@ -500,8 +500,8 @@ describe('transform — .set(key, value) escape hatch', () => {
 
   it('bails to runtime when key or value is non-confident', () => {
     const r = transform(
-      `import { fss } from '@fss/core';
-       export const A = ({ k, v }: { k: string; v: string }) => <div {...fss().set(k, v)} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = ({ k, v }: { k: string; v: string }) => <div {...cas().set(k, v)} />;`,
       opts,
     );
     expect(r.transformed).toBe(false);
@@ -511,8 +511,8 @@ describe('transform — .set(key, value) escape hatch', () => {
 describe('transform — opaque shorthands (animation / transition / transform)', () => {
   it('transform accepts a full transform-list string', () => {
     const r = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().transform('rotate(2deg) scale(1.05)')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().transform('rotate(2deg) scale(1.05)')} />;`,
       opts,
     );
     expect(r.rules[0]!.tree.bag).toEqual({ transform: 'rotate(2deg) scale(1.05)' });
@@ -521,8 +521,8 @@ describe('transform — opaque shorthands (animation / transition / transform)',
 
   it('transition accepts a full shorthand string', () => {
     const r = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().transition('opacity .2s ease-out')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().transition('opacity .2s ease-out')} />;`,
       opts,
     );
     expect(r.rules[0]!.tree.bag).toEqual({ transition: 'opacity .2s ease-out' });
@@ -530,8 +530,8 @@ describe('transform — opaque shorthands (animation / transition / transform)',
 
   it('transform is animatable (dynamic value emits @property)', () => {
     const r = transform(
-      `import { fss } from '@fss/core';
-       export const A = ({ rot }: { rot: string }) => <div {...fss().transform(rot)} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = ({ rot }: { rot: string }) => <div {...cas().transform(rot)} />;`,
       opts,
     );
     expect(r.rules[0]!.dynamics).toHaveLength(1);
@@ -542,11 +542,11 @@ describe('transform — opaque shorthands (animation / transition / transform)',
 });
 
 describe('transform — function composition (Approach A, same-file)', () => {
-  it('expands a 1-param arrow function applied to fss()', () => {
+  it('expands a 1-param arrow function applied to cas()', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const withCard = (c) => c.padding(16).borderRadius(8);
-      export const App = () => <div {...withCard(fss())} />;
+      export const App = () => <div {...withCard(cas())} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
@@ -555,9 +555,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('appends function ops after the chain feeds in (LIFO between input and mixin)', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const withRed = (c) => c.color('red');
-      export const App = () => <div {...withRed(fss().color('blue'))} />;
+      export const App = () => <div {...withRed(cas().color('blue'))} />;
     `;
     const r = transform(src, opts);
     // input chain has color: blue, mixin overwrites to red. mixin is later → wins.
@@ -566,20 +566,20 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('chains additional methods after the composition', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const withCard = (c) => c.padding(16);
-      export const App = () => <div {...withCard(fss()).marginTop(10)} />;
+      export const App = () => <div {...withCard(cas()).marginTop(10)} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px', 'margin-top': '10px' });
   });
 
-  it('supports nested compositions: withRed(withCard(fss()))', () => {
+  it('supports nested compositions: withRed(withCard(cas()))', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const withCard = (c) => c.padding(16).borderRadius(8);
       const withRed = (c) => c.color('red');
-      export const App = () => <div {...withRed(withCard(fss()))} />;
+      export const App = () => <div {...withRed(withCard(cas()))} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({
@@ -591,9 +591,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('supports block-body arrow function', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const withCard = (c) => { return c.padding(16); };
-      export const App = () => <div {...withCard(fss())} />;
+      export const App = () => <div {...withCard(cas())} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px' });
@@ -601,9 +601,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('supports FunctionDeclaration form', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       function withCard(c) { return c.padding(16); }
-      export const App = () => <div {...withCard(fss())} />;
+      export const App = () => <div {...withCard(cas())} />;
     `;
     const r = transform(src, opts);
     expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px' });
@@ -611,9 +611,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('mixins inside modifier callbacks compose correctly', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const withRed = (c) => c.color('red');
-      export const App = () => <div {...fss().hover(c => withRed(c))} />;
+      export const App = () => <div {...cas().hover(c => withRed(c))} />;
     `;
     const r = transform(src, opts);
     const hover = r.rules[0]!.tree.children[0]!;
@@ -623,14 +623,14 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('produces the same className regardless of inline vs composed authoring', () => {
     const inline = transform(
-      `import { fss } from '@fss/core';
-       export const A = () => <div {...fss().padding(16).color('red')} />;`,
+      `import { cas } from '@cassida/core';
+       export const A = () => <div {...cas().padding(16).color('red')} />;`,
       opts,
     );
     const composed = transform(
-      `import { fss } from '@fss/core';
+      `import { cas } from '@cassida/core';
        const withRed = (c) => c.color('red');
-       export const A = () => <div {...withRed(fss().padding(16))} />;`,
+       export const A = () => <div {...withRed(cas().padding(16))} />;`,
       opts,
     );
     expect(inline.rules[0]!.className).toBe(composed.rules[0]!.className);
@@ -638,9 +638,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('bails on multi-param compositions', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const sized = (c, size) => c.fontSize(size);
-      export const App = () => <div {...sized(fss(), 14)} />;
+      export const App = () => <div {...sized(cas(), 14)} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
@@ -648,9 +648,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('bails when the mixin body uses unsupported control flow', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       const cond = (c) => { if (true) c.color('red'); return c; };
-      export const App = () => <div {...cond(fss())} />;
+      export const App = () => <div {...cond(cas())} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
@@ -658,9 +658,9 @@ describe('transform — function composition (Approach A, same-file)', () => {
 
   it('bails when the mixin is imported from another module (Phase 7)', () => {
     const src = `
-      import { fss } from '@fss/core';
+      import { cas } from '@cassida/core';
       import { withCard } from './styles';
-      export const App = () => <div {...withCard(fss())} />;
+      export const App = () => <div {...withCard(cas())} />;
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(false);
@@ -670,27 +670,27 @@ describe('transform — function composition (Approach A, same-file)', () => {
 describe('transform — JSX surgery (style merge / className concat)', () => {
   it('concats existing string className with FSS hash', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div className="my-btn" {...fss().color("red")} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div className="my-btn" {...cas().color("red")} />;
     `;
     const r = transform(src, opts);
-    expect(r.code).toMatch(/className=("|')my-btn fss-[0-9a-f]{8}\1/);
+    expect(r.code).toMatch(/className=("|')my-btn cas-[0-9a-f]{8}\1/);
   });
 
   it('concats dynamic className expressions via template literal', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ x }: { x: string }) => <div className={x} {...fss().color("red")} />;
+      import { cas } from '@cassida/core';
+      export const App = ({ x }: { x: string }) => <div className={x} {...cas().color("red")} />;
     `;
     const r = transform(src, opts);
     // Generated code uses a template literal: \`${x} fss-XXX\`
-    expect(r.code).toMatch(/className=\{`\$\{x\} fss-[0-9a-f]{8}`\}/);
+    expect(r.code).toMatch(/className=\{`\$\{x\} cas-[0-9a-f]{8}`\}/);
   });
 
   it('keeps existing user style when there are no dynamics and FSS does not conflict', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div style={{opacity:0.5}} {...fss().color("red")} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div style={{opacity:0.5}} {...cas().color("red")} />;
     `;
     const r = transform(src, opts);
     expect(r.code).toMatch(/style=\{\{\s*opacity:\s*0\.5\s*\}\}/);
@@ -698,21 +698,21 @@ describe('transform — JSX surgery (style merge / className concat)', () => {
 
   it('drops user static style key when FSS wins (spread is later)', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div style={{color:"green"}} {...fss().color("red")} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div style={{color:"green"}} {...cas().color("red")} />;
     `;
     const r = transform(src, opts);
     // user's color: "green" should be dropped from the merged style;
     // since FSS color is static (not dynamic), no style attribute is needed at all
     expect(r.code).not.toMatch(/color:\s*"green"/);
     // but the className must carry the fss class
-    expect(r.code).toMatch(/className=("|')fss-[0-9a-f]{8}\1/);
+    expect(r.code).toMatch(/className=("|')cas-[0-9a-f]{8}\1/);
   });
 
   it('preserves user style when user wins (spread is earlier)', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = () => <div {...fss().color("red")} style={{color:"green"}} />;
+      import { cas } from '@cassida/core';
+      export const App = () => <div {...cas().color("red")} style={{color:"green"}} />;
     `;
     const r = transform(src, opts);
     // user's color: "green" survives because their style attr is later
@@ -721,11 +721,11 @@ describe('transform — JSX surgery (style merge / className concat)', () => {
 
   it('merges static user style with FSS dynamic vars', () => {
     const src = `
-      import { fss } from '@fss/core';
-      export const App = ({ c }: { c: string }) => <div style={{opacity:0.5}} {...fss().color(c)} />;
+      import { cas } from '@cassida/core';
+      export const App = ({ c }: { c: string }) => <div style={{opacity:0.5}} {...cas().color(c)} />;
     `;
     const r = transform(src, opts);
     expect(r.code).toMatch(/opacity:\s*0\.5/);
-    expect(r.code).toMatch(/"--fss-[0-9a-f]{8}-color":\s*c/);
+    expect(r.code).toMatch(/"--cas-[0-9a-f]{8}-color":\s*c/);
   });
 });

@@ -45,7 +45,7 @@ export type AliasMap = Readonly<Record<string, string>>;
 /** Format function for entries derived from mdn-data. */
 const passthroughFormat: Formatter = (v: unknown): string => {
   if (v === null || v === undefined) {
-    throw new TypeError('[fss] generated property received null/undefined value');
+    throw new TypeError('[cassida] generated property received null/undefined value');
   }
   return String(v);
 };
@@ -149,12 +149,12 @@ export function expandAliases(canonicals: Registry, aliases: AliasMap): Registry
     const entry = canonicals[target];
     if (!entry) {
       throw new Error(
-        `[fss] alias "${alias}" points to unknown canonical "${target}"`,
+        `[cassida] alias "${alias}" points to unknown canonical "${target}"`,
       );
     }
     if (alias in canonicals) {
       throw new Error(
-        `[fss] alias "${alias}" shadows a canonical method of the same name`,
+        `[cassida] alias "${alias}" shadows a canonical method of the same name`,
       );
     }
     out[alias] = entry;

@@ -1,7 +1,7 @@
 {
-  "name": "@fss/core",
+  "name": "@cassida/core",
   "version": "0.0.0",
-  "description": "FSS runtime — fss() chain builder. In production this is replaced at build time; in dev / for dynamic chains it materializes inline style.",
+  "description": "Cassida runtime — cas() chain builder. In production this is replaced at build time; in dev / for dynamic chains it materializes inline style.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,7 +19,7 @@
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
-    "@fss/compiler": "workspace:*",
+    "@cassida/compiler": "workspace:*",
     "csstype": "^3.1.3"
   },
   "devDependencies": {

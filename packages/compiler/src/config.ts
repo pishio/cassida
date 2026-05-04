@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Schema definitions live first so the user-facing `FssConfig` type
+ * Schema definitions live first so the user-facing `CassConfig` type
  * can be derived from them via `z.infer`. Hand-writing the type and
  * the validator separately is the kind of "type lies" we explicitly
  * want to eliminate.
@@ -46,11 +46,11 @@ const CssSchema = z
   .strict();
 
 /**
- * Strict schema for `fss.config.json` and inline plugin options.
+ * Strict schema for `cassida.config.json` and inline plugin options.
  * `.strict()` rejects unknown fields so config typos surface as
  * build-time errors instead of silently ignored entries.
  */
-export const FssConfigSchema = z
+export const CassConfigSchema = z
   .object({
     /** Editor convention; allowed but unused. */
     $schema: z.string().optional(),
@@ -64,7 +64,7 @@ export const FssConfigSchema = z
   .strict();
 
 /** User-facing config: every field optional, derived from the schema. */
-export type FssConfig = z.infer<typeof FssConfigSchema>;
+export type CassConfig = z.infer<typeof CassConfigSchema>;
 export type MediaSort = z.infer<typeof MediaSortSchema>;
 export type CssMode = z.infer<typeof CssModeSchema>;
 export type ShorthandPolicy = z.infer<typeof ShorthandPolicySchema>;
@@ -72,9 +72,9 @@ export type ShorthandPolicy = z.infer<typeof ShorthandPolicySchema>;
 /**
  * Fully-populated config — the form consumed by the emitter, parser,
  * and vite-plugin internals. Every field is required; partial
- * `FssConfig` inputs are merged onto `defaultConfig` to produce one.
+ * `CassConfig` inputs are merged onto `defaultConfig` to produce one.
  */
-export interface ResolvedFssConfig {
+export interface ResolvedCassConfig {
   readonly layer: string | null;
   readonly importSource: string;
   readonly hash: {
@@ -97,11 +97,11 @@ export interface ResolvedFssConfig {
   };
 }
 
-export const defaultConfig: ResolvedFssConfig = Object.freeze({
-  layer: 'fss',
-  importSource: '@fss/core',
+export const defaultConfig: ResolvedCassConfig = Object.freeze({
+  layer: 'cas',
+  importSource: '@cassida/core',
   hash: Object.freeze({
-    prefix: 'fss-',
+    prefix: 'cas-',
     length: 8,
   }),
   media: Object.freeze({
@@ -118,7 +118,7 @@ export const defaultConfig: ResolvedFssConfig = Object.freeze({
   shorthand: Object.freeze({
     policy: 'strict' as const,
   }),
-}) satisfies ResolvedFssConfig;
+}) satisfies ResolvedCassConfig;
 
 /**
  * Deep-merge a sequence of partial configs over `defaultConfig`. Later
@@ -130,9 +130,9 @@ export const defaultConfig: ResolvedFssConfig = Object.freeze({
  * is treated as "not set".
  */
 export function mergeConfig(
-  ...layers: ReadonlyArray<FssConfig | undefined>
-): ResolvedFssConfig {
-  let acc: ResolvedFssConfig = defaultConfig;
+  ...layers: ReadonlyArray<CassConfig | undefined>
+): ResolvedCassConfig {
+  let acc: ResolvedCassConfig = defaultConfig;
   for (const layer of layers) {
     if (!layer) continue;
     acc = {
@@ -165,23 +165,23 @@ export function mergeConfig(
 }
 
 /**
- * Validate raw input as a `FssConfig`. Use only at I/O boundaries
- * (`fss.config.json`, plugin options handed in from `vite.config.ts`);
- * inside the compiler/parser/emitter, prefer `ResolvedFssConfig`.
+ * Validate raw input as a `CassConfig`. Use only at I/O boundaries
+ * (`cassida.config.json`, plugin options handed in from `vite.config.ts`);
+ * inside the compiler/parser/emitter, prefer `ResolvedCassConfig`.
  *
  * Errors surface as a single `Error` with a multi-line message that
  * names every invalid field, suitable for Vite's overlay or terminal
  * output. `sourcePath` (when supplied) is woven into the heading so
  * monorepo users see which config produced the error.
  */
-export function parseFssConfig(input: unknown, sourcePath?: string): FssConfig {
-  const result = FssConfigSchema.safeParse(input);
+export function parseCassConfig(input: unknown, sourcePath?: string): CassConfig {
+  const result = CassConfigSchema.safeParse(input);
   if (result.success) return result.data;
   const issues = result.error.issues
     .map((i) => `  - ${i.path.length === 0 ? '<root>' : i.path.join('.')}: ${i.message}`)
     .join('\n');
   const where = sourcePath ? ` in ${sourcePath}` : '';
-  throw new Error(`[fss] invalid configuration${where}:\n${issues}`);
+  throw new Error(`[cassida] invalid configuration${where}:\n${issues}`);
 }
 
 /**

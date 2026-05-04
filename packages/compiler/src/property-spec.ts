@@ -6,7 +6,7 @@ import type * as CSS from 'csstype';
  * This is the single source of truth from which:
  *
  *   1. `defaultRegistry`            — runtime lookup (type-erased)
- *   2. `FssChain` method signatures — compile-time API (typed via csstype)
+ *   2. `CassChain` method signatures — compile-time API (typed via csstype)
  *   3. `defaultPropertyMeta`        — CSS-property → metadata lookup
  *      used by the emitter to decide `@property` rule emission
  *
@@ -31,11 +31,11 @@ const length = (n: unknown, unit: unknown = 'px'): string => {
     return n === 0 ? '0' : `${n}${u}`;
   }
   if (typeof n === 'string') return n;
-  throw new TypeError(`[fss] expected number | string for length, got ${typeof n}`);
+  throw new TypeError(`[cassida] expected number | string for length, got ${typeof n}`);
 };
 
 const passthrough = (v: unknown): string => {
-  if (v == null) throw new TypeError('[fss] value cannot be null/undefined');
+  if (v == null) throw new TypeError('[cassida] value cannot be null/undefined');
   return String(v);
 };
 

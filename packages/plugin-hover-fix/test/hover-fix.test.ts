@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   compileOps,
   defaultRegistry,
-  type FssPlugin,
-} from '@fss/compiler';
+  type CassPlugin,
+} from '@cassida/compiler';
 import hoverFix from '../src/index.js';
 
 const baseOpts = { registry: defaultRegistry };
 
-describe('@fss/plugin-hover-fix', () => {
+describe('@cassida/plugin-hover-fix', () => {
   it('wraps :hover scope in @media (hover: hover) by default', () => {
     const plugin = hoverFix();
     const result = compileOps(
@@ -113,10 +113,10 @@ describe('@fss/plugin-hover-fix', () => {
 
 describe('plugin pipeline', () => {
   it('applies plugins in array order', () => {
-    const wrapHoverInMedia: FssPlugin = hoverFix();
+    const wrapHoverInMedia: CassPlugin = hoverFix();
     // A second plugin that re-wraps every media query in a 2x outer
     // (silly but tests pipeline ordering).
-    const tagger: FssPlugin = {
+    const tagger: CassPlugin = {
       name: 'test-tagger',
       transform: (tree) => ({
         ...tree,

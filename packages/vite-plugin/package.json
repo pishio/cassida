@@ -1,7 +1,7 @@
 {
-  "name": "@fss/vite-plugin",
+  "name": "@cassida/vite-plugin",
   "version": "0.0.0",
-  "description": "Vite plugin for FSS: transforms fss() chains to static className + CSS at build time, served via virtual:fss.css.",
+  "description": "Vite plugin for Cassida: transforms cas() chains to static className + CSS at build time, served via virtual:cassida.css.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,8 +18,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@fss/compiler": "workspace:*",
-    "@fss/parser": "workspace:*",
+    "@cassida/compiler": "workspace:*",
+    "@cassida/parser": "workspace:*",
     "browserslist": "^4.24.2",
     "lightningcss": "^1.28.1"
   },

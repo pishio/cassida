@@ -12,7 +12,7 @@ import { Canonicalizer } from './canonicalizer.js';
 import { hash, type HashOptions } from './hasher.js';
 import { defaultPropertyMeta, type PropertyMeta } from './property-spec.js';
 import type { ShorthandPolicy } from './config.js';
-import { applyPlugins, type FssPlugin, type PluginContext } from './plugin.js';
+import { applyPlugins, type CassPlugin, type PluginContext } from './plugin.js';
 
 export interface CompileOptions extends HashOptions {
   readonly registry: Registry;
@@ -34,7 +34,7 @@ export interface CompileOptions extends HashOptions {
    * `ScopeBag` tree and returns a new tree; the className is derived
    * from the post-plugin form. Plugins run in array order.
    */
-  readonly plugins?: readonly FssPlugin[];
+  readonly plugins?: readonly CassPlugin[];
   /**
    * Subset of resolved config exposed to plugins through their
    * `PluginContext`. Optional — if omitted, plugins receive a minimal
@@ -62,7 +62,7 @@ export function compileOps(ops: readonly Op[], options: CompileOptions): Compile
   // propagates into the className. This is the FSS bijection
   // contract: same hash ⇔ same final-state CSS.
   const ctx: PluginContext = options.pluginContext ?? {
-    config: { layer: 'fss', importSource: '@fss/core' },
+    config: { layer: 'fss', importSource: '@cassida/core' },
   };
   const transformedTree = applyPlugins(rawTree, options.plugins, ctx);
 

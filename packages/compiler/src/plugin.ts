@@ -20,7 +20,7 @@ import type { Scope, ScopeBag } from './types.js';
  *     `ScopeBag` — the helpers in this module (`replaceScope`,
  *     `mapScopeBag`) make this ergonomic.
  */
-export interface FssPlugin {
+export interface CassPlugin {
   readonly name: string;
   readonly transform: (tree: ScopeBag, ctx: PluginContext) => ScopeBag;
 }
@@ -45,7 +45,7 @@ export interface PluginContext {
  */
 export function applyPlugins(
   tree: ScopeBag,
-  plugins: readonly FssPlugin[] | undefined,
+  plugins: readonly CassPlugin[] | undefined,
   ctx: PluginContext,
 ): ScopeBag {
   if (!plugins || plugins.length === 0) return tree;
