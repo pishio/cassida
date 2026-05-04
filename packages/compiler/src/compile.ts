@@ -12,6 +12,7 @@ import { Canonicalizer } from './canonicalizer.js';
 import { hash, type HashOptions } from './hasher.js';
 import { defaultPropertyMeta, type PropertyMeta } from './property-spec.js';
 import type { ShorthandPolicy } from './config.js';
+import { applyPlugins, type FssPlugin, type PluginContext } from './plugin.js';
 
 export interface CompileOptions extends HashOptions {
   readonly registry: Registry;
@@ -28,6 +29,18 @@ export interface CompileOptions extends HashOptions {
    * scope. Defaults to `'strict'`. See `ShorthandPolicy` in `config.ts`.
    */
   readonly shorthandPolicy?: ShorthandPolicy;
+  /**
+   * Build-time plugins. Each plugin receives the post-collapse
+   * `ScopeBag` tree and returns a new tree; the className is derived
+   * from the post-plugin form. Plugins run in array order.
+   */
+  readonly plugins?: readonly FssPlugin[];
+  /**
+   * Subset of resolved config exposed to plugins through their
+   * `PluginContext`. Optional — if omitted, plugins receive a minimal
+   * default context.
+   */
+  readonly pluginContext?: PluginContext;
 }
 
 /**
@@ -43,12 +56,22 @@ export interface CompileOptions extends HashOptions {
 export function compileOps(ops: readonly Op[], options: CompileOptions): CompiledRule {
   const canon = new Canonicalizer(options.registry, options.shorthandPolicy ?? 'strict');
   const rawTree = canon.collapse(ops);
-  const canonical = canon.canonicalKey(rawTree);
+
+  // Plugin pipeline: between collapse and canonicalKey so that any
+  // tree shape change (e.g. wrapping :hover in @media (hover: hover))
+  // propagates into the className. This is the FSS bijection
+  // contract: same hash ⇔ same final-state CSS.
+  const ctx: PluginContext = options.pluginContext ?? {
+    config: { layer: 'fss', importSource: '@fss/core' },
+  };
+  const transformedTree = applyPlugins(rawTree, options.plugins, ctx);
+
+  const canonical = canon.canonicalKey(transformedTree);
   const className = hash(canonical, options);
 
   const meta = options.propertyMeta ?? defaultPropertyMeta;
   const dynamics: DynamicSlot[] = [];
-  const tree = substituteVars(rawTree, className, meta, dynamics, []);
+  const tree = substituteVars(transformedTree, className, meta, dynamics, []);
 
   return {
     className,

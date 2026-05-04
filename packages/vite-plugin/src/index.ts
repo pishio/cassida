@@ -10,6 +10,7 @@ import {
   parseFssConfig,
   type CompiledRule,
   type FssConfig,
+  type FssPlugin,
   type Registry,
   type ResolvedFssConfig,
 } from '@fss/compiler';
@@ -37,6 +38,17 @@ const CONFIG_FILENAME = 'fss.config.json';
 export interface FssPluginOptions extends FssConfig {
   readonly registry?: Registry;
   readonly include?: RegExp;
+  /**
+   * Build-time FSS plugins (e.g. `@fss/plugin-hover-fix`). Each
+   * plugin receives the post-collapse `ScopeBag` tree and returns a
+   * new one; the className is derived from the post-plugin form. So
+   * enabling or disabling a plugin will change every affected hash —
+   * caches invalidate cleanly.
+   *
+   * Plugins are not config-file serializable (they're functions), so
+   * this option lives on the inline plugin options only.
+   */
+  readonly plugins?: readonly FssPlugin[];
 }
 
 export default function fss(options: FssPluginOptions = {}): Plugin {
@@ -131,6 +143,7 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
         filename: cleanId,
         importSource: resolved.importSource,
         shorthandPolicy: resolved.shorthand.policy,
+        ...(options.plugins ? { plugins: options.plugins } : {}),
       });
 
       if (!result.transformed) {
@@ -163,9 +176,10 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
  * surface as a single error at plugin construction time.
  */
 function extractConfig(options: FssPluginOptions): FssConfig | undefined {
-  const { registry, include, ...cfg } = options;
+  const { registry, include, plugins, ...cfg } = options;
   void registry;
   void include;
+  void plugins;
   if (Object.keys(cfg).length === 0) return undefined;
   return parseFssConfig(cfg, '<vite.config.ts plugin options>');
 }

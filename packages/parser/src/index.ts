@@ -12,6 +12,7 @@ import {
   isDynamic,
   type CompiledRule,
   type DynamicSlot,
+  type FssPlugin,
   type MethodOp,
   type Op,
   type RawOp,
@@ -43,6 +44,12 @@ export interface TransformOptions {
    * Forwarded to `compileOps`. Defaults to `'strict'`.
    */
   readonly shorthandPolicy?: ShorthandPolicy;
+  /**
+   * Build-time plugins forwarded to `compileOps`. Each plugin
+   * receives the post-collapse `ScopeBag` tree and returns a new
+   * one; the className is derived from the post-plugin form.
+   */
+  readonly plugins?: readonly FssPlugin[];
 }
 
 export interface TransformResult {
@@ -138,6 +145,7 @@ export function transform(source: string, options: TransformOptions): TransformR
       const compiled = compileOps(ops, {
         registry: options.registry,
         ...(options.shorthandPolicy !== undefined ? { shorthandPolicy: options.shorthandPolicy } : {}),
+        ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
       });
       rules.push(compiled);
 

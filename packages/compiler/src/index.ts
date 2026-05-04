@@ -47,6 +47,8 @@ export { compileOps } from './compile.js';
 export type { CompileOptions } from './compile.js';
 export { CssEmitter } from './emitter.js';
 export type { CssEmitterOptions } from './emitter.js';
+export { applyPlugins, mapScopeBag, wrapInMediaScope } from './plugin.js';
+export type { FssPlugin, PluginContext } from './plugin.js';
 export {
   defaultConfig,
   mergeConfig,
