@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { fss } from '@fss/core';
+import { fss, type FssChain } from '@fss/core';
+
+// Phase 6c-2: same-file style mixins. Compose via plain functions.
+const withCard = (c: FssChain) =>
+  c.padding(16).borderRadius(8).backgroundColor('#fff');
+
+const withInteractive = (c: FssChain) =>
+  c.cursor('pointer').transition('transform .15s ease-out')
+    .hover(h => h.transform('translateY(-1px)'));
 
 const theme = {
   primary: 'crimson',
@@ -103,6 +111,12 @@ export default function App() {
         property; <code>set('-webkit-tap-highlight-color', 'transparent')</code>
         reaches a vendor-only API that lightningcss won't autoprefix.
       </div>
+
+      <button {...withInteractive(withCard(fss())).marginTop(16).fontSize(14)}>
+        Phase 6c-2: <code>withInteractive(withCard(fss())).fontSize(14)</code>
+        — nested same-file function composition. The mixins layer in source
+        order, then chain methods refine. One element, one class, one hash.
+      </button>
 
       <button
         {...fss()

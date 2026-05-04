@@ -541,6 +541,132 @@ describe('transform — opaque shorthands (animation / transition / transform)',
   });
 });
 
+describe('transform — function composition (Approach A, same-file)', () => {
+  it('expands a 1-param arrow function applied to fss()', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const withCard = (c) => c.padding(16).borderRadius(8);
+      export const App = () => <div {...withCard(fss())} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px', 'border-radius': '8px' });
+  });
+
+  it('appends function ops after the chain feeds in (LIFO between input and mixin)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const withRed = (c) => c.color('red');
+      export const App = () => <div {...withRed(fss().color('blue'))} />;
+    `;
+    const r = transform(src, opts);
+    // input chain has color: blue, mixin overwrites to red. mixin is later → wins.
+    expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
+  });
+
+  it('chains additional methods after the composition', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const withCard = (c) => c.padding(16);
+      export const App = () => <div {...withCard(fss()).marginTop(10)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px', 'margin-top': '10px' });
+  });
+
+  it('supports nested compositions: withRed(withCard(fss()))', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const withCard = (c) => c.padding(16).borderRadius(8);
+      const withRed = (c) => c.color('red');
+      export const App = () => <div {...withRed(withCard(fss()))} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({
+      padding: '16px',
+      'border-radius': '8px',
+      color: 'red',
+    });
+  });
+
+  it('supports block-body arrow function', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const withCard = (c) => { return c.padding(16); };
+      export const App = () => <div {...withCard(fss())} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px' });
+  });
+
+  it('supports FunctionDeclaration form', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      function withCard(c) { return c.padding(16); }
+      export const App = () => <div {...withCard(fss())} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({ padding: '16px' });
+  });
+
+  it('mixins inside modifier callbacks compose correctly', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const withRed = (c) => c.color('red');
+      export const App = () => <div {...fss().hover(c => withRed(c))} />;
+    `;
+    const r = transform(src, opts);
+    const hover = r.rules[0]!.tree.children[0]!;
+    expect(hover.scope).toEqual({ kind: 'pseudo', selector: ':hover' });
+    expect(hover.bag).toEqual({ color: 'red' });
+  });
+
+  it('produces the same className regardless of inline vs composed authoring', () => {
+    const inline = transform(
+      `import { fss } from '@fss/core';
+       export const A = () => <div {...fss().padding(16).color('red')} />;`,
+      opts,
+    );
+    const composed = transform(
+      `import { fss } from '@fss/core';
+       const withRed = (c) => c.color('red');
+       export const A = () => <div {...withRed(fss().padding(16))} />;`,
+      opts,
+    );
+    expect(inline.rules[0]!.className).toBe(composed.rules[0]!.className);
+  });
+
+  it('bails on multi-param compositions', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const sized = (c, size) => c.fontSize(size);
+      export const App = () => <div {...sized(fss(), 14)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(false);
+  });
+
+  it('bails when the mixin body uses unsupported control flow', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const cond = (c) => { if (true) c.color('red'); return c; };
+      export const App = () => <div {...cond(fss())} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(false);
+  });
+
+  it('bails when the mixin is imported from another module (Phase 7)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      import { withCard } from './styles';
+      export const App = () => <div {...withCard(fss())} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(false);
+  });
+});
+
 describe('transform — JSX surgery (style merge / className concat)', () => {
   it('concats existing string className with FSS hash', () => {
     const src = `

@@ -324,14 +324,7 @@ function walkChain(
       continue;
     }
 
-    // Branch B: callee is the chain root identifier `fss()` (or the
-    // bare callback param for an inner chain — wait, those terminate
-    // earlier as Identifiers, not CallExpressions). Accepts:
-    //   - `fss()` zero-arg base call
-    //   - `fss(preset)` one-arg form: `preset` must be a confidently
-    //     evaluable plain object; its keys become MethodOps that the
-    //     registry validates (safe path). Unknown / blacklisted keys
-    //     surface as the canonicalizer's "unknown method" error.
+    // Branch B: callee is the chain root identifier `fss()`.
     const fssIdPath = pathAs(calleePath, t.isIdentifier);
     if (fssIdPath && chainRoots.has(fssIdPath.node.name)) {
       if (callPath.node.arguments.length === 0) break;
@@ -349,10 +342,103 @@ function walkChain(
       break;
     }
 
+    // Branch C: callee is an Identifier that's NOT a chain root.
+    // Treat as same-file function composition: `withCard(fss())` etc.
+    // The function must be a 1-param const arrow / function declaration
+    // whose body is a chain rooted at the param. The function's body
+    // ops are appended to the argument's ops in source order.
+    if (fssIdPath) {
+      const composed = tryFunctionComposition(callPath, fssIdPath, chainRoots, ctx);
+      if (composed === null) return null;
+      // Push reversed so the composition lands first after the final reverse.
+      for (let i = composed.length - 1; i >= 0; i--) ops.push(composed[i]!);
+      break;
+    }
+
     return null;
   }
 
   return ops.reverse();
+}
+
+/**
+ * Attempts to resolve a same-file function composition like
+ * `withCard(fss())` or `withCard(withTheme(fss()))`. Returns the
+ * composed source-ordered Op list or null if the call doesn't fit
+ * the supported pattern.
+ *
+ * Phase 6c-2 supports:
+ *   - `const f = (c) => c.chain()` (ArrowFunctionExpression, 1 param)
+ *   - `const f = (c) => { c.chain(); }` or `{ return c.chain(); }`
+ *   - `function f(c) { ... }` (FunctionDeclaration, 1 param)
+ *
+ * Phase 7 will tackle: multi-param functions, conditional bodies,
+ * loops, and cross-file imports (Linaria-class static evaluation).
+ * Anything outside the simple pattern returns null and the caller
+ * lets the chain fall through to runtime fallback.
+ */
+function tryFunctionComposition(
+  callPath: NodePath<t.CallExpression>,
+  calleeIdPath: NodePath<t.Identifier>,
+  chainRoots: ReadonlySet<string>,
+  ctx: WalkContext,
+): Op[] | null {
+  const fnName = calleeIdPath.node.name;
+  const binding = calleeIdPath.scope.getBinding(fnName);
+  if (!binding) return null;
+  // Only `const` bindings or function declarations are accepted —
+  // `let`/`var` could be reassigned and we can't follow that.
+  if (binding.kind !== 'const' && binding.kind !== 'hoisted') return null;
+
+  // Locate the function expression (arrow or declaration).
+  let paramName: string | null = null;
+  let bodyPath: NodePath | null = null;
+
+  const declPath = binding.path;
+  if (t.isVariableDeclarator(declPath.node)) {
+    const initPath = pathAs(declPath.get('init'), t.isArrowFunctionExpression);
+    if (!initPath) return null;
+    if (initPath.node.params.length !== 1) return null;
+    const param = initPath.node.params[0]!;
+    if (!t.isIdentifier(param)) return null;
+    paramName = param.name;
+    bodyPath = initPath.get('body');
+  } else if (t.isFunctionDeclaration(declPath.node)) {
+    const fnPath = declPath as NodePath<t.FunctionDeclaration>;
+    if (fnPath.node.params.length !== 1) return null;
+    const param = fnPath.node.params[0]!;
+    if (!t.isIdentifier(param)) return null;
+    paramName = param.name;
+    bodyPath = fnPath.get('body');
+  } else {
+    return null;
+  }
+
+  if (paramName === null || bodyPath === null) return null;
+  const innerRoots = new Set([paramName]);
+
+  // Resolve the function body: same logic as a callback body in
+  // `collectFromCallback` — expression body or block-of-chains.
+  const blockPath = pathAs(bodyPath, t.isBlockStatement);
+  const fnBodyOps = blockPath
+    ? collectFromBlock(blockPath, innerRoots, ctx)
+    : walkChain(bodyPath, innerRoots, ctx);
+  if (fnBodyOps === null) return null;
+
+  // The argument MUST be exactly 1 (the chain to feed in).
+  const argPaths = callPath.get('arguments');
+  if (argPaths.length !== 1) return null;
+  const argPath = argPaths[0]!;
+  if (!t.isExpression(argPath.node)) return null;
+  // Walk the argument with the OUTER chainRoots — typically `fss`,
+  // sometimes a recursive composition's own scope.
+  const argOps = walkChain(argPath, chainRoots, ctx);
+  if (argOps === null) return null;
+
+  // Compose: argument ops first (the input chain), then function body
+  // ops (the mixin layered on top). LIFO inside the merged op list
+  // works exactly as if the user had written everything inline.
+  return [...argOps, ...fnBodyOps];
 }
 
 function collectFromCallback(cbPath: NodePath, ctx: WalkContext): Op[] | null {
