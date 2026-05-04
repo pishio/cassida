@@ -12,7 +12,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "config.schema.json"],
+  "files": [
+    "dist",
+    "README.md",
+    "config.schema.json"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
@@ -32,5 +36,22 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pishio/cassida.git",
+    "directory": "packages/compiler"
+  },
+  "homepage": "https://github.com/pishio/cassida/tree/main/packages/compiler#readme",
+  "bugs": {
+    "url": "https://github.com/pishio/cassida/issues"
+  },
+  "author": "pishio",
+  "keywords": [
+    "cassida",
+    "css-in-js",
+    "compile-time",
+    "single-class",
+    "react"
+  ]
 }

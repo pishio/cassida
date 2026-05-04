@@ -12,7 +12,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -30,5 +32,22 @@
     "@types/node": "^22.9.0",
     "typescript": "^5.6.3",
     "vite": "^7.1.13"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pishio/cassida.git",
+    "directory": "packages/vite-plugin"
+  },
+  "homepage": "https://github.com/pishio/cassida/tree/main/packages/vite-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/pishio/cassida/issues"
+  },
+  "author": "pishio",
+  "keywords": [
+    "cassida",
+    "css-in-js",
+    "compile-time",
+    "single-class",
+    "react"
+  ]
 }
