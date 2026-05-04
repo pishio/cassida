@@ -12,7 +12,9 @@ import {
   isDynamic,
   type CompiledRule,
   type DynamicSlot,
+  type MethodOp,
   type Op,
+  type RawOp,
   type Registry,
   type Scope,
   type ShorthandPolicy,
@@ -238,13 +240,38 @@ function walkChain(
 
     const calleePath = callPath.get('callee');
 
-    // Branch A: callee is `obj.method(...)` — descend the chain.
+    // Branch A: callee is `obj.method(...)` — descend the chain or
+    // intercept the special `fss.unsafe(preset)` chain root.
     const memberPath = pathAs(calleePath, t.isMemberExpression);
     if (memberPath && !memberPath.node.computed) {
       const propertyPath = pathAs(memberPath.get('property'), t.isIdentifier);
       if (!propertyPath) return null;
       const methodName = propertyPath.node.name;
       const argPaths = callPath.get('arguments');
+
+      // Special case: `fss.unsafe(preset)` at the chain root. Detected
+      // when the member-object is the chain-root identifier itself
+      // (i.e. `fss`, not a callback param) AND the property is
+      // `unsafe`. The preset object is expanded into RawOps which
+      // bypass the registry — this is the user's deliberate opt-out
+      // of FSS's safety guarantees, in the spirit of Rust's `unsafe`.
+      const memberObjId = pathAs(memberPath.get('object'), t.isIdentifier);
+      if (
+        memberObjId &&
+        chainRoots.has(memberObjId.node.name) &&
+        methodName === 'unsafe'
+      ) {
+        if (argPaths.length !== 1) return null;
+        const evald = argPaths[0]!.evaluate();
+        if (!evald.confident) return null;
+        const value = evald.value;
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+          return null;
+        }
+        const expanded = expandUnsafePreset(value as Record<string, unknown>);
+        for (let i = expanded.length - 1; i >= 0; i--) ops.push(expanded[i]!);
+        break;
+      }
 
       if (methodName in canonicalModifiers) {
         if (argPaths.length !== 1) return null;
@@ -277,10 +304,28 @@ function walkChain(
       continue;
     }
 
-    // Branch B: callee is the chain root identifier `fss()`.
+    // Branch B: callee is the chain root identifier `fss()` (or the
+    // bare callback param for an inner chain — wait, those terminate
+    // earlier as Identifiers, not CallExpressions). Accepts:
+    //   - `fss()` zero-arg base call
+    //   - `fss(preset)` one-arg form: `preset` must be a confidently
+    //     evaluable plain object; its keys become MethodOps that the
+    //     registry validates (safe path). Unknown / blacklisted keys
+    //     surface as the canonicalizer's "unknown method" error.
     const fssIdPath = pathAs(calleePath, t.isIdentifier);
     if (fssIdPath && chainRoots.has(fssIdPath.node.name)) {
-      if (callPath.node.arguments.length !== 0) return null;
+      if (callPath.node.arguments.length === 0) break;
+      if (callPath.node.arguments.length !== 1) return null;
+      const argPaths = callPath.get('arguments');
+      const evald = argPaths[0]!.evaluate();
+      if (!evald.confident) return null;
+      const value = evald.value;
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return null;
+      }
+      const expanded = expandSafePreset(value as Record<string, unknown>);
+      if (!expanded) return null;
+      for (let i = expanded.length - 1; i >= 0; i--) ops.push(expanded[i]!);
       break;
     }
 
@@ -387,6 +432,46 @@ function inferScope(
     return { kind: 'pseudo', selector: trimmed };
   }
   return { kind: 'raw', selector: trimmed };
+}
+
+/**
+ * Expand a confidently-evaluated preset object into a list of
+ * MethodOps for the safe `fss(preset)` path. Each key becomes a
+ * method call against the registry. Null/undefined values are
+ * skipped (idiomatic "unset" syntax). Unknown / blacklisted keys
+ * are not pre-checked here — the canonicalizer will surface them
+ * with a clear "unknown method" error.
+ */
+function expandSafePreset(value: Record<string, unknown>): MethodOp[] | null {
+  const ops: MethodOp[] = [];
+  for (const [key, val] of Object.entries(value)) {
+    if (val === null || val === undefined) continue;
+    ops.push({ method: key, args: [val] });
+  }
+  return ops;
+}
+
+/**
+ * Expand a preset object into RawOps for the unsafe path. Keys are
+ * accepted in either camelCase (converted to kebab) or kebab-case
+ * (passed through, including vendor prefixes like `-webkit-foo`).
+ * Values are stringified as-is. Bypasses the registry, the
+ * shorthand-policy guard, and family tracking — that's the contract
+ * of `fss.unsafe`.
+ */
+function expandUnsafePreset(value: Record<string, unknown>): RawOp[] {
+  const ops: RawOp[] = [];
+  for (const [key, val] of Object.entries(value)) {
+    if (val === null || val === undefined) continue;
+    ops.push({ property: camelToKebab(key), value: String(val) });
+  }
+  return ops;
+}
+
+function camelToKebab(s: string): string {
+  // Already kebab (or vendor-prefixed `-webkit-foo`) → leave alone.
+  if (s.includes('-')) return s;
+  return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
 function literalToValue(node: t.Node): unknown | NonLiteral {

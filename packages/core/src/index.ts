@@ -139,6 +139,56 @@ const cssToCamel = (prop: string): string =>
   prop.replace(/-([a-z])/g, (_match: string, c: string) => c.toUpperCase());
 
 /**
+ * CSS shorthands intentionally absent from the FSS canonical surface.
+ * Keys here are rejected from `SafePreset` (the `fss(preset)` arg type)
+ * — users wanting these values must explicitly route through
+ * `fss.unsafe(...)`, mirroring Rust's `unsafe` block contract.
+ */
+type BlacklistedSafeKeys =
+  | 'background'
+  | 'font'
+  | 'border'
+  | 'flex'
+  | 'grid'
+  | 'all'
+  | 'mask'
+  | 'transition'
+  | 'animation'
+  | 'listStyle'
+  | 'textDecoration'
+  | 'placeItems'
+  | 'placeContent'
+  | 'placeSelf'
+  | 'columns'
+  | 'columnRule'
+  | 'overflow'
+  | 'gridArea'
+  | 'gridTemplate';
+
+/**
+ * Strictly-typed preset shape for the safe `fss(preset)` overload.
+ * csstype-typed CSS values, blacklisted shorthands removed at the
+ * type level so they don't autocomplete and can't be written.
+ */
+export type SafePreset = Partial<Omit<CSS.Properties, BlacklistedSafeKeys>>;
+
+/**
+ * Permissive preset shape for `fss.unsafe(preset)`. Accepts any
+ * string key; intended for blacklisted shorthands, vendor-prefixed
+ * properties, and CSS custom properties (`--foo`). The contract is
+ * "you're past the safety guarantees, write raw CSS at your own
+ * discretion".
+ */
+export interface UnsafePreset {
+  readonly [key: string]: string | number | undefined;
+}
+
+const camelToKebab = (s: string): string => {
+  if (s.includes('-')) return s;
+  return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+};
+
+/**
  * Runtime `fss()` builder.
  *
  * - Production: build-time transform replaces `{...fss().a().b()}` with
@@ -147,10 +197,50 @@ const cssToCamel = (prop: string): string =>
  * - Dev / dynamic chains: spread reads the enumerable `style` getter,
  *   chain materializes as inline style. Method handles are non-enumerable
  *   so they don't leak as React props.
+ *
+ * Overloads:
+ *   - `fss()` — empty chain
+ *   - `fss(preset)` — start from a typed preset (safe; blacklisted
+ *     shorthands are excluded from the type and routed through
+ *     `fss.unsafe`)
+ *   - `fss.unsafe(preset)` — bypass the safety net; preset can include
+ *     blacklisted shorthands, vendor properties, and CSS custom props
  */
-export function fss(registry: Registry = defaultRegistry): FssChain {
-  return makeChain(registry, [], true);
+export interface FssBuilder {
+  (): FssChain;
+  (preset: SafePreset): FssChain;
+  /**
+   * Escape hatch for properties outside FSS's safe surface (CSS
+   * shorthands like `background`, vendor-prefixed, custom `--foo`).
+   * Bypasses registry validation, shorthand-policy, and family
+   * tracking — the user takes responsibility for the resulting CSS.
+   */
+  readonly unsafe: (preset: UnsafePreset) => FssChain;
 }
+
+function fssCall(preset?: SafePreset): FssChain {
+  const ops: Op[] = [];
+  if (preset) {
+    for (const [key, val] of Object.entries(preset)) {
+      if (val === null || val === undefined) continue;
+      ops.push({ method: key, args: [val] });
+    }
+  }
+  return makeChain(defaultRegistry, ops, true);
+}
+
+function fssUnsafe(preset: UnsafePreset): FssChain {
+  const ops: Op[] = [];
+  for (const [key, val] of Object.entries(preset)) {
+    if (val === null || val === undefined) continue;
+    ops.push({ property: camelToKebab(key), value: String(val) });
+  }
+  return makeChain(defaultRegistry, ops, true);
+}
+
+export const fss: FssBuilder = Object.assign(fssCall, {
+  unsafe: fssUnsafe,
+}) as FssBuilder;
 
 function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
   const chain = Object.create(null) as Record<string, unknown>;

@@ -8,6 +8,12 @@ const theme = {
 
 const BASE = 8;
 
+const cardPreset = {
+  padding: 12,
+  borderRadius: 8,
+  backgroundColor: '#fff',
+};
+
 export default function App() {
   const [hue, setHue] = useState<number>(180);
   const dynamicColor = `hsl(${hue} 80% 55%)`;
@@ -57,6 +63,18 @@ export default function App() {
           .backgroundColor('#eee')}
       >
         Phase 6b — auto-generated methods (aspectRatio, accentColor) work end-to-end.
+      </div>
+
+      <div {...fss(cardPreset).marginTop(16).color('#222')}>
+        Phase 6c-1: <code>fss(cardPreset)</code> — preset constant injected at
+        the chain root, then refined with chain methods. Same hash whether the
+        preset lives in this file or another.
+      </div>
+
+      <div {...fss.unsafe({ background: 'linear-gradient(45deg,#fafafa,#e8e8e8)' }).marginTop(16).padding(12)}>
+        Phase 6c-1: <code>fss.unsafe(...)</code> — `background` shorthand is
+        rejected by the safe surface; opting into <code>unsafe</code> bypasses
+        registry validation. Use sparingly.
       </div>
 
       <button

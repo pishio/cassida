@@ -2,6 +2,7 @@ export type {
   Op,
   MethodOp,
   ScopedOp,
+  RawOp,
   Scope,
   PropertyBag,
   ScopeBag,
@@ -15,6 +16,7 @@ export {
   isDynamic,
   isMethodOp,
   isScopedOp,
+  isRawOp,
 } from './types.js';
 export { canonicalModifiers, argModifiers, isModifierMethod } from './modifier-spec.js';
 export type { CanonicalModifierName, ArgModifierName } from './modifier-spec.js';

@@ -45,17 +45,35 @@ export interface ScopedOp {
 }
 
 /**
- * Discriminated union of chain ops. Use `isMethodOp` / `isScopedOp` to
- * narrow at consumption sites.
+ * A direct CSS property write that bypasses the registry — emitted
+ * by `fss.unsafe(preset)` for keys outside the safe canonical set.
+ *
+ * `property` is a kebab-case CSS property name; `value` is a fully
+ * formatted CSS value string. Shorthand-policy guards do not apply
+ * to RawOps (they are intentionally outside the safety net — that's
+ * what "unsafe" means).
  */
-export type Op = MethodOp | ScopedOp;
+export interface RawOp {
+  readonly property: string;
+  readonly value: string;
+}
+
+/**
+ * Discriminated union of chain ops. Use `isMethodOp` / `isScopedOp` /
+ * `isRawOp` to narrow at consumption sites.
+ */
+export type Op = MethodOp | ScopedOp | RawOp;
 
 export function isMethodOp(op: Op): op is MethodOp {
   return 'method' in op;
 }
 
 export function isScopedOp(op: Op): op is ScopedOp {
-  return 'scope' in op;
+  return 'scope' in op && 'ops' in op;
+}
+
+export function isRawOp(op: Op): op is RawOp {
+  return 'property' in op && 'value' in op;
 }
 
 /**

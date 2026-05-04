@@ -2,6 +2,7 @@ import {
   DYNAMIC_PLACEHOLDER,
   isDynamic,
   isMethodOp,
+  isRawOp,
   isScopedOp,
   type DynamicArg,
   type Op,
@@ -79,6 +80,16 @@ export class Canonicalizer {
         } else {
           childOpsByKey.set(key, { scope: op.scope, ops: [...op.ops] });
         }
+        continue;
+      }
+
+      if (isRawOp(op)) {
+        // RawOps bypass the registry entirely. They sit in the bag as
+        // pre-formatted CSS declarations. Shorthand-policy and family
+        // tracking deliberately do NOT apply — the user already opted
+        // out of the safety net by routing through `fss.unsafe`.
+        bag[op.property] = op.value;
+        delete slots[op.property];
         continue;
       }
     }

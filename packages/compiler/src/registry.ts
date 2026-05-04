@@ -117,9 +117,18 @@ export const defaultCanonicals: Registry = Object.freeze({
  * identical and `mt(10).marginTop(20)` collapses correctly to a single
  * `margin-top` declaration via LIFO.
  */
+/**
+ * Optional shorthand aliases.
+ *
+ * Removed (intentionally absent): `background` and `font`. Both names
+ * refer to *real* CSS shorthands (writing many subproperties at once
+ * with implicit reset of the rest), and offering them as aliases for
+ * `backgroundColor` / `fontFamily` would silently lie about CSS
+ * semantics. Users wanting the actual CSS shorthand can route through
+ * `fss.unsafe({ background: '...' })`.
+ */
 export const defaultAliases: AliasMap = Object.freeze({
   bg: 'backgroundColor',
-  background: 'backgroundColor',
   mt: 'marginTop',
   mr: 'marginRight',
   mb: 'marginBottom',
@@ -128,7 +137,6 @@ export const defaultAliases: AliasMap = Object.freeze({
   pr: 'paddingRight',
   pb: 'paddingBottom',
   pl: 'paddingLeft',
-  font: 'fontFamily',
 });
 
 /**

@@ -335,6 +335,109 @@ describe('transform — path.evaluate() static evaluation', () => {
   });
 });
 
+describe('transform — fss(preset) safe injection', () => {
+  it('expands a literal preset object into MethodOps before later chain ops', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss({ padding: 16, color: 'red' }).marginTop(10)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.tree.bag).toEqual({
+      padding: '16px',
+      color: 'red',
+      'margin-top': '10px',
+    });
+  });
+
+  it('LIFO collapses preset values when the chain overrides them', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss({ padding: 10 }).padding(20)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({ padding: '20px' });
+  });
+
+  it('resolves a const-bound preset via path.evaluate', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const card = { padding: 12, borderRadius: 8 };
+      export const App = () => <div {...fss(card).backgroundColor('#fff')} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({
+      padding: '12px',
+      'border-radius': '8px',
+      'background-color': '#fff',
+    });
+  });
+
+  it('bails (runtime fallback) when preset is non-confident', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ p }: { p: object }) => <div {...fss(p).color('red')} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(false);
+  });
+
+  it('throws when preset contains a blacklisted shorthand (registry rejects)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss({ background: 'red' })} />;
+    `;
+    expect(() => transform(src, opts)).toThrow(/unknown method "background"/);
+  });
+});
+
+describe('transform — fss.unsafe(preset) bypass', () => {
+  it('expands an unsafe preset into RawOps that bypass the registry', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss.unsafe({ background: 'red' }).marginTop(10)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.tree.bag).toEqual({
+      background: 'red',
+      'margin-top': '10px',
+    });
+  });
+
+  it('camelCase keys are converted to kebab-case', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss.unsafe({ webkitTextFillColor: 'transparent' })} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({
+      'webkit-text-fill-color': 'transparent',
+    });
+  });
+
+  it('kebab-case keys (and vendor-prefixed) are passed through unchanged', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss.unsafe({ '-webkit-tap-highlight-color': 'transparent' })} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({
+      '-webkit-tap-highlight-color': 'transparent',
+    });
+  });
+
+  it('shorthand-policy does not apply to unsafe RawOps (deliberate by design)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss.unsafe({ padding: '5px 10px', paddingTop: '20px' })} />;
+    `;
+    // Unsafe writes go straight to the bag without registry/family
+    // checks. The user opted out of the safety net.
+    expect(() => transform(src, opts)).not.toThrow();
+  });
+});
+
 describe('transform — JSX surgery (style merge / className concat)', () => {
   it('concats existing string className with FSS hash', () => {
     const src = `

@@ -16,9 +16,11 @@ describe('Canonicalizer.collapse — LIFO', () => {
   });
 
   it('treats aliases that target the same CSS property as conflicts', () => {
+    // `bg` and `backgroundColor` both write the `background-color` CSS
+    // property; the later op wins (LIFO).
     const ops: Op[] = [
       { method: 'bg', args: ['red'] },
-      { method: 'background', args: ['blue'] },
+      { method: 'backgroundColor', args: ['blue'] },
     ];
     expect(canon.collapse(ops).bag).toEqual({ 'background-color': 'blue' });
   });
