@@ -69,13 +69,13 @@ describe('Canonicalizer.collapse — dynamic args', () => {
   it('substitutes the dynamic placeholder for a single dynamic arg', () => {
     const result = canon.collapse([{ method: 'color', args: [dyn('s0')] }]);
     expect(result.bag).toEqual({ color: DYNAMIC_PLACEHOLDER });
-    expect(result.slotByProperty).toEqual({ color: 's0' });
+    expect(result.slots).toEqual({ color: 's0' });
   });
 
   it('produces the same canonical key for two structurally identical dynamic chains', () => {
     const a = canon.collapse([{ method: 'color', args: [dyn('A')] }]);
     const b = canon.collapse([{ method: 'color', args: [dyn('Z')] }]);
-    expect(canon.canonicalKey(a.bag)).toBe(canon.canonicalKey(b.bag));
+    expect(canon.canonicalKey(a)).toBe(canon.canonicalKey(b));
   });
 
   it('clears a dynamic slot when a later static op overwrites the same property', () => {
@@ -84,7 +84,7 @@ describe('Canonicalizer.collapse — dynamic args', () => {
       { method: 'color', args: ['red'] },
     ]);
     expect(result.bag).toEqual({ color: 'red' });
-    expect(result.slotByProperty).toEqual({});
+    expect(result.slots).toEqual({});
   });
 
   it('replaces an earlier static value when a later dynamic op overwrites', () => {
@@ -93,7 +93,7 @@ describe('Canonicalizer.collapse — dynamic args', () => {
       { method: 'color', args: [dyn('s1')] },
     ]);
     expect(result.bag).toEqual({ color: DYNAMIC_PLACEHOLDER });
-    expect(result.slotByProperty).toEqual({ color: 's1' });
+    expect(result.slots).toEqual({ color: 's1' });
   });
 
   it('throws on mixed literal+dynamic args within a single op', () => {
@@ -103,16 +103,80 @@ describe('Canonicalizer.collapse — dynamic args', () => {
   });
 });
 
+describe('Canonicalizer.collapse — scoped ops', () => {
+  it('builds a child node for a single scoped op', () => {
+    const result = canon.collapse([
+      { method: 'color', args: ['blue'] },
+      { scope: { kind: 'pseudo', selector: ':hover' }, ops: [{ method: 'color', args: ['red'] }] },
+    ]);
+    expect(result.bag).toEqual({ color: 'blue' });
+    expect(result.children).toHaveLength(1);
+    const child = result.children[0]!;
+    expect(child.scope).toEqual({ kind: 'pseudo', selector: ':hover' });
+    expect(child.bag).toEqual({ color: 'red' });
+    expect(child.children).toHaveLength(0);
+  });
+
+  it('merges two scoped ops at the same scope (concat then re-collapse)', () => {
+    const result = canon.collapse([
+      { scope: { kind: 'pseudo', selector: ':hover' }, ops: [{ method: 'color', args: ['red'] }] },
+      { scope: { kind: 'pseudo', selector: ':hover' }, ops: [{ method: 'marginTop', args: [4] }] },
+    ]);
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0]!.bag).toEqual({ color: 'red', 'margin-top': '4px' });
+  });
+
+  it('LIFO collapses inside a single scope', () => {
+    const result = canon.collapse([
+      { scope: { kind: 'pseudo', selector: ':hover' }, ops: [
+        { method: 'color', args: ['red'] },
+        { method: 'color', args: ['blue'] },
+      ] },
+    ]);
+    expect(result.children[0]!.bag).toEqual({ color: 'blue' });
+  });
+
+  it('produces nested children for nested scoped ops', () => {
+    const result = canon.collapse([
+      {
+        scope: { kind: 'pseudo', selector: ':hover' },
+        ops: [
+          {
+            scope: { kind: 'media', query: '(min-width: 768px)' },
+            ops: [{ method: 'color', args: ['red'] }],
+          },
+        ],
+      },
+    ]);
+    const hover = result.children[0]!;
+    const media = hover.children[0]!;
+    expect(hover.bag).toEqual({});
+    expect(hover.children).toHaveLength(1);
+    expect(media.scope).toEqual({ kind: 'media', query: '(min-width: 768px)' });
+    expect(media.bag).toEqual({ color: 'red' });
+  });
+});
+
 describe('Canonicalizer.canonicalKey', () => {
-  it('is order-independent (same bag → same key)', () => {
-    const a = canon.canonicalKey({ color: 'blue', 'margin-top': '10em' });
-    const b = canon.canonicalKey({ 'margin-top': '10em', color: 'blue' });
+  it('is order-independent (same chain shape → same key)', () => {
+    const a = canon.canonicalKey(
+      canon.collapse([
+        { method: 'color', args: ['blue'] },
+        { method: 'mt', args: [10, 'em'] },
+      ]),
+    );
+    const b = canon.canonicalKey(
+      canon.collapse([
+        { method: 'mt', args: [10, 'em'] },
+        { method: 'color', args: ['blue'] },
+      ]),
+    );
     expect(a).toBe(b);
   });
 
   it('changes when any value changes', () => {
-    const a = canon.canonicalKey({ color: 'blue' });
-    const b = canon.canonicalKey({ color: 'red' });
+    const a = canon.canonicalKey(canon.collapse([{ method: 'color', args: ['blue'] }]));
+    const b = canon.canonicalKey(canon.collapse([{ method: 'color', args: ['red'] }]));
     expect(a).not.toBe(b);
   });
 
@@ -123,6 +187,6 @@ describe('Canonicalizer.canonicalKey', () => {
       { method: 'color', args: ['blue'] },
     ]);
     const direct = canon.collapse([{ method: 'color', args: ['blue'] }]);
-    expect(canon.canonicalKey(noisy.bag)).toBe(canon.canonicalKey(direct.bag));
+    expect(canon.canonicalKey(noisy)).toBe(canon.canonicalKey(direct));
   });
 });

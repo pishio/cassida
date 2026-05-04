@@ -15,7 +15,7 @@ describe('transform — static fss() chains in JSX spread', () => {
     expect(r.code).toMatch(/className=("|')fss-[0-9a-f]{8}\1/);
     expect(r.code).not.toMatch(/fss\(\)/);
     expect(r.rules).toHaveLength(1);
-    expect(r.rules[0]!.bag).toEqual({ color: 'red' });
+    expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
     expect(r.rules[0]!.dynamics).toHaveLength(0);
   });
 
@@ -25,7 +25,7 @@ describe('transform — static fss() chains in JSX spread', () => {
       export const App = () => <div {...fss().color("red").color("blue")} />;
     `;
     const r = transform(src, opts);
-    expect(r.rules[0]!.bag).toEqual({ color: 'blue' });
+    expect(r.rules[0]!.tree.bag).toEqual({ color: 'blue' });
   });
 
   it('honors renamed imports', () => {
@@ -35,7 +35,7 @@ describe('transform — static fss() chains in JSX spread', () => {
     `;
     const r = transform(src, opts);
     expect(r.transformed).toBe(true);
-    expect(r.rules[0]!.bag).toEqual({ color: 'red' });
+    expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
   });
 
   it('handles negative numeric literals', () => {
@@ -44,7 +44,7 @@ describe('transform — static fss() chains in JSX spread', () => {
       export const App = () => <div {...fss().marginTop(-10, "em")} />;
     `;
     const r = transform(src, opts);
-    expect(r.rules[0]!.bag).toEqual({ 'margin-top': '-10em' });
+    expect(r.rules[0]!.tree.bag).toEqual({ 'margin-top': '-10em' });
   });
 
   it('handles plain template literals (no interpolation)', () => {
@@ -53,7 +53,7 @@ describe('transform — static fss() chains in JSX spread', () => {
       'export const App = () => <div {...fss().color(`red`)} />;',
     ].join('\n');
     const r = transform(src, opts);
-    expect(r.rules[0]!.bag).toEqual({ color: 'red' });
+    expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
   });
 
   it('returns the original source unchanged when no fss import is present', () => {
@@ -176,6 +176,137 @@ describe('transform — dynamic chains', () => {
       export const App = () => <div {...fss().color("red")} {...fss().marginTop(10)} />;
     `;
     expect(() => transform(src, opts)).toThrow(/Multiple \{\.\.\.fss\(\)\} spreads/);
+  });
+});
+
+describe('transform — modifiers (hover/focus/media/on)', () => {
+  it('compiles a hover modifier into a scoped child', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <button {...fss().color('blue').hover(c => c.color('red'))} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules).toHaveLength(1);
+    const rule = r.rules[0]!;
+    expect(rule.tree.bag).toEqual({ color: 'blue' });
+    expect(rule.tree.children).toHaveLength(1);
+    const hover = rule.tree.children[0]!;
+    expect(hover.scope).toEqual({ kind: 'pseudo', selector: ':hover' });
+    expect(hover.bag).toEqual({ color: 'red' });
+  });
+
+  it('compiles a media modifier with explicit query argument', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <p {...fss().fontSize(14).media('(min-width: 768px)', c => c.fontSize(20))} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    const rule = r.rules[0]!;
+    expect(rule.tree.children).toHaveLength(1);
+    expect(rule.tree.children[0]!.scope).toEqual({
+      kind: 'media',
+      query: '(min-width: 768px)',
+    });
+    expect(rule.tree.children[0]!.bag).toEqual({ 'font-size': '20px' });
+  });
+
+  it('compiles nested modifiers (media inside hover)', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () =>
+        <button {...fss().hover(c => c.media('(min-width: 768px)', c2 => c2.color('red')))} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    const rule = r.rules[0]!;
+    const hover = rule.tree.children[0]!;
+    expect(hover.scope).toEqual({ kind: 'pseudo', selector: ':hover' });
+    expect(hover.children).toHaveLength(1);
+    const media = hover.children[0]!;
+    expect(media.scope).toEqual({ kind: 'media', query: '(min-width: 768px)' });
+    expect(media.bag).toEqual({ color: 'red' });
+  });
+
+  it('on() with a raw attribute selector becomes a raw scope', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () =>
+        <div {...fss().on('[data-state="open"]', c => c.color('red'))} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.tree.children[0]!.scope).toEqual({
+      kind: 'raw',
+      selector: '[data-state="open"]',
+    });
+  });
+
+  it('on() with a pseudo-class selector becomes a pseudo scope', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <a {...fss().on(':visited', c => c.color('purple'))} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.children[0]!.scope).toEqual({
+      kind: 'pseudo',
+      selector: ':visited',
+    });
+  });
+
+  it('shares className for two structurally identical hover chains regardless of value', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ a, b }: { a: string; b: string }) => (
+        <div>
+          <button {...fss().hover(c => c.color(a))} />
+          <button {...fss().hover(c => c.color(b))} />
+        </div>
+      );
+    `;
+    const r = transform(src, opts);
+    expect(r.rules).toHaveLength(2);
+    expect(r.rules[0]!.className).toBe(r.rules[1]!.className);
+    expect(r.rules[0]!.dynamics).toHaveLength(1);
+    expect(r.rules[0]!.dynamics[0]!.scopePath).toEqual([
+      { kind: 'pseudo', selector: ':hover' },
+    ]);
+  });
+});
+
+describe('transform — path.evaluate() static evaluation', () => {
+  it('evaluates simple constant arithmetic at build time', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const BASE = 8;
+      export const App = () => <div {...fss().marginTop(BASE * 2, "px")} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.tree.bag).toEqual({ 'margin-top': '16px' });
+    expect(r.rules[0]!.dynamics).toHaveLength(0);
+  });
+
+  it('evaluates string concatenation at build time', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      const PRIMARY = '#ff';
+      export const App = () => <div {...fss().color(PRIMARY + '0000')} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.rules[0]!.tree.bag).toEqual({ color: '#ff0000' });
+    expect(r.rules[0]!.dynamics).toHaveLength(0);
+  });
+
+  it('falls back to dynamic when evaluation is not confident', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = ({ c }: { c: string }) => <div {...fss().color(c)} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules[0]!.dynamics).toHaveLength(1);
   });
 });
 

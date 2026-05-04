@@ -13,7 +13,7 @@ describe('compileOps — static chains', () => {
       { method: 'color', args: ['blue'] },
     ];
     const result = compileOps(ops, opts);
-    expect(result.bag).toEqual({ 'margin-top': '10em', color: 'blue' });
+    expect(result.tree.bag).toEqual({ 'margin-top': '10em', color: 'blue' });
     expect(result.className).toMatch(/^fss-[0-9a-f]{8}$/);
     expect(result.canonical).toContain('color');
     expect(result.canonical).toContain('margin-top');
@@ -53,7 +53,7 @@ describe('compileOps — static chains', () => {
 describe('compileOps — dynamic chains', () => {
   it('substitutes var(--<class>-<prop>) for dynamic slots in the bag', () => {
     const result = compileOps([{ method: 'color', args: [dyn('s0')] }], opts);
-    expect(result.bag.color).toMatch(/^var\(--fss-[0-9a-f]{8}-color\)$/);
+    expect(result.tree.bag.color).toMatch(/^var\(--fss-[0-9a-f]{8}-color\)$/);
     expect(result.dynamics).toHaveLength(1);
     expect(result.dynamics[0]!.property).toBe('color');
     expect(result.dynamics[0]!.varName).toBe(`--${result.className}-color`);

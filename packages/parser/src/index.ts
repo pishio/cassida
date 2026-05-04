@@ -1,8 +1,10 @@
 import { parse, type ParserPlugin } from '@babel/parser';
 import generateModule from '@babel/generator';
-import traverseModule from '@babel/traverse';
+import traverseModule, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import {
+  argModifiers,
+  canonicalModifiers,
   compileOps,
   cssToCamel,
   DYNAMIC_TAG,
@@ -11,6 +13,7 @@ import {
   type DynamicSlot,
   type Op,
   type Registry,
+  type Scope,
 } from '@fss/compiler';
 
 // Babel's ESM packaging exposes the function under `.default` when imported
@@ -42,6 +45,11 @@ export interface TransformResult {
 const NON_LITERAL: unique symbol = Symbol('fss.non-literal');
 type NonLiteral = typeof NON_LITERAL;
 
+interface WalkContext {
+  readonly dynamicSources: Map<string, t.Expression>;
+  readonly counter: { n: number };
+}
+
 export function transform(source: string, options: TransformOptions): TransformResult {
   const importSource = options.importSource ?? '@fss/core';
 
@@ -55,8 +63,7 @@ export function transform(source: string, options: TransformOptions): TransformR
   if (options.filename !== undefined) parseOpts.sourceFilename = options.filename;
   const ast = parse(source, parseOpts);
 
-  // First pass: collect every local name bound to the `fss` named import
-  // from the configured source. Order-independent of JSX usage.
+  // First pass: collect every local name bound to the `fss` named import.
   const fssBindings = new Set<string>();
   traverse(ast, {
     ImportDeclaration(path) {
@@ -79,119 +86,39 @@ export function transform(source: string, options: TransformOptions): TransformR
 
   const rules: CompiledRule[] = [];
   let transformed = false;
-
-  // Per-file dynamic-slot tracking: each non-literal arg gets a fresh
-  // sourceId; the AST expression is stashed for later re-injection into
-  // the element's inline style.
-  let dynamicCounter = 0;
   const dynamicSources = new Map<string, t.Expression>();
-
-  const readArgs = (args: ReadonlyArray<t.Node>): unknown[] | null => {
-    const out: unknown[] = [];
-    for (const a of args) {
-      const v = literalToValue(a);
-      if (v !== NON_LITERAL) {
-        out.push(v);
-        continue;
-      }
-      if (!t.isExpression(a)) return null;
-      const id = `slot-${++dynamicCounter}`;
-      dynamicSources.set(id, a);
-      out.push({ [DYNAMIC_TAG]: true, id });
-    }
-    return out;
-  };
-
-  const collectOps = (node: t.Node): Op[] | null => {
-    const ops: Op[] = [];
-    let current: t.Node = node;
-
-    while (true) {
-      if (!t.isCallExpression(current)) return null;
-      const callee = current.callee;
-
-      if (t.isMemberExpression(callee) && !callee.computed && t.isIdentifier(callee.property)) {
-        const args = readArgs(current.arguments);
-        if (!args) return null;
-        ops.push({ method: callee.property.name, args });
-        current = callee.object;
-        continue;
-      }
-
-      if (t.isIdentifier(callee) && fssBindings.has(callee.name)) {
-        if (current.arguments.length !== 0) return null;
-        break;
-      }
-
-      return null;
-    }
-
-    // Phase 1: each op must be all-literal OR exactly-one-dynamic.
-    for (const op of ops) {
-      const dynamics = op.args.filter(isDynamic);
-      if (dynamics.length > 0 && (op.args.length !== 1 || dynamics.length !== 1)) {
-        return null;
-      }
-    }
-
-    return ops.reverse();
-  };
+  const counter = { n: 0 };
+  const ctx: WalkContext = { dynamicSources, counter };
 
   traverse(ast, {
     JSXSpreadAttribute(path) {
-      const ops = collectOps(path.node.argument);
+      const argPath = path.get('argument') as NodePath;
+      const ops = walkChain(argPath, fssBindings, ctx);
       if (!ops) return;
 
       const opening = path.parent;
       if (!t.isJSXOpeningElement(opening)) return;
 
-      // Reject multiple {...fss()} spreads on the same element. We use a
-      // throwaway sources map for the probe so we don't pollute counters.
-      const probeCount = (n: t.Node): number => {
-        const probeSources = new Map<string, t.Expression>();
-        let probeCounter = 0;
-        const probeReadArgs = (args: ReadonlyArray<t.Node>): unknown[] | null => {
-          const out: unknown[] = [];
-          for (const a of args) {
-            const v = literalToValue(a);
-            if (v !== NON_LITERAL) {
-              out.push(v);
-              continue;
-            }
-            if (!t.isExpression(a)) return null;
-            const id = `probe-${++probeCounter}`;
-            probeSources.set(id, a);
-            out.push({ [DYNAMIC_TAG]: true, id });
-          }
-          return out;
-        };
-        const probeCollect = (node: t.Node): Op[] | null => {
-          const out: Op[] = [];
-          let cur: t.Node = node;
-          while (true) {
-            if (!t.isCallExpression(cur)) return null;
-            const callee = cur.callee;
-            if (t.isMemberExpression(callee) && !callee.computed && t.isIdentifier(callee.property)) {
-              const args = probeReadArgs(cur.arguments);
-              if (!args) return null;
-              out.push({ method: callee.property.name, args });
-              cur = callee.object;
-              continue;
-            }
-            if (t.isIdentifier(callee) && fssBindings.has(callee.name)) {
-              if (cur.arguments.length !== 0) return null;
-              break;
-            }
-            return null;
-          }
-          return out;
-        };
-        return probeCollect(n) === null ? 0 : 1;
+      // Reject multiple {...fss()} spreads on the same element.
+      const probeCtx: WalkContext = {
+        dynamicSources: new Map(),
+        counter: { n: 0 },
       };
-
-      const otherFssSpreads = opening.attributes.filter(
-        (a) => a !== path.node && t.isJSXSpreadAttribute(a) && probeCount(a.argument) > 0,
-      );
+      const otherFssSpreads = opening.attributes.filter((a) => {
+        if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
+        // Build a NodePath for the sibling attribute's argument by
+        // re-traversing — cheap on small attribute lists.
+        let probed: Op[] | null = null;
+        path.parentPath?.traverse({
+          JSXSpreadAttribute(p) {
+            if (p.node === a) {
+              probed = walkChain(p.get('argument') as NodePath, fssBindings, probeCtx);
+              p.stop();
+            }
+          },
+        });
+        return probed !== null;
+      });
       if (otherFssSpreads.length > 0) {
         throw path.buildCodeFrameError(
           '[fss] Multiple {...fss()} spreads on the same JSX element are not supported. Combine them into a single chain.',
@@ -201,7 +128,6 @@ export function transform(source: string, options: TransformOptions): TransformR
       const compiled = compileOps(ops, { registry: options.registry });
       rules.push(compiled);
 
-      // Locate sibling style/className attributes.
       let spreadIdx = -1;
       let styleIdx = -1;
       let classNameIdx = -1;
@@ -226,13 +152,16 @@ export function transform(source: string, options: TransformOptions): TransformR
       }
 
       const fssWins = spreadIdx > styleIdx;
-      const fssCssProps = Object.keys(compiled.bag);
+      // Conflict-filter targets only the BASE scope's properties; user's
+      // inline style cannot conflict with `:hover { ... }` etc. because
+      // those don't apply at the default state.
+      const fssBaseCssProps = Object.keys(compiled.tree.bag);
 
       const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, compiled.className);
       const styleResult = decideStyleAttr(
         existingStyleAttr,
         compiled.dynamics,
-        fssCssProps,
+        fssBaseCssProps,
         dynamicSources,
         fssWins,
       );
@@ -265,6 +194,187 @@ export function transform(source: string, options: TransformOptions): TransformR
   if (options.filename !== undefined) generateOpts.sourceFileName = options.filename;
   const out = generate(ast, generateOpts, source);
   return { code: out.code, rules, map: out.map ?? null, transformed: true };
+}
+
+/**
+ * Walks a `fss().a().b()...` chain backward from the outermost call,
+ * accumulating ops in source order. Modifiers (`hover`, `focus`,
+ * `media`, `on`, …) recurse into their callback's body.
+ *
+ * Returns null when:
+ * - the expression isn't rooted at one of `chainRoots`
+ * - any op has unsupported argument shape (mixed dynamic+literal,
+ *   spread arguments, multiple-or-zero callback params, etc.)
+ *
+ * On null, the caller leaves the JSX untouched (runtime fallback).
+ */
+function walkChain(
+  startPath: NodePath,
+  chainRoots: ReadonlySet<string>,
+  ctx: WalkContext,
+): Op[] | null {
+  const ops: Op[] = [];
+  let current: NodePath = startPath;
+
+  while (true) {
+    // Inner chains (callbacks) terminate at the parameter Identifier
+    // itself: `c.color('red')` ends at `c`, not at `c()`. Outer chains
+    // terminate at `fss()` — handled below in the CallExpression
+    // branch — so both forms are accepted but distinguished here.
+    if (t.isIdentifier(current.node) && chainRoots.has(current.node.name)) {
+      break;
+    }
+
+    if (!t.isCallExpression(current.node)) return null;
+    const calleePath = current.get('callee') as NodePath;
+    const callee = calleePath.node;
+
+    if (
+      t.isMemberExpression(callee) &&
+      !callee.computed &&
+      t.isIdentifier(callee.property)
+    ) {
+      const methodName = callee.property.name;
+      const argPaths = current.get('arguments') as NodePath[];
+
+      if (methodName in canonicalModifiers) {
+        // Zero-arg modifier: takes a single callback.
+        if (argPaths.length !== 1) return null;
+        const innerOps = collectFromCallback(argPaths[0]!, ctx);
+        if (innerOps === null) return null;
+        const scope =
+          canonicalModifiers[methodName as keyof typeof canonicalModifiers];
+        ops.push({ scope, ops: innerOps });
+      } else if (methodName in argModifiers) {
+        // Arg-taking modifier: (selector|query, callback).
+        if (argPaths.length !== 2) return null;
+        const argEval = argPaths[0]!.evaluate();
+        if (!argEval.confident || typeof argEval.value !== 'string') return null;
+        const innerOps = collectFromCallback(argPaths[1]!, ctx);
+        if (innerOps === null) return null;
+        const scope = inferScope(
+          methodName as keyof typeof argModifiers,
+          argEval.value,
+        );
+        ops.push({ scope, ops: innerOps });
+      } else {
+        // Plain style method.
+        const args = readArgs(argPaths, ctx);
+        if (args === null) return null;
+        // Phase 1 limitation carries through Phase 2: each op must be
+        // all-literal or single-dynamic.
+        const dynamics = args.filter(isDynamic);
+        if (dynamics.length > 0 && (args.length !== 1 || dynamics.length !== 1)) {
+          return null;
+        }
+        ops.push({ method: methodName, args });
+      }
+
+      current = calleePath.get('object') as NodePath;
+      continue;
+    }
+
+    if (t.isIdentifier(callee) && chainRoots.has(callee.name)) {
+      if (current.node.arguments.length !== 0) return null;
+      break;
+    }
+
+    return null;
+  }
+
+  return ops.reverse();
+}
+
+function collectFromCallback(cbPath: NodePath, ctx: WalkContext): Op[] | null {
+  if (!t.isArrowFunctionExpression(cbPath.node)) return null;
+  const params = cbPath.node.params;
+  if (params.length === 0) return [];
+  if (params.length > 1) return null;
+  const param = params[0]!;
+  if (!t.isIdentifier(param)) return null;
+  const innerRoots = new Set([param.name]);
+
+  const body = cbPath.node.body;
+  if (t.isBlockStatement(body)) {
+    return collectFromBlock(cbPath.get('body') as NodePath, innerRoots, ctx);
+  }
+  return walkChain(cbPath.get('body') as NodePath, innerRoots, ctx);
+}
+
+function collectFromBlock(
+  blockPath: NodePath,
+  innerRoots: ReadonlySet<string>,
+  ctx: WalkContext,
+): Op[] | null {
+  if (!t.isBlockStatement(blockPath.node)) return null;
+  const allOps: Op[] = [];
+  const stmtPaths = blockPath.get('body') as NodePath[];
+  for (const stmtPath of stmtPaths) {
+    if (t.isExpressionStatement(stmtPath.node)) {
+      const exprPath = stmtPath.get('expression') as NodePath;
+      const ops = walkChain(exprPath, innerRoots, ctx);
+      if (ops === null) return null;
+      allOps.push(...ops);
+    } else if (t.isReturnStatement(stmtPath.node)) {
+      if (stmtPath.node.argument === null) continue;
+      const argPath = stmtPath.get('argument') as NodePath;
+      const ops = walkChain(argPath, innerRoots, ctx);
+      if (ops === null) return null;
+      allOps.push(...ops);
+    } else {
+      return null;
+    }
+  }
+  return allOps;
+}
+
+function readArgs(argPaths: NodePath[], ctx: WalkContext): unknown[] | null {
+  const out: unknown[] = [];
+  for (const argPath of argPaths) {
+    const node = argPath.node;
+    if (!t.isExpression(node)) return null;
+
+    // Plain literal (fastest path; covers strings, numbers, booleans,
+    // template literals without expressions, unary minus on numbers).
+    const lit = literalToValue(node);
+    if (lit !== NON_LITERAL) {
+      out.push(lit);
+      continue;
+    }
+
+    // Babel's static evaluator. Handles `BASE * 2`, `'rgb(' + r + ')'`
+    // when the operands are themselves confident, etc. No JS execution
+    // sandbox is involved — Babel evaluates pure expressions in-place.
+    const evald = argPath.evaluate();
+    if (evald.confident) {
+      out.push(evald.value);
+      continue;
+    }
+
+    // Dynamic — promote to CSS variable.
+    const id = `slot-${++ctx.counter.n}`;
+    ctx.dynamicSources.set(id, node);
+    out.push({ [DYNAMIC_TAG]: true, id });
+  }
+  return out;
+}
+
+function inferScope(
+  modifier: keyof typeof argModifiers,
+  value: string,
+): Scope {
+  if (modifier === 'media') {
+    return { kind: 'media', query: value.replace(/^@media\s*/i, '').trim() };
+  }
+  // 'on': sniff the selector form.
+  const trimmed = value.trim();
+  if (/^@media\b/i.test(trimmed)) {
+    return { kind: 'media', query: trimmed.replace(/^@media\s*/i, '').trim() };
+  }
+  if (trimmed.startsWith(':') || trimmed.startsWith('::')) {
+    return { kind: 'pseudo', selector: trimmed };
+  }
+  return { kind: 'raw', selector: trimmed };
 }
 
 function literalToValue(node: t.Node): unknown | NonLiteral {
@@ -333,9 +443,7 @@ function getExistingStyleExpr(attr: t.JSXAttribute | null): t.Expression | null 
 }
 
 interface StyleDecision {
-  /** The new `style=` attribute, or `null` if no style attribute should be present. */
   readonly attr: t.JSXAttribute | null;
-  /** Whether the user's existing `style=` attribute should be removed from the JSX. */
   readonly replacesExisting: boolean;
 }
 
@@ -349,11 +457,6 @@ function decideStyleAttr(
   const fssCamelProps = new Set(fssCssProps.map(cssToCamel));
   const existingExpr = getExistingStyleExpr(existing);
 
-  // We must take ownership of the style attribute when:
-  // - There are dynamics (need to inject CSS-var entries), OR
-  // - FSS wins and user's static style sets a property FSS also controls
-  //   (we must drop user's key so the class rule resolves instead of
-  //   being overridden by inline > class).
   let mustReplace = dynamics.length > 0;
   if (!mustReplace && fssWins && existingExpr !== null && t.isObjectExpression(existingExpr)) {
     for (const p of existingExpr.properties) {
@@ -371,7 +474,6 @@ function decideStyleAttr(
     return { attr: null, replacesExisting: false };
   }
 
-  // Build the FSS dynamic var entries.
   const fssVarProps: t.ObjectProperty[] = dynamics.map((slot) => {
     const value = dynamicSources.get(slot.sourceId);
     if (!value) {
@@ -380,10 +482,6 @@ function decideStyleAttr(
     return t.objectProperty(t.stringLiteral(slot.varName), value);
   });
 
-  // Carry user's style entries through, filtering conflicting keys when
-  // FSS wins. Non-literal user-style is spread as-is — we cannot
-  // statically inspect its keys (Phase 1 limitation; documented in
-  // CLAUDE.md).
   const userProps: (t.ObjectProperty | t.SpreadElement)[] = [];
   if (existingExpr !== null) {
     if (t.isObjectExpression(existingExpr)) {
@@ -406,8 +504,6 @@ function decideStyleAttr(
     : [...fssVarProps, ...userProps];
 
   if (props.length === 0) {
-    // We took ownership only to drop user's conflicting keys, leaving
-    // nothing behind. Still drop the old attribute; emit nothing new.
     return { attr: null, replacesExisting: true };
   }
 

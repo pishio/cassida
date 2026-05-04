@@ -1,11 +1,23 @@
 export type {
   Op,
+  MethodOp,
+  ScopedOp,
+  Scope,
   PropertyBag,
+  ScopeBag,
   CompiledRule,
   DynamicArg,
   DynamicSlot,
 } from './types.js';
-export { DYNAMIC_TAG, DYNAMIC_PLACEHOLDER, isDynamic } from './types.js';
+export {
+  DYNAMIC_TAG,
+  DYNAMIC_PLACEHOLDER,
+  isDynamic,
+  isMethodOp,
+  isScopedOp,
+} from './types.js';
+export { canonicalModifiers, argModifiers, isModifierMethod } from './modifier-spec.js';
+export type { CanonicalModifierName, ArgModifierName } from './modifier-spec.js';
 export type { Registry, RegistryEntry, Formatter, AliasMap } from './registry.js';
 export {
   defaultRegistry,
@@ -21,7 +33,6 @@ export type {
   PropertyMeta,
 } from './property-spec.js';
 export { Canonicalizer } from './canonicalizer.js';
-export type { CollapsedChain } from './canonicalizer.js';
 export { hash, DEFAULT_PREFIX, DEFAULT_LENGTH } from './hasher.js';
 export type { HashOptions } from './hasher.js';
 export { compileOps } from './compile.js';

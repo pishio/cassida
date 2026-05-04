@@ -15,7 +15,7 @@ describe('CssEmitter', () => {
   it('wraps rules in @layer fss by default', () => {
     const e = new CssEmitter();
     e.add(compile([{ method: 'color', args: ['blue'] }]));
-    expect(e.emit()).toMatch(/^@layer fss\{\.fss-[0-9a-f]{8}\{color:blue\}\}$/);
+    expect(e.emit()).toMatch(/^@layer fss\{\.fss-[0-9a-f]{8}\{color:blue;?\}\}$/);
   });
 
   it('uses a custom layer name', () => {
@@ -27,7 +27,7 @@ describe('CssEmitter', () => {
   it('skips the @layer wrap when layer is null', () => {
     const e = new CssEmitter({ layer: null });
     e.add(compile([{ method: 'color', args: ['blue'] }]));
-    expect(e.emit()).toMatch(/^\.fss-[0-9a-f]{8}\{color:blue\}$/);
+    expect(e.emit()).toMatch(/^\.fss-[0-9a-f]{8}\{color:blue;?\}$/);
   });
 
   it('deduplicates identical rules across calls', () => {
@@ -52,7 +52,12 @@ describe('CssEmitter', () => {
     e.add(real);
     const forged: CompiledRule = {
       className: real.className,
-      bag: { color: 'green' },
+      tree: {
+        scope: null,
+        bag: { color: 'green' },
+        slots: {},
+        children: [],
+      },
       canonical: '[["color","green"]]',
       dynamics: [],
     };
@@ -68,7 +73,7 @@ describe('CssEmitter', () => {
         { method: 'bg', args: ['white'] },
       ]),
     );
-    expect(e.emit()).toMatch(/\{background-color:white;color:blue;margin-top:10em\}/);
+    expect(e.emit()).toMatch(/\{background-color:white;color:blue;margin-top:10em;?\}/);
   });
 });
 
@@ -89,7 +94,7 @@ describe('CssEmitter — dynamic values & @property', () => {
     const rule = compile([{ method: 'color', args: [dyn('s0')] }]);
     e.add(rule);
     const out = e.emit();
-    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{color:var\(--fss-[0-9a-f]{8}-color\)\}/);
+    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{color:var\(--fss-[0-9a-f]{8}-color\);?\}/);
   });
 
   it('skips @property emission for non-animatable dynamic slots', () => {
@@ -105,6 +110,48 @@ describe('CssEmitter — dynamic values & @property', () => {
     e.add(compile([{ method: 'color', args: [dyn('a')] }]));
     e.add(compile([{ method: 'color', args: [dyn('b')] }]));
     expect(e.propertyCount()).toBe(1);
+  });
+
+  it('emits a flat :hover rule for a scoped chain (via stylis)', () => {
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        { method: 'color', args: ['blue'] },
+        { scope: { kind: 'pseudo', selector: ':hover' }, ops: [{ method: 'color', args: ['red'] }] },
+      ]),
+    );
+    const out = e.emit();
+    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{color:blue;?\}/);
+    expect(out).toMatch(/\.fss-[0-9a-f]{8}:hover\{color:red;?\}/);
+  });
+
+  it('hoists @media blocks to top level when a class has them', () => {
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        { method: 'fontSize', args: [14] },
+        { scope: { kind: 'media', query: '(min-width: 768px)' }, ops: [{ method: 'fontSize', args: [20] }] },
+      ]),
+    );
+    const out = e.emit();
+    expect(out).toMatch(/\.fss-[0-9a-f]{8}\{font-size:14px;?\}/);
+    expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.fss-[0-9a-f]{8}\{font-size:20px;?\}\}/);
+  });
+
+  it('flattens nested :hover inside @media', () => {
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        {
+          scope: { kind: 'media', query: '(min-width: 768px)' },
+          ops: [
+            { scope: { kind: 'pseudo', selector: ':hover' }, ops: [{ method: 'color', args: ['red'] }] },
+          ],
+        },
+      ]),
+    );
+    const out = e.emit();
+    expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.fss-[0-9a-f]{8}:hover\{color:red;?\}\}/);
   });
 
   it('mixes static and dynamic declarations in the same rule', () => {

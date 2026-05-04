@@ -3,6 +3,9 @@ import {
   type CompiledRule,
   type DynamicSlot,
   type Op,
+  type PropertyBag,
+  type Scope,
+  type ScopeBag,
 } from './types.js';
 import type { Registry } from './registry.js';
 import { Canonicalizer } from './canonicalizer.js';
@@ -23,48 +26,87 @@ export interface CompileOptions extends HashOptions {
 
 /**
  * Pure: an `Op[]` chain in, a deterministic `CompiledRule` out.
- * No I/O, no shared state. Cross-call deduplication is the emitter's job.
  *
- * For dynamic chains, the canonical key uses placeholders rather than
- * concrete values, so the resulting `className` depends only on the
- * *shape* of the bag. Each dynamic slot lands in `dynamics` with a fresh
- * `--<className>-<prop>` variable name; the parser uses these to populate
- * the element's inline style.
+ * The canonical key is computed from the *shape* of the scope tree (not
+ * concrete dynamic values), so chains with the same set of properties
+ * and modifiers collapse to the same className regardless of the
+ * dynamic source values. Each dynamic slot ends up in `dynamics` with a
+ * fresh `--<className>-<scope-segments>-<prop>` variable name; the
+ * parser uses these to populate the element's inline style.
  */
 export function compileOps(ops: readonly Op[], options: CompileOptions): CompiledRule {
   const canon = new Canonicalizer(options.registry);
-  const { bag: rawBag, slotByProperty } = canon.collapse(ops);
-  const canonical = canon.canonicalKey(rawBag);
+  const rawTree = canon.collapse(ops);
+  const canonical = canon.canonicalKey(rawTree);
   const className = hash(canonical, options);
 
   const meta = options.propertyMeta ?? defaultPropertyMeta;
-
-  const emitBag: Record<string, string> = {};
   const dynamics: DynamicSlot[] = [];
+  const tree = substituteVars(rawTree, className, meta, dynamics, []);
 
-  for (const prop of Object.keys(rawBag).sort()) {
-    const val = rawBag[prop]!;
+  return {
+    className,
+    tree,
+    canonical,
+    dynamics: Object.freeze(dynamics),
+  };
+}
+
+function substituteVars(
+  node: ScopeBag,
+  className: string,
+  meta: Readonly<Record<string, PropertyMeta>>,
+  dynamics: DynamicSlot[],
+  scopePath: readonly Scope[],
+): ScopeBag {
+  const newBag: Record<string, string> = {};
+  for (const prop of Object.keys(node.bag).sort()) {
+    const val = node.bag[prop]!;
     if (val === DYNAMIC_PLACEHOLDER) {
-      const varName = `--${className}-${prop}`;
-      emitBag[prop] = `var(${varName})`;
+      const varName = makeVarName(className, scopePath, prop);
+      newBag[prop] = `var(${varName})`;
       const m = meta[prop];
       dynamics.push({
         property: prop,
         varName,
-        sourceId: slotByProperty[prop]!,
+        sourceId: node.slots[prop]!,
         animatable: m?.animatable ?? false,
         syntax: m?.syntax,
         initialValue: m?.initialValue,
+        scopePath: [...scopePath],
       });
     } else {
-      emitBag[prop] = val;
+      newBag[prop] = val;
     }
   }
 
+  const newChildren: ScopeBag[] = node.children.map((c) =>
+    substituteVars(c, className, meta, dynamics, [...scopePath, c.scope!]),
+  );
+
   return {
-    className,
-    bag: Object.freeze(emitBag),
-    canonical,
-    dynamics: Object.freeze(dynamics),
+    scope: node.scope,
+    bag: Object.freeze(newBag) as PropertyBag,
+    slots: node.slots,
+    children: Object.freeze(newChildren),
   };
+}
+
+function makeVarName(
+  className: string,
+  scopePath: readonly Scope[],
+  prop: string,
+): string {
+  const parts = [className];
+  for (const s of scopePath) {
+    parts.push(scopeToVarSegment(s));
+  }
+  parts.push(prop);
+  return '--' + parts.join('-');
+}
+
+function scopeToVarSegment(s: Scope): string {
+  if (s.kind === 'pseudo') return s.selector.replace(/:/g, '_');
+  if (s.kind === 'media') return 'm-' + s.query.replace(/[^a-zA-Z0-9]/g, '_');
+  return 'r-' + s.selector.replace(/[^a-zA-Z0-9]/g, '_');
 }
