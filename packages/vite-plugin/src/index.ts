@@ -4,6 +4,7 @@ import {
   CssEmitter,
   defaultRegistry,
   mergeConfig,
+  parseFssConfig,
   type CompiledRule,
   type FssConfig,
   type Registry,
@@ -130,6 +131,10 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
       const importStmt = `import ${JSON.stringify(virtualIdFor(cleanId))};\n`;
       return {
         code: importStmt + result.code,
+        // Babel's source map shape conforms to Rollup's SourceMapInput
+        // structurally, but rollup's types aren't a direct dep here so
+        // we type-launder to `never` (the bottom type, assignable to
+        // anything). This is a known idiom for Vite plugin map fields.
         map: result.map as never,
       };
     },
@@ -137,15 +142,19 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
 }
 
 /**
- * Extract the JSON-friendly config slice from plugin options. Drops
+ * Extract the JSON-friendly config slice from plugin options and run
+ * it through the same Zod validator as `fss.config.json`. Drops
  * runtime-only fields (`registry`, `include`) so the result can be
- * fed cleanly into `mergeConfig`.
+ * fed cleanly into `mergeConfig`. Inline options receive the same
+ * validation guarantees as the file: typos and out-of-range values
+ * surface as a single error at plugin construction time.
  */
 function extractConfig(options: FssPluginOptions): FssConfig | undefined {
   const { registry, include, ...cfg } = options;
   void registry;
   void include;
-  return Object.keys(cfg).length === 0 ? undefined : (cfg as FssConfig);
+  if (Object.keys(cfg).length === 0) return undefined;
+  return parseFssConfig(cfg, '<vite.config.ts plugin options>');
 }
 
 function loadFileConfig(root: string): FssConfig | undefined {
@@ -159,11 +168,15 @@ function loadFileConfig(root: string): FssConfig | undefined {
       `[fss] failed to read ${path}: ${(e as Error).message}`,
     );
   }
+  let json: unknown;
   try {
-    return JSON.parse(raw) as FssConfig;
+    json = JSON.parse(raw);
   } catch (e) {
     throw new Error(
       `[fss] failed to parse ${path}: ${(e as Error).message}`,
     );
   }
+  // Zod-validated at the I/O boundary — typos in the file surface as
+  // build-time errors with a precise field path.
+  return parseFssConfig(json, path);
 }

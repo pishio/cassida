@@ -1,57 +1,69 @@
-/**
- * Media-query ordering policy.
- *
- * - `mobile-first`: `@media (min-width: N)` ascending by N (small N first),
- *   `@media (max-width: N)` descending by N. This matches the typical
- *   mobile-first cascade where larger viewports override smaller ones.
- * - `desktop-first`: opposite directions. Larger min-width first, smaller
- *   max-width first.
- *
- * Non-width media queries (`print`, `prefers-color-scheme`, ...) sort
- * lexicographically in either mode and come *after* width-based queries.
- */
-export type MediaSort = 'mobile-first' | 'desktop-first';
+import { z } from 'zod';
 
 /**
- * CSS-emission strategy.
- *
- * - `rule-per-class`: one CSS rule per className, declarations baked in.
- * - `shared-by-declaration`: one CSS rule per (property, value) pair with
- *   a grouped selector list. Single class per element preserved at the
- *   markup level. (Phase 4+ feature; the option is recognized now but
- *   not yet implemented in the emitter.)
+ * Schema definitions live first so the user-facing `FssConfig` type
+ * can be derived from them via `z.infer`. Hand-writing the type and
+ * the validator separately is the kind of "type lies" we explicitly
+ * want to eliminate.
  */
-export type CssMode = 'rule-per-class' | 'shared-by-declaration';
+
+const MediaSortSchema = z.enum(['mobile-first', 'desktop-first']);
+const CssModeSchema = z.enum(['rule-per-class', 'shared-by-declaration']);
+
+const HashSchema = z
+  .object({
+    prefix: z.string().optional(),
+    length: z.number().int().min(4).max(40).optional(),
+  })
+  .strict();
+
+const MediaSchema = z
+  .object({
+    sort: MediaSortSchema.optional(),
+  })
+  .strict();
+
+const LightningcssSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    minify: z.boolean().optional(),
+    targets: z.string().optional(),
+  })
+  .strict();
+
+const CssSchema = z
+  .object({
+    mode: CssModeSchema.optional(),
+    lightningcss: LightningcssSchema.optional(),
+  })
+  .strict();
 
 /**
- * User-facing config shape. Every field is optional; missing fields fall
- * through to `defaultConfig` via `mergeConfig`. Designed to be JSON-
- * serializable so it can live in `fss.config.json` at the project root.
+ * Strict schema for `fss.config.json` and inline plugin options.
+ * `.strict()` rejects unknown fields so config typos surface as
+ * build-time errors instead of silently ignored entries.
  */
-export interface FssConfig {
-  readonly layer?: string | null;
-  readonly importSource?: string;
-  readonly hash?: {
-    readonly prefix?: string;
-    readonly length?: number;
-  };
-  readonly media?: {
-    readonly sort?: MediaSort;
-  };
-  readonly css?: {
-    readonly mode?: CssMode;
-    readonly lightningcss?: {
-      readonly enabled?: boolean;
-      readonly minify?: boolean;
-      readonly targets?: string;
-    };
-  };
-}
+export const FssConfigSchema = z
+  .object({
+    /** Editor convention; allowed but unused. */
+    $schema: z.string().optional(),
+    layer: z.union([z.string(), z.null()]).optional(),
+    importSource: z.string().optional(),
+    hash: HashSchema.optional(),
+    media: MediaSchema.optional(),
+    css: CssSchema.optional(),
+  })
+  .strict();
+
+/** User-facing config: every field optional, derived from the schema. */
+export type FssConfig = z.infer<typeof FssConfigSchema>;
+export type MediaSort = z.infer<typeof MediaSortSchema>;
+export type CssMode = z.infer<typeof CssModeSchema>;
 
 /**
- * Fully-populated config — the form consumed by the emitter, parser, and
- * vite-plugin internals. All fields are required; every optional in
- * `FssConfig` is filled in from `defaultConfig`.
+ * Fully-populated config — the form consumed by the emitter, parser,
+ * and vite-plugin internals. Every field is required; partial
+ * `FssConfig` inputs are merged onto `defaultConfig` to produce one.
  */
 export interface ResolvedFssConfig {
   readonly layer: string | null;
@@ -91,7 +103,7 @@ export const defaultConfig: ResolvedFssConfig = Object.freeze({
       targets: 'defaults',
     }),
   }),
-}) as ResolvedFssConfig;
+}) satisfies ResolvedFssConfig;
 
 /**
  * Deep-merge a sequence of partial configs over `defaultConfig`. Later
@@ -133,3 +145,36 @@ export function mergeConfig(
   }
   return acc;
 }
+
+/**
+ * Validate raw input as a `FssConfig`. Use only at I/O boundaries
+ * (`fss.config.json`, plugin options handed in from `vite.config.ts`);
+ * inside the compiler/parser/emitter, prefer `ResolvedFssConfig`.
+ *
+ * Errors surface as a single `Error` with a multi-line message that
+ * names every invalid field, suitable for Vite's overlay or terminal
+ * output. `sourcePath` (when supplied) is woven into the heading so
+ * monorepo users see which config produced the error.
+ */
+export function parseFssConfig(input: unknown, sourcePath?: string): FssConfig {
+  const result = FssConfigSchema.safeParse(input);
+  if (result.success) return result.data;
+  const issues = result.error.issues
+    .map((i) => `  - ${i.path.length === 0 ? '<root>' : i.path.join('.')}: ${i.message}`)
+    .join('\n');
+  const where = sourcePath ? ` in ${sourcePath}` : '';
+  throw new Error(`[fss] invalid configuration${where}:\n${issues}`);
+}
+
+/**
+ * Schema for the values `path.evaluate()` is allowed to inline as
+ * concrete CSS. Confidently-evaluated objects, arrays, and functions
+ * fail validation and fall through to dynamic-CSS-variable handling
+ * (they can't be inlined into CSS anyway).
+ */
+export const EvaluatedPrimitiveSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);

@@ -39,7 +39,13 @@ export { compileOps } from './compile.js';
 export type { CompileOptions } from './compile.js';
 export { CssEmitter } from './emitter.js';
 export type { CssEmitterOptions } from './emitter.js';
-export { defaultConfig, mergeConfig } from './config.js';
+export {
+  defaultConfig,
+  mergeConfig,
+  parseFssConfig,
+  FssConfigSchema,
+  EvaluatedPrimitiveSchema,
+} from './config.js';
 export type {
   FssConfig,
   ResolvedFssConfig,

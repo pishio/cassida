@@ -8,6 +8,7 @@ import {
   compileOps,
   cssToCamel,
   DYNAMIC_TAG,
+  EvaluatedPrimitiveSchema,
   isDynamic,
   type CompiledRule,
   type DynamicSlot,
@@ -15,6 +16,7 @@ import {
   type Registry,
   type Scope,
 } from '@fss/compiler';
+import { pathAs } from './path-guard.js';
 
 // Babel's ESM packaging exposes the function under `.default` when imported
 // from a Node ESM consumer. Tolerate either shape.
@@ -92,7 +94,9 @@ export function transform(source: string, options: TransformOptions): TransformR
 
   traverse(ast, {
     JSXSpreadAttribute(path) {
-      const argPath = path.get('argument') as NodePath;
+      // path.get('argument') on a typed NodePath<JSXSpreadAttribute>
+      // returns NodePath<Expression>; no cast needed.
+      const argPath = path.get('argument');
       const ops = walkChain(argPath, fssBindings, ctx);
       if (!ops) return;
 
@@ -106,13 +110,11 @@ export function transform(source: string, options: TransformOptions): TransformR
       };
       const otherFssSpreads = opening.attributes.filter((a) => {
         if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
-        // Build a NodePath for the sibling attribute's argument by
-        // re-traversing — cheap on small attribute lists.
         let probed: Op[] | null = null;
         path.parentPath?.traverse({
           JSXSpreadAttribute(p) {
             if (p.node === a) {
-              probed = walkChain(p.get('argument') as NodePath, fssBindings, probeCtx);
+              probed = walkChain(p.get('argument'), fssBindings, probeCtx);
               p.stop();
             }
           },
@@ -152,9 +154,6 @@ export function transform(source: string, options: TransformOptions): TransformR
       }
 
       const fssWins = spreadIdx > styleIdx;
-      // Conflict-filter targets only the BASE scope's properties; user's
-      // inline style cannot conflict with `:hover { ... }` etc. because
-      // those don't apply at the default state.
       const fssBaseCssProps = Object.keys(compiled.tree.bag);
 
       const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, compiled.className);
@@ -201,52 +200,50 @@ export function transform(source: string, options: TransformOptions): TransformR
  * accumulating ops in source order. Modifiers (`hover`, `focus`,
  * `media`, `on`, …) recurse into their callback's body.
  *
- * Returns null when:
- * - the expression isn't rooted at one of `chainRoots`
- * - any op has unsupported argument shape (mixed dynamic+literal,
- *   spread arguments, multiple-or-zero callback params, etc.)
+ * Type-narrowing is handled through `pathAs`, so this function never
+ * needs to spread `as NodePath` casts. Once a path is confirmed to be
+ * a `CallExpression`, `path.get('callee')` and `.get('arguments')`
+ * return correctly typed sub-paths automatically.
  *
- * On null, the caller leaves the JSX untouched (runtime fallback).
+ * Returns null when the expression isn't rooted at one of `chainRoots`,
+ * an op has unsupported argument shape (mixed dynamic+literal, spread
+ * arguments, multiple-or-zero callback params, etc.), or any other
+ * structural mismatch. On null the caller leaves the JSX untouched.
  */
 function walkChain(
-  startPath: NodePath,
+  start: NodePath,
   chainRoots: ReadonlySet<string>,
   ctx: WalkContext,
 ): Op[] | null {
   const ops: Op[] = [];
-  let current: NodePath = startPath;
+  let current: NodePath = start;
 
   while (true) {
-    // Inner chains (callbacks) terminate at the parameter Identifier
-    // itself: `c.color('red')` ends at `c`, not at `c()`. Outer chains
-    // terminate at `fss()` — handled below in the CallExpression
-    // branch — so both forms are accepted but distinguished here.
-    if (t.isIdentifier(current.node) && chainRoots.has(current.node.name)) {
-      break;
-    }
+    // Inner-chain root: bare Identifier matching a callback param.
+    const idPath = pathAs(current, t.isIdentifier);
+    if (idPath && chainRoots.has(idPath.node.name)) break;
 
-    if (!t.isCallExpression(current.node)) return null;
-    const calleePath = current.get('callee') as NodePath;
-    const callee = calleePath.node;
+    // Otherwise current must be a CallExpression to continue.
+    const callPath = pathAs(current, t.isCallExpression);
+    if (!callPath) return null;
 
-    if (
-      t.isMemberExpression(callee) &&
-      !callee.computed &&
-      t.isIdentifier(callee.property)
-    ) {
-      const methodName = callee.property.name;
-      const argPaths = current.get('arguments') as NodePath[];
+    const calleePath = callPath.get('callee');
+
+    // Branch A: callee is `obj.method(...)` — descend the chain.
+    const memberPath = pathAs(calleePath, t.isMemberExpression);
+    if (memberPath && !memberPath.node.computed) {
+      const propertyPath = pathAs(memberPath.get('property'), t.isIdentifier);
+      if (!propertyPath) return null;
+      const methodName = propertyPath.node.name;
+      const argPaths = callPath.get('arguments');
 
       if (methodName in canonicalModifiers) {
-        // Zero-arg modifier: takes a single callback.
         if (argPaths.length !== 1) return null;
         const innerOps = collectFromCallback(argPaths[0]!, ctx);
         if (innerOps === null) return null;
-        const scope =
-          canonicalModifiers[methodName as keyof typeof canonicalModifiers];
+        const scope = canonicalModifiers[methodName as keyof typeof canonicalModifiers];
         ops.push({ scope, ops: innerOps });
       } else if (methodName in argModifiers) {
-        // Arg-taking modifier: (selector|query, callback).
         if (argPaths.length !== 2) return null;
         const argEval = argPaths[0]!.evaluate();
         if (!argEval.confident || typeof argEval.value !== 'string') return null;
@@ -258,11 +255,8 @@ function walkChain(
         );
         ops.push({ scope, ops: innerOps });
       } else {
-        // Plain style method.
         const args = readArgs(argPaths, ctx);
         if (args === null) return null;
-        // Phase 1 limitation carries through Phase 2: each op must be
-        // all-literal or single-dynamic.
         const dynamics = args.filter(isDynamic);
         if (dynamics.length > 0 && (args.length !== 1 || dynamics.length !== 1)) {
           return null;
@@ -270,12 +264,14 @@ function walkChain(
         ops.push({ method: methodName, args });
       }
 
-      current = calleePath.get('object') as NodePath;
+      current = memberPath.get('object');
       continue;
     }
 
-    if (t.isIdentifier(callee) && chainRoots.has(callee.name)) {
-      if (current.node.arguments.length !== 0) return null;
+    // Branch B: callee is the chain root identifier `fss()`.
+    const fssIdPath = pathAs(calleePath, t.isIdentifier);
+    if (fssIdPath && chainRoots.has(fssIdPath.node.name)) {
+      if (callPath.node.arguments.length !== 0) return null;
       break;
     }
 
@@ -286,72 +282,80 @@ function walkChain(
 }
 
 function collectFromCallback(cbPath: NodePath, ctx: WalkContext): Op[] | null {
-  if (!t.isArrowFunctionExpression(cbPath.node)) return null;
-  const params = cbPath.node.params;
+  const arrowPath = pathAs(cbPath, t.isArrowFunctionExpression);
+  if (!arrowPath) return null;
+
+  const params = arrowPath.node.params;
   if (params.length === 0) return [];
   if (params.length > 1) return null;
   const param = params[0]!;
   if (!t.isIdentifier(param)) return null;
   const innerRoots = new Set([param.name]);
 
-  const body = cbPath.node.body;
-  if (t.isBlockStatement(body)) {
-    return collectFromBlock(cbPath.get('body') as NodePath, innerRoots, ctx);
-  }
-  return walkChain(cbPath.get('body') as NodePath, innerRoots, ctx);
+  const bodyPath = arrowPath.get('body');
+  const blockPath = pathAs(bodyPath, t.isBlockStatement);
+  if (blockPath) return collectFromBlock(blockPath, innerRoots, ctx);
+  return walkChain(bodyPath, innerRoots, ctx);
 }
 
 function collectFromBlock(
-  blockPath: NodePath,
+  blockPath: NodePath<t.BlockStatement>,
   innerRoots: ReadonlySet<string>,
   ctx: WalkContext,
 ): Op[] | null {
-  if (!t.isBlockStatement(blockPath.node)) return null;
   const allOps: Op[] = [];
-  const stmtPaths = blockPath.get('body') as NodePath[];
+  const stmtPaths = blockPath.get('body');
   for (const stmtPath of stmtPaths) {
-    if (t.isExpressionStatement(stmtPath.node)) {
-      const exprPath = stmtPath.get('expression') as NodePath;
+    const exprStmtPath = pathAs(stmtPath, t.isExpressionStatement);
+    if (exprStmtPath) {
+      const ops = walkChain(exprStmtPath.get('expression'), innerRoots, ctx);
+      if (ops === null) return null;
+      allOps.push(...ops);
+      continue;
+    }
+    const returnStmtPath = pathAs(stmtPath, t.isReturnStatement);
+    if (returnStmtPath) {
+      // ReturnStatement.argument is `Expression | null | undefined`;
+      // `pathAs` (with its widened input type) handles the nullable
+      // generic and narrows to NodePath<Expression> in one step.
+      const exprPath = pathAs(returnStmtPath.get('argument'), t.isExpression);
+      if (!exprPath) continue;
       const ops = walkChain(exprPath, innerRoots, ctx);
       if (ops === null) return null;
       allOps.push(...ops);
-    } else if (t.isReturnStatement(stmtPath.node)) {
-      if (stmtPath.node.argument === null) continue;
-      const argPath = stmtPath.get('argument') as NodePath;
-      const ops = walkChain(argPath, innerRoots, ctx);
-      if (ops === null) return null;
-      allOps.push(...ops);
-    } else {
-      return null;
+      continue;
     }
+    return null;
   }
   return allOps;
 }
 
-function readArgs(argPaths: NodePath[], ctx: WalkContext): unknown[] | null {
+function readArgs(argPaths: readonly NodePath[], ctx: WalkContext): unknown[] | null {
   const out: unknown[] = [];
   for (const argPath of argPaths) {
     const node = argPath.node;
     if (!t.isExpression(node)) return null;
 
-    // Plain literal (fastest path; covers strings, numbers, booleans,
-    // template literals without expressions, unary minus on numbers).
+    // 1) Plain literal — fastest path.
     const lit = literalToValue(node);
     if (lit !== NON_LITERAL) {
       out.push(lit);
       continue;
     }
 
-    // Babel's static evaluator. Handles `BASE * 2`, `'rgb(' + r + ')'`
-    // when the operands are themselves confident, etc. No JS execution
-    // sandbox is involved — Babel evaluates pure expressions in-place.
+    // 2) Babel's static evaluator. Validate the evaluated result is a
+    // CSS-inlineable primitive — confidently-evaluated objects, arrays,
+    // and undefineds fall through to dynamic-CSS-variable handling.
     const evald = argPath.evaluate();
     if (evald.confident) {
-      out.push(evald.value);
-      continue;
+      const validated = EvaluatedPrimitiveSchema.safeParse(evald.value);
+      if (validated.success) {
+        out.push(validated.data);
+        continue;
+      }
     }
 
-    // Dynamic — promote to CSS variable.
+    // 3) Dynamic — promote to CSS variable.
     const id = `slot-${++ctx.counter.n}`;
     ctx.dynamicSources.set(id, node);
     out.push({ [DYNAMIC_TAG]: true, id });
@@ -366,7 +370,6 @@ function inferScope(
   if (modifier === 'media') {
     return { kind: 'media', query: value.replace(/^@media\s*/i, '').trim() };
   }
-  // 'on': sniff the selector form.
   const trimmed = value.trim();
   if (/^@media\b/i.test(trimmed)) {
     return { kind: 'media', query: trimmed.replace(/^@media\s*/i, '').trim() };
@@ -420,7 +423,7 @@ function makeClassNameAttr(
             t.templateElement({ raw: '', cooked: '' }, false),
             t.templateElement({ raw: ` ${fssClass}`, cooked: ` ${fssClass}` }, true),
           ],
-          [expr as t.Expression],
+          [expr],
         ),
       ),
     );
@@ -439,7 +442,7 @@ function getExistingStyleExpr(attr: t.JSXAttribute | null): t.Expression | null 
   if (!t.isJSXExpressionContainer(attr.value)) return null;
   const expr = attr.value.expression;
   if (t.isJSXEmptyExpression(expr)) return null;
-  return expr as t.Expression;
+  return expr;
 }
 
 interface StyleDecision {
