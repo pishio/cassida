@@ -1,6 +1,6 @@
 {
   "name": "@cassida/parser",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Cassida Babel-based AST transform: detects cas() chains in JSX spread and rewrites them to static className attributes.",
   "license": "MIT",
   "type": "module",
@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@babel/generator": "^7.26.2",
@@ -50,5 +51,8 @@
     "compile-time",
     "single-class",
     "react"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

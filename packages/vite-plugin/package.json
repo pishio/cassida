@@ -1,6 +1,6 @@
 {
   "name": "@cassida/vite-plugin",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Vite plugin for Cassida: transforms cas() chains to static className + CSS at build time, served via virtual:cassida.css.",
   "license": "MIT",
   "type": "module",
@@ -17,7 +17,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@cassida/compiler": "workspace:*",
@@ -49,5 +50,8 @@
     "compile-time",
     "single-class",
     "react"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
