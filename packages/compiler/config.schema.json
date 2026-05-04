@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FssConfig",
+  "description": "FSS (Functional Style Sheet) configuration. Place this at the project root as fss.config.json. Every field is optional; missing fields fall back to FSS defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URL for editor autocomplete."
+    },
+    "layer": {
+      "type": ["string", "null"],
+      "description": "@layer name for the cascade-isolation wrapper. Use null to disable the @layer wrap entirely.",
+      "default": "fss"
+    },
+    "importSource": {
+      "type": "string",
+      "description": "Module specifier the parser recognizes as the source of `fss`. Renamed imports (`{ fss as ff }`) are honored automatically.",
+      "default": "@fss/core"
+    },
+    "hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Class-name hashing parameters.",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "description": "Prefix prepended to every generated class name.",
+          "default": "fss-"
+        },
+        "length": {
+          "type": "integer",
+          "description": "Hex characters of SHA-1 digest used as the hash. 8 is enough for ~tens of thousands of unique rules; bump to 10–12 for very large apps.",
+          "minimum": 4,
+          "maximum": 40,
+          "default": 8
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Media-query handling.",
+      "properties": {
+        "sort": {
+          "type": "string",
+          "enum": ["mobile-first", "desktop-first"],
+          "description": "Cascade direction for width-based @media queries. Mobile-first sorts min-width ascending and max-width descending; desktop-first reverses both.",
+          "default": "mobile-first"
+        }
+      }
+    },
+    "css": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CSS-emission strategy and post-processing.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["rule-per-class", "shared-by-declaration"],
+          "description": "rule-per-class: one rule per className with declarations baked in. shared-by-declaration: one rule per (property, value) with grouped selectors. Phase 4+ feature; recognized but not yet implemented.",
+          "default": "rule-per-class"
+        },
+        "lightningcss": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional lightningcss post-processing of the emitted CSS. Phase 5+ feature; recognized but not yet implemented.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "minify": {
+              "type": "boolean",
+              "default": true
+            },
+            "targets": {
+              "type": "string",
+              "description": "Browserslist string passed to lightningcss.",
+              "default": "defaults"
+            }
+          }
+        }
+      }
+    }
+  }
+}

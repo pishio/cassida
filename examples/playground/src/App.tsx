@@ -68,9 +68,13 @@ export default function App() {
         {...fss()
           .marginTop(16)
           .fontSize(14)
+          .media('(min-width: 1024px)', c => c.fontSize(24))
+          .media('(min-width: 480px)', c => c.fontSize(16))
           .media('(min-width: 768px)', c => c.fontSize(20))}
       >
-        Resize the window: this paragraph grows from 14px to 20px past 768px.
+        Resize: this paragraph grows 14 → 16 → 20 → 24 px across breakpoints.
+        Source order is intentionally scrambled — mobile-first sort puts the
+        @media blocks in numerical ascending order in the output CSS.
       </p>
 
       <a

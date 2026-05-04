@@ -308,6 +308,31 @@ describe('transform — path.evaluate() static evaluation', () => {
     expect(r.transformed).toBe(true);
     expect(r.rules[0]!.dynamics).toHaveLength(1);
   });
+
+  it('refuses to evaluate side-effecting expressions (Math.random) and falls back to dynamic with a stable hash', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss().opacity(Math.random())} />;
+    `;
+    const r1 = transform(src, opts);
+    const r2 = transform(src, opts);
+    expect(r1.transformed).toBe(true);
+    expect(r1.rules[0]!.dynamics).toHaveLength(1);
+    // The hash must be stable across builds — never derived from the
+    // dynamic value itself, only from the chain's structure.
+    expect(r1.rules[0]!.className).toBe(r2.rules[0]!.className);
+  });
+
+  it('Date.now() also stays dynamic and produces a deterministic class', () => {
+    const src = `
+      import { fss } from '@fss/core';
+      export const App = () => <div {...fss().marginTop(\`\${Date.now()}px\`)} />;
+    `;
+    const r1 = transform(src, opts);
+    const r2 = transform(src, opts);
+    expect(r1.rules[0]!.dynamics).toHaveLength(1);
+    expect(r1.rules[0]!.className).toBe(r2.rules[0]!.className);
+  });
 });
 
 describe('transform — JSX surgery (style merge / className concat)', () => {

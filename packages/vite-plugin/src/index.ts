@@ -1,8 +1,13 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   CssEmitter,
   defaultRegistry,
+  mergeConfig,
   type CompiledRule,
+  type FssConfig,
   type Registry,
+  type ResolvedFssConfig,
 } from '@fss/compiler';
 import { transform } from '@fss/parser';
 import type { Plugin, ViteDevServer } from 'vite';
@@ -16,30 +21,27 @@ import type { Plugin, ViteDevServer } from 'vite';
  */
 const VIRTUAL_PREFIX = 'virtual:fss.css?file=';
 const RESOLVED_PREFIX = '\0' + VIRTUAL_PREFIX;
+const CONFIG_FILENAME = 'fss.config.json';
 
-export interface FssPluginOptions {
+/**
+ * Plugin options exposed to `vite.config.ts`. Anything declared in
+ * `FssConfig` (the JSON-serializable shape) can also live in a
+ * `fss.config.json` at the project root; plugin options take precedence
+ * over the file. `registry` and `include` are runtime-only and have no
+ * file-config equivalent.
+ */
+export interface FssPluginOptions extends FssConfig {
   readonly registry?: Registry;
-  /**
-   * File-name pattern for the JSX/TSX inputs to transform.
-   * Defaults to `/\.[jt]sx$/`.
-   */
   readonly include?: RegExp;
-  /**
-   * `@layer` name for the wrapping cascade layer. Set to `null` to emit
-   * bare rules.
-   */
-  readonly layer?: string | null;
-  /**
-   * Module specifier to recognize as the source of `fss`. Defaults to
-   * `@fss/core`.
-   */
-  readonly importSource?: string;
 }
 
 export default function fss(options: FssPluginOptions = {}): Plugin {
   const include = options.include ?? /\.[jt]sx$/;
   const registry = options.registry ?? defaultRegistry;
-  const importSource = options.importSource ?? '@fss/core';
+
+  // Filled in `configResolved`; until then we use the in-memory defaults
+  // so unit-test usages without a Vite config still work.
+  let resolved: ResolvedFssConfig = mergeConfig(extractConfig(options));
 
   const rulesByFile = new Map<string, readonly CompiledRule[]>();
   let server: ViteDevServer | undefined;
@@ -47,9 +49,10 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
   function emitForFile(file: string): string {
     const rules = rulesByFile.get(file);
     if (!rules || rules.length === 0) return '';
-    const emitterOpts =
-      options.layer !== undefined ? { layer: options.layer } : {};
-    const emitter = new CssEmitter(emitterOpts);
+    const emitter = new CssEmitter({
+      layer: resolved.layer,
+      mediaSort: resolved.media.sort,
+    });
     for (const r of rules) emitter.add(r);
     return emitter.emit();
   }
@@ -60,8 +63,8 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
 
   function invalidateVirtualForFile(file: string) {
     if (!server) return;
-    const resolved = '\0' + virtualIdFor(file);
-    const mod = server.moduleGraph.getModuleById(resolved);
+    const resolvedId = '\0' + virtualIdFor(file);
+    const mod = server.moduleGraph.getModuleById(resolvedId);
     if (!mod) return;
     server.moduleGraph.invalidateModule(mod);
     const path = virtualIdFor(file);
@@ -81,6 +84,12 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
   return {
     name: 'fss',
     enforce: 'pre',
+
+    configResolved(viteConfig) {
+      const fileCfg = loadFileConfig(viteConfig.root);
+      // Resolution priority: defaults < fss.config.json < plugin options.
+      resolved = mergeConfig(fileCfg, extractConfig(options));
+    },
 
     configureServer(s) {
       server = s;
@@ -102,12 +111,12 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
     transform(code, id) {
       const cleanId = id.split('?')[0] ?? id;
       if (!include.test(cleanId)) return null;
-      if (!code.includes(importSource)) return null;
+      if (!code.includes(resolved.importSource)) return null;
 
       const result = transform(code, {
         registry,
         filename: cleanId,
-        importSource,
+        importSource: resolved.importSource,
       });
 
       if (!result.transformed) {
@@ -125,4 +134,36 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
       };
     },
   };
+}
+
+/**
+ * Extract the JSON-friendly config slice from plugin options. Drops
+ * runtime-only fields (`registry`, `include`) so the result can be
+ * fed cleanly into `mergeConfig`.
+ */
+function extractConfig(options: FssPluginOptions): FssConfig | undefined {
+  const { registry, include, ...cfg } = options;
+  void registry;
+  void include;
+  return Object.keys(cfg).length === 0 ? undefined : (cfg as FssConfig);
+}
+
+function loadFileConfig(root: string): FssConfig | undefined {
+  const path = resolve(root, CONFIG_FILENAME);
+  if (!existsSync(path)) return undefined;
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (e) {
+    throw new Error(
+      `[fss] failed to read ${path}: ${(e as Error).message}`,
+    );
+  }
+  try {
+    return JSON.parse(raw) as FssConfig;
+  } catch (e) {
+    throw new Error(
+      `[fss] failed to parse ${path}: ${(e as Error).message}`,
+    );
+  }
 }

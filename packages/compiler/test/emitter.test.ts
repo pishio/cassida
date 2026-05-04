@@ -138,6 +138,81 @@ describe('CssEmitter — dynamic values & @property', () => {
     expect(out).toMatch(/@media\s*\(min-width:\s*768px\)\{\.fss-[0-9a-f]{8}\{font-size:20px;?\}\}/);
   });
 
+  it('sorts min-width media queries mobile-first by default (numeric ascending)', () => {
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        { scope: { kind: 'media', query: '(min-width: 1024px)' }, ops: [{ method: 'fontSize', args: [24] }] },
+        { scope: { kind: 'media', query: '(min-width: 480px)' }, ops: [{ method: 'fontSize', args: [16] }] },
+        { scope: { kind: 'media', query: '(min-width: 768px)' }, ops: [{ method: 'fontSize', args: [20] }] },
+      ]),
+    );
+    const out = e.emit();
+    const i480 = out.indexOf('480px');
+    const i768 = out.indexOf('768px');
+    const i1024 = out.indexOf('1024px');
+    expect(i480).toBeGreaterThanOrEqual(0);
+    expect(i480).toBeLessThan(i768);
+    expect(i768).toBeLessThan(i1024);
+  });
+
+  it('sorts max-width media queries mobile-first (numeric descending so smaller overrides)', () => {
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        { scope: { kind: 'media', query: '(max-width: 480px)' }, ops: [{ method: 'fontSize', args: [12] }] },
+        { scope: { kind: 'media', query: '(max-width: 1024px)' }, ops: [{ method: 'fontSize', args: [18] }] },
+        { scope: { kind: 'media', query: '(max-width: 768px)' }, ops: [{ method: 'fontSize', args: [14] }] },
+      ]),
+    );
+    const out = e.emit();
+    const i480 = out.indexOf('480px');
+    const i768 = out.indexOf('768px');
+    const i1024 = out.indexOf('1024px');
+    expect(i1024).toBeLessThan(i768);
+    expect(i768).toBeLessThan(i480);
+  });
+
+  it('reverses min-width order under desktop-first', () => {
+    const e = new CssEmitter({ layer: null, mediaSort: 'desktop-first' });
+    e.add(
+      compile([
+        { scope: { kind: 'media', query: '(min-width: 480px)' }, ops: [{ method: 'fontSize', args: [16] }] },
+        { scope: { kind: 'media', query: '(min-width: 1024px)' }, ops: [{ method: 'fontSize', args: [24] }] },
+      ]),
+    );
+    const out = e.emit();
+    expect(out.indexOf('1024px')).toBeLessThan(out.indexOf('480px'));
+  });
+
+  it('normalizes em / rem against px when sorting', () => {
+    // 30em == 480px, 48em == 768px (at 16px base)
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        { scope: { kind: 'media', query: '(min-width: 48em)' }, ops: [{ method: 'fontSize', args: [20] }] },
+        { scope: { kind: 'media', query: '(min-width: 600px)' }, ops: [{ method: 'fontSize', args: [18] }] },
+        { scope: { kind: 'media', query: '(min-width: 30em)' }, ops: [{ method: 'fontSize', args: [16] }] },
+      ]),
+    );
+    const out = e.emit();
+    // expected order: 30em (480), 600px, 48em (768)
+    expect(out.indexOf('30em')).toBeLessThan(out.indexOf('600px'));
+    expect(out.indexOf('600px')).toBeLessThan(out.indexOf('48em'));
+  });
+
+  it('places non-width media queries after width-based ones', () => {
+    const e = new CssEmitter({ layer: null });
+    e.add(
+      compile([
+        { scope: { kind: 'media', query: 'print' }, ops: [{ method: 'color', args: ['black'] }] },
+        { scope: { kind: 'media', query: '(min-width: 768px)' }, ops: [{ method: 'fontSize', args: [20] }] },
+      ]),
+    );
+    const out = e.emit();
+    expect(out.indexOf('768px')).toBeLessThan(out.indexOf('print'));
+  });
+
   it('flattens nested :hover inside @media', () => {
     const e = new CssEmitter({ layer: null });
     e.add(
