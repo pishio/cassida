@@ -3,5 +3,11 @@
   "layer": "fss",
   "media": {
     "sort": "mobile-first"
+  },
+  "css": {
+    "lightningcss": {
+      "enabled": true,
+      "minify": true
+    }
   }
 }

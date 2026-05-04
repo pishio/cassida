@@ -1,5 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import browserslist from 'browserslist';
+import { browserslistToTargets, transform as lightningTransform } from 'lightningcss';
+import type { Targets } from 'lightningcss';
 import {
   CssEmitter,
   defaultRegistry,
@@ -46,6 +49,11 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
 
   const rulesByFile = new Map<string, readonly CompiledRule[]>();
   let server: ViteDevServer | undefined;
+  // lightningcss `Targets` are derived once per plugin instance from
+  // either the explicit config string or auto-discovered browserslist
+  // queries. `null` means "no targets passed → lightningcss default".
+  let cachedTargets: Targets | null = null;
+  let projectRoot = process.cwd();
 
   function emitForFile(file: string): string {
     const rules = rulesByFile.get(file);
@@ -55,7 +63,9 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
       mediaSort: resolved.media.sort,
     });
     for (const r of rules) emitter.add(r);
-    return emitter.emit();
+    const css = emitter.emit();
+    if (!resolved.css.lightningcss.enabled || css === '') return css;
+    return postProcessLightningCss(css, file, resolved, cachedTargets);
   }
 
   function virtualIdFor(file: string): string {
@@ -87,9 +97,11 @@ export default function fss(options: FssPluginOptions = {}): Plugin {
     enforce: 'pre',
 
     configResolved(viteConfig) {
-      const fileCfg = loadFileConfig(viteConfig.root);
+      projectRoot = viteConfig.root;
+      const fileCfg = loadFileConfig(projectRoot);
       // Resolution priority: defaults < fss.config.json < plugin options.
       resolved = mergeConfig(fileCfg, extractConfig(options));
+      cachedTargets = resolveTargets(resolved.css.lightningcss.targets, projectRoot);
     },
 
     configureServer(s) {
@@ -155,6 +167,60 @@ function extractConfig(options: FssPluginOptions): FssConfig | undefined {
   void include;
   if (Object.keys(cfg).length === 0) return undefined;
   return parseFssConfig(cfg, '<vite.config.ts plugin options>');
+}
+
+/**
+ * Run the emitter's CSS string through lightningcss for autoprefixing,
+ * minification (when `minify: true`), and target-aware downleveling.
+ *
+ * `@property` rules are preserved through this pass — lightningcss
+ * supports the Houdini descriptor natively. We additionally split the
+ * input so emitter-emitted property declarations are processed in the
+ * same pass as the `@layer` block; they share a single document.
+ */
+function postProcessLightningCss(
+  css: string,
+  filename: string,
+  resolved: ResolvedFssConfig,
+  targets: Targets | null,
+): string {
+  const result = lightningTransform({
+    filename,
+    code: Buffer.from(css, 'utf-8'),
+    minify: resolved.css.lightningcss.minify,
+    ...(targets ? { targets } : {}),
+  });
+  return Buffer.from(result.code).toString('utf-8');
+}
+
+/**
+ * Resolve a `Targets` object from the user's config, or fall back to
+ * auto-discovering a browserslist query from the project root
+ * (`.browserslistrc`, `package.json#browserslist`, or environment
+ * defaults). Returning `null` lets lightningcss apply its own default.
+ *
+ * The `'defaults'` literal in `defaultConfig` is treated as "no
+ * explicit override given, please auto-discover" — only when the user
+ * actually puts a different string in the config (or the auto-
+ * discovery picks up a project file) do we set explicit targets.
+ */
+function resolveTargets(configTargets: string, root: string): Targets | null {
+  // `'defaults'` is the synthetic placeholder coming from the resolved
+  // config defaults; treat it as "no explicit user choice" and let
+  // browserslist read project files first.
+  if (configTargets !== 'defaults') {
+    const queries = browserslist(configTargets);
+    return browserslistToTargets(queries);
+  }
+  try {
+    const queries = browserslist(undefined, { path: root });
+    if (queries.length === 0) return null;
+    return browserslistToTargets(queries);
+  } catch {
+    // No project browserslist + no explicit env defaults — let
+    // lightningcss decide.
+    return null;
+  }
 }
 
 function loadFileConfig(root: string): FssConfig | undefined {

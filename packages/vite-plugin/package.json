@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@fss/compiler": "workspace:*",
-    "@fss/parser": "workspace:*"
+    "@fss/parser": "workspace:*",
+    "browserslist": "^4.24.2",
+    "lightningcss": "^1.28.1"
   },
   "peerDependencies": {
     "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
