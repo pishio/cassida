@@ -42,4 +42,15 @@ if (_execute) {
   const chain: FssChain = fss().color('red');
   const spread: { style: object } = { ...chain };
   void spread;
+
+  // 6) Phase 6b: generated mdn-data methods are callable with a
+  //    permissive string | number payload.
+  fss().aspectRatio('16/9');
+  fss().containerType('inline-size');
+  fss().accentColor('#ff0');
+
+  // 7) Generated methods do not loosen hand-crafted typed methods —
+  //    csstype tightening is preserved on the curated subset.
+  // @ts-expect-error -- color is hand-crafted; number must still be rejected
+  fss().color(456);
 }

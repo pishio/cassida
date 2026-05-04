@@ -3,7 +3,9 @@ import {
   canonicalSpec,
   compileOps,
   defaultRegistry,
+  generatedPropertySpecs,
   type CanonicalSpec,
+  type GeneratedSpecMap,
   type Op,
   type Registry,
   type Scope,
@@ -11,7 +13,7 @@ import {
 import type * as CSS from 'csstype';
 
 /**
- * Method shape derived from the canonical style spec.
+ * Method shape derived from the canonical (hand-crafted) style spec.
  *
  * Each method's argument signature is extracted from the spec's typed
  * `format` function via `Parameters<...>`, so adding a property to the
@@ -24,9 +26,38 @@ type ChainMethodsFromSpec<S> = {
 };
 
 /**
+ * Method shape for the auto-generated mdn-data spec set, with keys
+ * already covered by the hand-crafted canonical spec excluded.
+ *
+ * Why exclude: TypeScript's method-intersection forms an overloaded
+ * call signature whose accepted args is the *union* of each branch's
+ * args. If we declared `color` in BOTH a typed (csstype) and a
+ * permissive (string | number) form, the intersection would let
+ * `fss().color(123)` typecheck — loosening the curated typing. By
+ * dropping overlapping keys, we let hand-crafted entries reign for
+ * their domain and the generated set fills only the genuine gaps.
+ */
+type ChainMethodsFromGenerated<S, EXCLUDE extends string | number | symbol> = {
+  [K in keyof S as K extends EXCLUDE ? never : K]: (
+    value: string | number,
+  ) => FssChain;
+};
+
+/**
  * Method set generated from the default canonical spec.
  */
 export type DefaultChainMethods = ChainMethodsFromSpec<CanonicalSpec>;
+
+/**
+ * Method set generated from the mdn-data-derived spec table. Includes
+ * every standard CSS property (~460 entries, vendor and non-standard
+ * stripped). Hand-crafted methods of the same name override these via
+ * the FssChain intersection so curated typing wins.
+ */
+export type GeneratedChainMethods = ChainMethodsFromGenerated<
+  GeneratedSpecMap,
+  keyof CanonicalSpec
+>;
 
 /**
  * Callback signature for modifier methods. The argument is a fresh
@@ -87,8 +118,19 @@ export interface FssChainTerminus {
  * extensions, and the JSX spread targets. The intersection means user
  * augmentations of `FssChainExtensions` automatically propagate.
  */
+/**
+ * Full chain type. Order of intersection matters: later items in the
+ * union DO NOT override earlier ones in TypeScript's intersection
+ * resolution, but properties of the same key WIDEN to a function
+ * signature compatible with both. We therefore put the *typed* hand-
+ * crafted methods first (so call sites see their precise signatures
+ * for autocomplete) and the permissive generated set after, so
+ * gap-filling methods exist but don't tighten / loosen the curated
+ * ones beyond what they already declare.
+ */
 export type FssChain =
   & DefaultChainMethods
+  & GeneratedChainMethods
   & ChainModifiers
   & FssChainExtensions
   & FssChainTerminus;
@@ -113,7 +155,9 @@ export function fss(registry: Registry = defaultRegistry): FssChain {
 function makeChain(registry: Registry, ops: Op[], isRoot: boolean): FssChain {
   const chain = Object.create(null) as Record<string, unknown>;
 
-  // Style methods (color, marginTop, ...) — push MethodOp.
+  // Style methods. The runtime registry already merges hand-crafted
+  // and generated entries, so this single loop covers both sources —
+  // every standard CSS property gets a callable method on the chain.
   for (const method of Object.keys(registry)) {
     Object.defineProperty(chain, method, {
       enumerable: false,

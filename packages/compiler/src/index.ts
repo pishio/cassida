@@ -32,6 +32,12 @@ export type {
   CanonicalMethodName,
   PropertyMeta,
 } from './property-spec.js';
+export { generatedPropertySpecs } from './generated-property-specs.js';
+export type {
+  GeneratedSpec,
+  GeneratedSpecMap,
+  GeneratedMethodName,
+} from './generated-property-specs.js';
 export { Canonicalizer } from './canonicalizer.js';
 export { hash, DEFAULT_PREFIX, DEFAULT_LENGTH } from './hasher.js';
 export type { HashOptions } from './hasher.js';

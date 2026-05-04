@@ -48,6 +48,17 @@ export default function App() {
 
       <h2 {...fss().marginTop(32).fontSize(20)}>Phase 2 — modifiers</h2>
 
+      <div
+        {...fss()
+          .marginTop(16)
+          .accentColor('crimson')
+          .aspectRatio('16/9')
+          .maxWidth(320)
+          .backgroundColor('#eee')}
+      >
+        Phase 6b — auto-generated methods (aspectRatio, accentColor) work end-to-end.
+      </div>
+
       <button
         {...fss()
           .padding(12)

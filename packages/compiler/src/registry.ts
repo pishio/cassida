@@ -1,4 +1,8 @@
 import { canonicalSpec } from './property-spec.js';
+import {
+  generatedPropertySpecs,
+  type GeneratedSpec,
+} from './generated-property-specs.js';
 
 export type Formatter = (...args: readonly unknown[]) => string;
 
@@ -38,34 +42,74 @@ export interface RegistryEntry {
 export type Registry = Readonly<Record<string, RegistryEntry>>;
 export type AliasMap = Readonly<Record<string, string>>;
 
+/** Format function for entries derived from mdn-data. */
+const passthroughFormat: Formatter = (v: unknown): string => {
+  if (v === null || v === undefined) {
+    throw new TypeError('[fss] generated property received null/undefined value');
+  }
+  return String(v);
+};
+
+function buildGeneratedEntries(
+  generated: Readonly<Record<string, GeneratedSpec>>,
+): Registry {
+  const out: Record<string, RegistryEntry> = {};
+  for (const [name, spec] of Object.entries(generated)) {
+    out[name] = {
+      property: spec.property,
+      format: passthroughFormat,
+      animatable: spec.animatable,
+      ...(spec.syntax !== undefined ? { syntax: spec.syntax } : {}),
+      ...(spec.initialValue !== undefined ? { initialValue: spec.initialValue } : {}),
+      ...(spec.inherits !== undefined ? { inherits: spec.inherits } : {}),
+    };
+  }
+  return Object.freeze(out);
+}
+
+function buildHandCraftedEntries(
+  spec: typeof canonicalSpec,
+): Registry {
+  const out: Record<string, RegistryEntry> = {};
+  for (const [name, entry] of Object.entries(spec)) {
+    const built: RegistryEntry = {
+      property: entry.property,
+      format: entry.format as unknown as Formatter,
+      animatable: entry.animatable,
+      ...('syntax' in entry && entry.syntax !== undefined ? { syntax: entry.syntax } : {}),
+      ...('initialValue' in entry && entry.initialValue !== undefined
+        ? { initialValue: entry.initialValue }
+        : {}),
+      ...('shorthandFamily' in entry && entry.shorthandFamily !== undefined
+        ? { shorthandFamily: entry.shorthandFamily }
+        : {}),
+      ...('longhandFamily' in entry && entry.longhandFamily !== undefined
+        ? { longhandFamily: entry.longhandFamily }
+        : {}),
+    };
+    out[name] = built;
+  }
+  return Object.freeze(out);
+}
+
 /**
- * Canonical method set, derived from `canonicalSpec`. The format functions
- * carry strict csstype-based parameter types in the spec; here they're
- * stored under the type-erased `Formatter` shape because the runtime
- * lookup path receives `unknown[]` from the parser.
+ * Canonical method set: hand-crafted entries (typed via csstype, with
+ * family metadata for shorthand-policy) layered ON TOP OF the
+ * generated mdn-data set. When a method exists in both, the
+ * hand-crafted entry wins — its typed format function and family
+ * metadata are preserved while the generated version contributes only
+ * to the gap-filling.
+ *
+ * Result: every standard CSS property has a callable method, and the
+ * curated subset retains its csstype-driven IDE autocomplete +
+ * shorthand-policy guarding.
  */
-export const defaultCanonicals: Registry = Object.freeze(
-  Object.fromEntries(
-    Object.entries(canonicalSpec).map(([name, spec]) => {
-      const entry: RegistryEntry = {
-        property: spec.property,
-        format: spec.format as unknown as Formatter,
-        animatable: spec.animatable,
-        ...('syntax' in spec && spec.syntax !== undefined ? { syntax: spec.syntax } : {}),
-        ...('initialValue' in spec && spec.initialValue !== undefined
-          ? { initialValue: spec.initialValue }
-          : {}),
-        ...('shorthandFamily' in spec && spec.shorthandFamily !== undefined
-          ? { shorthandFamily: spec.shorthandFamily }
-          : {}),
-        ...('longhandFamily' in spec && spec.longhandFamily !== undefined
-          ? { longhandFamily: spec.longhandFamily }
-          : {}),
-      };
-      return [name, entry];
-    }),
-  ),
-);
+const generatedEntries = buildGeneratedEntries(generatedPropertySpecs);
+const handCraftedEntries = buildHandCraftedEntries(canonicalSpec);
+export const defaultCanonicals: Registry = Object.freeze({
+  ...generatedEntries,
+  ...handCraftedEntries,
+});
 
 /**
  * Optional shorthands. Aliases are pure typing-sugar: each one resolves

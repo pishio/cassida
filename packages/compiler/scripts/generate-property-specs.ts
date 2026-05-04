@@ -1,0 +1,183 @@
+/**
+ * Code generator for FSS's mdn-data-derived property specs.
+ *
+ * Reads `mdn-data/css/properties.json` and writes a TypeScript module
+ * to `src/generated-property-specs.ts`. The module exports a frozen
+ * record keyed by camelCase method name, each entry carrying enough
+ * metadata for the registry to construct a passthrough RegistryEntry
+ * at runtime and for `@property` emission to find a syntax descriptor.
+ *
+ * Filter rules:
+ *   1. Drop vendor-prefixed properties (`-webkit-*` etc.). lightningcss
+ *      is responsible for autoprefix at delivery time; FSS's surface
+ *      stays "logical, single-name-per-concept".
+ *   2. Drop non-`standard` statuses (experimental / nonstandard /
+ *      obsolete). The user can still reach experimental properties via
+ *      `set('-foo', value)` once that escape hatch ships.
+ *   3. Blacklist multi-property shorthands and time-axis shorthands.
+ *      The padding/margin/inset family-aware shorthands are already in
+ *      the hand-crafted spec; everything else stays banned for v1.
+ *
+ * Outputs are checked into the repo. Run `pnpm codegen` from the
+ * compiler package to regenerate after a `mdn-data` upgrade.
+ */
+import { writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import properties from 'mdn-data/css/properties.json' with { type: 'json' };
+
+interface MdnProperty {
+  syntax?: string;
+  inherited?: boolean;
+  animationType?: string;
+  initial?: string | string[];
+  status?: string;
+  groups?: string[];
+}
+
+/**
+ * Properties that must NOT be auto-generated as first-class methods.
+ * - `padding` / `margin` / `inset` are family-managed in the
+ *   hand-crafted spec (Phase 6a) so they keep their family metadata.
+ * - The rest are CSS shorthands whose "implicit reset of unspecified
+ *   subproperties" or multi-property writes don't fit FSS's
+ *   one-method-one-CSS-property model.
+ * - `transition` / `animation` are re-added as opaque single-string
+ *   shorthands in Phase 6c-3.
+ */
+const BLACKLIST = new Set<string>([
+  // implicit-reset shorthands
+  'all',
+  'background',
+  'font',
+  'border',
+  'list-style',
+  'mask',
+  'text-decoration',
+  // multi-property shorthands
+  'flex',
+  'grid',
+  'grid-area',
+  'grid-template',
+  'place-items',
+  'place-content',
+  'place-self',
+  'columns',
+  'column-rule',
+  'overflow',
+  // family-managed (already in hand-crafted spec)
+  'padding',
+  'margin',
+  'inset',
+  // time-axis shorthands — Phase 6c-3 will re-add as opaque
+  'transition',
+  'animation',
+  // 4-side longhand groups handled by family already (avoid duplication)
+  // (left as duplicates — hand-crafted wins on merge, so harmless)
+]);
+
+interface GeneratedEntry {
+  readonly property: string;
+  readonly syntax?: string;
+  readonly initialValue?: string;
+  readonly animatable: boolean;
+  readonly inherits: boolean;
+}
+
+const kebabToCamel = (s: string): string =>
+  s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+
+const isValidIdentifier = (s: string): boolean =>
+  /^[a-z][a-zA-Z0-9]*$/.test(s);
+
+const isAnimatable = (animationType: string | undefined): boolean => {
+  if (!animationType) return false;
+  // Per CSS Animations spec, anything other than `discrete` is interpolated.
+  return animationType !== 'discrete';
+};
+
+const accepted: Record<string, GeneratedEntry> = {};
+const skipped: Record<string, string> = {};
+
+for (const [name, defRaw] of Object.entries(properties)) {
+  const def = defRaw as MdnProperty;
+
+  if (name.startsWith('-')) {
+    skipped[name] = 'vendor-prefixed (lightningcss handles autoprefix)';
+    continue;
+  }
+  if (def.status !== 'standard') {
+    skipped[name] = `status=${def.status ?? '<missing>'}`;
+    continue;
+  }
+  if (BLACKLIST.has(name)) {
+    skipped[name] = 'blacklisted (shorthand or family-managed)';
+    continue;
+  }
+
+  const camelName = kebabToCamel(name);
+  if (!isValidIdentifier(camelName)) {
+    skipped[name] = `produces invalid identifier "${camelName}"`;
+    continue;
+  }
+
+  const entry: GeneratedEntry = {
+    property: name,
+    animatable: isAnimatable(def.animationType),
+    inherits: def.inherited ?? false,
+    ...(def.syntax ? { syntax: def.syntax } : {}),
+    ...(typeof def.initial === 'string' ? { initialValue: def.initial } : {}),
+  };
+  accepted[camelName] = entry;
+}
+
+const sortedNames = Object.keys(accepted).sort();
+
+function escapeStringForTs(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function emitEntry(name: string, e: GeneratedEntry): string {
+  const fields: string[] = [];
+  fields.push(`property: '${escapeStringForTs(e.property)}'`);
+  if (e.syntax) fields.push(`syntax: '${escapeStringForTs(e.syntax)}'`);
+  if (e.initialValue !== undefined) {
+    fields.push(`initialValue: '${escapeStringForTs(e.initialValue)}'`);
+  }
+  fields.push(`animatable: ${e.animatable}`);
+  fields.push(`inherits: ${e.inherits}`);
+  return `  ${name}: { ${fields.join(', ')} },`;
+}
+
+const header = `// AUTO-GENERATED by scripts/generate-property-specs.ts. DO NOT EDIT BY HAND.
+// Source: mdn-data/css/properties.json
+// Run \`pnpm codegen\` from packages/compiler to regenerate.
+//
+// Filter: status === 'standard', no vendor prefix, no blacklisted shorthand.
+// Surviving entries: ${sortedNames.length}
+// Skipped: ${Object.keys(skipped).length} (see codegen script for filter rules).
+
+export interface GeneratedSpec {
+  readonly property: string;
+  readonly syntax?: string;
+  readonly initialValue?: string;
+  readonly animatable: boolean;
+  readonly inherits: boolean;
+}
+
+export const generatedPropertySpecs = {
+${sortedNames.map((n) => emitEntry(n, accepted[n]!)).join('\n')}
+} as const satisfies Record<string, GeneratedSpec>;
+
+export type GeneratedSpecMap = typeof generatedPropertySpecs;
+export type GeneratedMethodName = keyof GeneratedSpecMap;
+`;
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const outPath = join(__dirname, '..', 'src', 'generated-property-specs.ts');
+writeFileSync(outPath, header, 'utf-8');
+
+// eslint-disable-next-line no-console
+console.log(`✓ wrote ${sortedNames.length} entries → ${outPath}`);
+// eslint-disable-next-line no-console
+console.log(`  skipped ${Object.keys(skipped).length} entries (vendor / non-standard / blacklisted)`);
