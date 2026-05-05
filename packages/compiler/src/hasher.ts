@@ -35,10 +35,15 @@ export function hash(canonical: string, options: HashOptions = {}): string {
   const prefix = options.prefix ?? DEFAULT_PREFIX;
   const length = options.length ?? DEFAULT_LENGTH;
 
+  // Encode once outside the round loop. For length > 8 we run multiple
+  // 32-bit rounds with incrementing seeds, but the input bytes don't
+  // change — re-encoding per round is pure waste and grows linear in
+  // the canonical-bag size for every extra hex char requested.
+  const bytes = utf8Bytes(canonical);
   let hex = '';
   let seed = 0;
   while (hex.length < length) {
-    hex += murmur3_32(canonical, seed).toString(16).padStart(8, '0');
+    hex += murmur3_32(bytes, seed).toString(16).padStart(8, '0');
     seed++;
   }
   return prefix + hex.slice(0, length);
@@ -47,15 +52,13 @@ export function hash(canonical: string, options: HashOptions = {}): string {
 /**
  * MurmurHash3 x86 32-bit. Public-domain algorithm by Austin Appleby.
  *
- * Implementation notes:
- *   - All arithmetic kept in unsigned 32-bit territory via `>>> 0`
- *     and `Math.imul` — V8 / SpiderMonkey JIT both fast-path these.
- *   - Input is treated as a UTF-8 byte stream so non-ASCII strings
- *     hash the same on every host.
- *   - Returns a non-negative 32-bit integer.
+ * Takes a pre-encoded UTF-8 byte sequence so the caller can amortize
+ * encoding across multiple seeded rounds. All arithmetic is kept in
+ * unsigned 32-bit territory via `>>> 0` and `Math.imul`, both of
+ * which V8 / SpiderMonkey JIT fast-path. Returns a non-negative
+ * 32-bit integer.
  */
-function murmur3_32(input: string, seed: number = 0): number {
-  const bytes = utf8Bytes(input);
+function murmur3_32(bytes: readonly number[], seed: number = 0): number {
   const len = bytes.length;
   const nblocks = Math.floor(len / 4);
 
