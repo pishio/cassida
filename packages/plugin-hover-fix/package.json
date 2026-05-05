@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Cassida plugin: wraps :hover scopes in @media (hover: hover) to neutralize iOS Safari's sticky-hover artifact on touch devices.",
   "license": "MIT",
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

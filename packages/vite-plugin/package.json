@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Vite plugin for Cassida: transforms cas() chains to static className + CSS at build time, served via virtual:cassida.css.",
   "license": "MIT",
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
