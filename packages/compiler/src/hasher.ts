@@ -58,7 +58,7 @@ export function hash(canonical: string, options: HashOptions = {}): string {
  * which V8 / SpiderMonkey JIT fast-path. Returns a non-negative
  * 32-bit integer.
  */
-function murmur3_32(bytes: readonly number[], seed: number = 0): number {
+function murmur3_32(bytes: Uint8Array, seed: number = 0): number {
   const len = bytes.length;
   const nblocks = Math.floor(len / 4);
 
@@ -109,40 +109,10 @@ function murmur3_32(bytes: readonly number[], seed: number = 0): number {
   return h1 >>> 0;
 }
 
-/**
- * Encode a string as a UTF-8 byte sequence. Avoids the `TextEncoder`
- * dependency (Node ≥ 11 has it globally, but bundling it for older
- * targets is wasted bytes for the tiny input strings hashed here).
- */
-function utf8Bytes(s: string): readonly number[] {
-  const out: number[] = [];
-  for (let i = 0; i < s.length; i++) {
-    let cp = s.charCodeAt(i);
-    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < s.length) {
-      const lo = s.charCodeAt(i + 1);
-      if (lo >= 0xdc00 && lo <= 0xdfff) {
-        cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
-        i++;
-      }
-    }
-    if (cp < 0x80) {
-      out.push(cp);
-    } else if (cp < 0x800) {
-      out.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
-    } else if (cp < 0x10000) {
-      out.push(
-        0xe0 | (cp >> 12),
-        0x80 | ((cp >> 6) & 0x3f),
-        0x80 | (cp & 0x3f),
-      );
-    } else {
-      out.push(
-        0xf0 | (cp >> 18),
-        0x80 | ((cp >> 12) & 0x3f),
-        0x80 | ((cp >> 6) & 0x3f),
-        0x80 | (cp & 0x3f),
-      );
-    }
-  }
-  return out;
+// Module-level encoder. `TextEncoder` is stateless once constructed,
+// so reusing one instance avoids per-hash allocation.
+const utf8Encoder = new TextEncoder();
+
+function utf8Bytes(s: string): Uint8Array {
+  return utf8Encoder.encode(s);
 }
