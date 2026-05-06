@@ -18,9 +18,13 @@
  *      the parser converted every spread to a className literal
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(new URL('..', import.meta.url).pathname);
+// `fileURLToPath` rather than `.pathname` — on Windows the URL path is
+// `/C:/...` which path.resolve misinterprets as POSIX-rooted. CI runs
+// on Ubuntu, but contributors may run this script locally on Windows.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DIST = join(ROOT, 'dist');
 const ASSETS = join(DIST, 'assets');
 
