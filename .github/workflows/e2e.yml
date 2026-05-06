@@ -173,12 +173,19 @@ jobs:
           node -e "
             const fs = require('node:fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.dependencies = {
+            const cassidaDeps = {
               '@cassida/core': 'file:$CORE',
               '@cassida/compiler': 'file:$COMPILER',
               '@cassida/parser': 'file:$PARSER',
               '@cassida/vite-plugin': 'file:$VITE_PLUGIN',
             };
+            pkg.dependencies = cassidaDeps;
+            // Bun's resolver doesn't auto-dedup top-level file: deps
+            // against transitive semver requests. The 'overrides'
+            // field forces every nested @cassida/* reference (e.g.
+            // parser → compiler 0.1.1) to use the same local tarball
+            // we've staged, bypassing the registry entirely.
+            pkg.overrides = cassidaDeps;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
           "
           bun install \
