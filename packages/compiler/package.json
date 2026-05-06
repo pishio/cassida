@@ -3,14 +3,19 @@
   "version": "0.1.0",
   "description": "Cassida build-time CSS resolver: registry, canonicalizer, hasher, emitter.",
   "license": "MIT",
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./config.schema.json": "./config.schema.json",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
