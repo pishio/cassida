@@ -157,10 +157,10 @@ jobs:
         working-directory: e2e/consumer
         run: |
           bun install --no-save \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-core-0.1.0.tgz \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-0.1.0.tgz \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-parser-0.1.0.tgz \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-vite-plugin-0.1.0.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-core-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-parser-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-vite-plugin-*.tgz \
             react@^18 react-dom@^18 \
             vite@^7 \
             @vitejs/plugin-react@^5 \
