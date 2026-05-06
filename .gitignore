@@ -8,6 +8,13 @@ coverage
 .idea
 .vscode
 
+# e2e fixture transient artifacts
+e2e/.tarballs/
+e2e/consumer/package-lock.json
+e2e/consumer/pnpm-lock.yaml
+e2e/consumer/bun.lock
+e2e/consumer/bun.lockb
+
 # Local AI tooling artifacts (do not publish)
 .claude/
 .claude.json
