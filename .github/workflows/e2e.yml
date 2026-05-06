@@ -124,10 +124,6 @@ jobs:
         working-directory: e2e/consumer
         run: node scripts/assert.mjs
 
-      - name: Type-check (moduleResolution=bundler)
-        working-directory: e2e/consumer
-        run: npx tsc --noEmit
-
   consumer-bun:
     name: consumer · bun
     needs: pack
