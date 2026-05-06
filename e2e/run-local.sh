@@ -35,6 +35,9 @@ echo "==> Packing tarballs into $TARBALLS"
 rm -rf "$TARBALLS"
 mkdir -p "$TARBALLS"
 for d in "$ROOT"/packages/*/; do
+  # Skip subdirs that aren't packageable (e.g. a future docs/ or
+  # scripts/ folder) — `pnpm pack` would error on those.
+  [ -f "$d/package.json" ] || continue
   (cd "$d" && pnpm pack --pack-destination "$TARBALLS" >/dev/null)
 done
 ls -1 "$TARBALLS"

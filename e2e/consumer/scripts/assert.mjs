@@ -84,13 +84,19 @@ for (const [needle, msg] of forbidden) {
 }
 if (failures === 0) pass('JS bundle free of Cassida runtime and Node APIs');
 
-// 5. cas() runtime call must be gone — parser should have replaced
-// every spread with a `className` literal.
-const casCallMatches = js.match(/\bcas\s*\(/g) ?? [];
+// 5. cas() / css() / cassida() runtime call must be gone — the parser
+// should have replaced every spread with a `className` literal.
+// `cas`, `css`, and `cassida` are all valid local names for the same
+// chain entry from `@cassida/core`, so any of the three appearing as
+// a runtime call indicates the parser missed something.
+const casCallMatches = js.match(/\b(cas|css|cassida)\s*\(/g) ?? [];
 if (casCallMatches.length > 0) {
-  fail(`JS bundle still contains ${casCallMatches.length} runtime cas( call site(s)`);
+  fail(
+    `JS bundle still contains ${casCallMatches.length} runtime chain call site(s)` +
+      ` (matches: ${[...new Set(casCallMatches)].join(', ')})`,
+  );
 } else {
-  pass('JS bundle contains no runtime cas() invocations');
+  pass('JS bundle contains no runtime cas/css/cassida invocations');
 }
 
 if (failures === 0) {
