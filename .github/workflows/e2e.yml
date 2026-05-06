@@ -1,0 +1,177 @@
+name: e2e
+
+# End-to-end packaging check: rebuild every @cassida/* package, pack
+# them as tarballs, install them into a fresh consumer outside the
+# monorepo, and verify the production build looks the way the parser
+# / canonicalizer / emitter promises (single class per element,
+# zero Cassida runtime in the JS bundle, no node:crypto leakage).
+#
+# This catches the entire class of "works in workspace but breaks on
+# npm" regressions — the exact failure mode that v0.1.0 shipped with.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack:
+    name: build + pack tarballs
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: cassida-tarballs
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        # The version comes from `packageManager` in the root
+        # package.json — don't pass `version:` here or pnpm/action-setup
+        # errors on the conflict.
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all @cassida/* packages
+        run: pnpm -r --filter='./packages/*' build
+
+      - name: Run unit tests
+        run: pnpm -r --filter='./packages/*' test
+
+      - name: Pack tarballs
+        run: |
+          mkdir -p tarballs
+          for d in packages/*/; do
+            # Skip subdirs without a package.json — future docs/ or
+            # scripts/ folders shouldn't break the pack step.
+            [ -f "$d/package.json" ] || continue
+            (cd "$d" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/tarballs")
+          done
+          ls -la tarballs/
+
+      - name: Upload tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cassida-tarballs
+          path: tarballs/
+          retention-days: 1
+
+  consumer-vite:
+    name: consumer · vite ${{ matrix.vite }} (plugin-react ${{ matrix.plugin-react }})
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cassida's vite-plugin declares `vite: ^5.0.0 || ^6.0.0 || ^7.0.0`.
+        # Each leg of the matrix verifies the claim against a real build.
+        # plugin-react versions track the corresponding Vite peer range:
+        # @vitejs/plugin-react@4 supports Vite 5/6, @5 supports Vite 6/7.
+        include:
+          - vite: '5'
+            plugin-react: '4'
+          - vite: '6'
+            plugin-react: '5'
+          - vite: '7'
+            plugin-react: '5'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: cassida-tarballs
+          path: tarballs/
+
+      - name: Install consumer
+        # We install with npm rather than pnpm here. pnpm's
+        # content-addressable store keys by name@version, so when we
+        # ship a freshly built 0.1.0 tarball it'll be reused from any
+        # cached 0.1.0 install instead of unpacking our actual file —
+        # masking exactly the regressions this job is here to catch.
+        working-directory: e2e/consumer
+        run: |
+          npm install --no-audit --no-fund \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-core-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-parser-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-vite-plugin-*.tgz \
+            react@^18 react-dom@^18 \
+            "vite@^${{ matrix.vite }}" \
+            "@vitejs/plugin-react@^${{ matrix.plugin-react }}" \
+            typescript@^5 @types/react@^18 @types/react-dom@^18
+
+      - name: Build
+        working-directory: e2e/consumer
+        run: npx vite build
+
+      - name: Assert build artifacts
+        working-directory: e2e/consumer
+        run: node scripts/assert.mjs
+
+  consumer-bun:
+    name: consumer · bun
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js (for vite + assert)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: cassida-tarballs
+          path: tarballs/
+
+      - name: Install consumer with bun
+        # Bun's resolver is the canary for `exports` map quirks. We
+        # install via bun then build with vite — that keeps the matrix
+        # focused on bun's resolution behaviour, not its bundler.
+        working-directory: e2e/consumer
+        run: |
+          bun install --no-save \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-core-0.1.0.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-0.1.0.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-parser-0.1.0.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-vite-plugin-0.1.0.tgz \
+            react@^18 react-dom@^18 \
+            vite@^7 \
+            @vitejs/plugin-react@^5 \
+            typescript@^5 \
+            @types/react@^18 \
+            @types/react-dom@^18
+
+      - name: Build
+        working-directory: e2e/consumer
+        run: npx vite build
+
+      - name: Assert build artifacts
+        working-directory: e2e/consumer
+        run: node scripts/assert.mjs

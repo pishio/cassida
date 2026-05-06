@@ -1,0 +1,47 @@
+import { useState } from 'react';
+import { cas, type CassChain } from '@cassida/core';
+
+// Same-file mixin — exercises the parser's tryFunctionComposition path.
+const withCard = (c: CassChain) =>
+  c.padding(16).borderRadius(8).backgroundColor('#fff').color('#111');
+
+export function App() {
+  const [hue, setHue] = useState(180);
+
+  return (
+    <main {...cas().padding(24).maxWidth(720)}>
+      <h1 {...cas().fontSize(24).fontWeight(700).color('#111')}>Cassida e2e</h1>
+
+      <section {...withCard(cas())}>
+        <p {...cas().margin(0).fontSize(14)}>Static chain compiles to a class.</p>
+      </section>
+
+      {/* Modifier scope (:hover) — must produce a single class with a
+          nested rule, never a separate selector. */}
+      <button
+        {...cas()
+          .padding(8, 'px')
+          .backgroundColor('#3b82f6')
+          .color('#fff')
+          .borderRadius(4)
+          .cursor('pointer')
+          .hover((c) => c.backgroundColor('#2563eb'))}
+      >
+        Click me
+      </button>
+
+      {/* Dynamic value — must materialize as a CSS custom property
+          driven from inline style, with the class itself stable. */}
+      <div
+        {...cas()
+          .padding(16)
+          .marginTop(16)
+          .color(`hsl(${hue}deg 70% 50%)`)}
+      >
+        Dynamic colour: hue = {hue}
+      </div>
+
+      <button onClick={() => setHue((h) => (h + 30) % 360)}>shift hue</button>
+    </main>
+  );
+}

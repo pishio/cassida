@@ -1,0 +1,12 @@
+{
+  "name": "cassida-e2e-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Smoke-test consumer for @cassida/* tarballs. Dependencies are installed by the e2e CI workflow with the matrix-pinned Vite + plugin-react versions; the package.json stays pristine so the same fixture can be reused across each leg of the matrix.",
+  "scripts": {
+    "build": "vite build",
+    "assert": "node scripts/assert.mjs",
+    "verify": "vite build && node scripts/assert.mjs"
+  }
+}
