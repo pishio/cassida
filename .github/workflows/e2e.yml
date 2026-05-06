@@ -154,13 +154,34 @@ jobs:
         # Bun's resolver is the canary for `exports` map quirks. We
         # install via bun then build with vite — that keeps the matrix
         # focused on bun's resolution behaviour, not its bundler.
+        #
+        # Unlike npm, bun does NOT auto-dedup positional tarball args
+        # against transitive deps: when our `parser` tarball declares
+        # `@cassida/compiler@0.1.1`, bun goes looking for that on the
+        # npm registry rather than reusing the `compiler` tarball we
+        # also passed. To work around it, we write the cassida deps
+        # into package.json as `file:` references first; bun resolves
+        # the whole tree against those file paths.
         working-directory: e2e/consumer
         run: |
-          bun install --no-save \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-core-*.tgz \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-*.tgz \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-parser-*.tgz \
-            "$GITHUB_WORKSPACE"/tarballs/cassida-vite-plugin-*.tgz \
+          # Stage cassida deps as file: references so bun resolves
+          # cross-package deps from the local tarballs too.
+          CORE=$(ls "$GITHUB_WORKSPACE"/tarballs/cassida-core-*.tgz)
+          COMPILER=$(ls "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-*.tgz)
+          PARSER=$(ls "$GITHUB_WORKSPACE"/tarballs/cassida-parser-*.tgz)
+          VITE_PLUGIN=$(ls "$GITHUB_WORKSPACE"/tarballs/cassida-vite-plugin-*.tgz)
+          node -e "
+            const fs = require('node:fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.dependencies = {
+              '@cassida/core': 'file:$CORE',
+              '@cassida/compiler': 'file:$COMPILER',
+              '@cassida/parser': 'file:$PARSER',
+              '@cassida/vite-plugin': 'file:$VITE_PLUGIN',
+            };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+          bun install \
             react@^18 react-dom@^18 \
             vite@^7 \
             @vitejs/plugin-react@^5 \
