@@ -30,9 +30,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
+        # The version comes from `packageManager` in the root
+        # package.json — don't pass `version:` here or pnpm/action-setup
+        # errors on the conflict.
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
