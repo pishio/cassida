@@ -88,6 +88,15 @@ interface ModuleRecord {
    * lookup. `null` until first use; populated lazily on demand.
    */
   programPath: NodePath<t.Program> | null;
+  /**
+   * Cached resolved namespace object for `import * as`. The contents
+   * are stable across the lifetime of the cache (a module record is
+   * never re-loaded once stored), so we compute it once and reuse.
+   * Slots may legitimately hold UNRESOLVED for unfoldable per-export
+   * values; downstream member access handles that correctly.
+   * `undefined` until first computed.
+   */
+  namespace: Record<string, unknown> | Unresolved | undefined;
 }
 
 /**
@@ -310,6 +319,7 @@ function resolveExport(
   // member access on them naturally returns UNRESOLVED only for
   // those specific properties.
   if (exportName === '*') {
+    if (record.namespace !== undefined) return record.namespace;
     const out: Record<string, unknown> = {};
     ctx.inProgress.add(cycleKey);
     try {
@@ -332,6 +342,7 @@ function resolveExport(
     } finally {
       ctx.inProgress.delete(cycleKey);
     }
+    record.namespace = out;
     return out;
   }
 
@@ -579,6 +590,7 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
     exports,
     reExports,
     programPath: null,
+    namespace: undefined,
   };
   cache.set(modulePath, record);
   return record;
@@ -609,7 +621,14 @@ function loadJsonModule(modulePath: string, source: string): ModuleRecord | null
       exports.set(k, { init: jsonToAst(v) });
     }
   }
-  return { path: modulePath, ast, exports, reExports: [], programPath: null };
+  return {
+    path: modulePath,
+    ast,
+    exports,
+    reExports: [],
+    programPath: null,
+    namespace: undefined,
+  };
 }
 
 function jsonToAst(value: unknown): t.Node {
@@ -623,8 +642,12 @@ function jsonToAst(value: unknown): t.Node {
   if (typeof value === 'object') {
     const props: t.ObjectProperty[] = [];
     for (const [k, v] of Object.entries(value)) {
+      // String-literal keys, not identifiers. JSON keys can contain
+      // hyphens, spaces, leading digits, or any other non-Identifier
+      // character; `t.identifier(k)` would throw on those. The
+      // evaluator's ObjectExpression branch handles both forms.
       props.push(
-        t.objectProperty(t.identifier(k), jsonToAst(v) as t.Expression),
+        t.objectProperty(t.stringLiteral(k), jsonToAst(v) as t.Expression),
       );
     }
     return t.objectExpression(props);

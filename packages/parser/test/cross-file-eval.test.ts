@@ -314,6 +314,28 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.tree.bag.padding).toBe('16px');
   });
 
+  it('handles JSON keys that are not valid JS identifiers', () => {
+    // Hyphens, leading digits, and spaces are legal JSON keys but
+    // illegal as bare JS identifiers — `t.identifier(k)` would throw.
+    writeFile(
+      'tokens.json',
+      JSON.stringify({
+        'brand-primary': '#3b82f6',
+        '2xl': '24px',
+        'gap small': '8px',
+      }),
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import tokens from './tokens.json';
+      export const X = () =>
+        <div {...cas().color(tokens["brand-primary"]).fontSize(tokens["2xl"]).gap(tokens["gap small"])} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+    expect(r.rules[0]!.tree.bag['font-size']).toBe('24px');
+    expect(r.rules[0]!.tree.bag.gap).toBe('8px');
+  });
+
   it('folds JSON imports via named import (top-level keys)', () => {
     writeFile('tokens.json', JSON.stringify({ PRIMARY: '#3b82f6' }));
     const r = compile(`
