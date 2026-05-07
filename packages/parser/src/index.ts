@@ -22,6 +22,7 @@ import {
 } from '@cassida/compiler';
 import { pathAs } from './path-guard.js';
 import {
+  createModuleCache,
   evaluateNode,
   UNRESOLVED,
   type ModuleCache,
@@ -605,10 +606,19 @@ function resolveCrossFileConfig(options: TransformOptions): CrossFileConfig | nu
   if (flag === false) return null;
   const filename = options.filename;
   if (!filename) return null;
-  if (typeof flag === 'object' && flag !== null) {
-    return { filename, ...flag };
-  }
-  return { filename };
+  // Allocate a cache once per `transform()` call when the caller
+  // didn't pass one. Otherwise every chain arg builds its own cache
+  // and re-reads / re-parses the same imported modules — turning a
+  // typical 10-method component into 10× the file IO and parse work.
+  const cache = createModuleCacheLocal(flag);
+  return { filename, cache };
+}
+
+function createModuleCacheLocal(
+  flag: TransformOptions['crossFileEvaluation'],
+): ModuleCache {
+  if (typeof flag === 'object' && flag !== null && flag.cache) return flag.cache;
+  return createModuleCache();
 }
 
 function inferScope(

@@ -43,8 +43,15 @@
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { parse } from '@babel/parser';
+import traverseModule, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
-import type { NodePath } from '@babel/traverse';
+
+// Babel's ESM packaging exposes the function under `.default` when
+// imported from a Node ESM consumer. Mirrors the same shim as the
+// host index.ts so this module works under both CJS and ESM resolves.
+const traverse = (
+  (traverseModule as { default?: typeof traverseModule }).default ?? traverseModule
+) as typeof traverseModule;
 
 export const UNRESOLVED = Symbol.for('cassida.staticEval.unresolved');
 export type Unresolved = typeof UNRESOLVED;
@@ -70,11 +77,25 @@ export interface StaticEvalOptions {
 interface ModuleRecord {
   readonly path: string;
   readonly ast: t.File;
-  /** Exported name → AST node holding the value. */
-  readonly exports: Map<string, t.Node>;
+  /** Exported name → bound declaration. */
+  readonly exports: Map<string, ExportEntry>;
   /** Re-exports: `export { x } from './y'` or `export * from './y'`. */
   readonly reExports: ReadonlyArray<ReExport>;
 }
+
+/**
+ * One exported binding's resolution recipe. The simple case is a
+ * direct AST node; destructured exports
+ * (`export const { primary } = colors`) carry an additional key path
+ * to apply once the init expression has been evaluated.
+ */
+type ExportEntry = {
+  readonly init: t.Node;
+  readonly path?: ReadonlyArray<PathSegment>;
+};
+type PathSegment =
+  | { readonly kind: 'object'; readonly key: string }
+  | { readonly kind: 'array'; readonly index: number };
 
 type ReExport =
   | { readonly kind: 'named'; readonly localName: string; readonly importedName: string; readonly source: string }
@@ -260,23 +281,32 @@ function resolveExport(
   if (!record) return UNRESOLVED;
 
   // Namespace import — build an object from every named export.
+  // We *tolerate* UNRESOLVED slots: a theme file commonly exports
+  // helper functions (or other non-static values) alongside literal
+  // tokens. Bailing the whole namespace when any single export is
+  // un-foldable would make `import * as theme from './theme'` useless
+  // for the literal-only properties the consumer actually accesses.
+  // Instead, slots stay UNRESOLVED in the namespace object; downstream
+  // member access on them naturally returns UNRESOLVED only for
+  // those specific properties.
   if (exportName === '*') {
     const out: Record<string, unknown> = {};
     ctx.inProgress.add(cycleKey);
     try {
       for (const name of record.exports.keys()) {
-        const v = resolveExport(modulePath, name, ctx);
-        if (v === UNRESOLVED) return UNRESOLVED;
-        out[name] = v;
+        out[name] = resolveExport(modulePath, name, ctx);
       }
-      // Also fold in re-export `*` sources.
+      // Re-export `*`: fold the foreign module's namespace in. If the
+      // entire foreign resolution failed (parse error, missing module,
+      // cycle), bail — that's structurally different from "some
+      // property within the foreign namespace is unresolvable".
       for (const re of record.reExports) {
         if (re.kind !== 'all') continue;
         const target = resolveModule(modulePath, re.source);
-        if (!target) return UNRESOLVED;
+        if (!target) continue;
         const v = resolveExport(target, '*', ctx);
-        if (v === UNRESOLVED) return UNRESOLVED;
-        if (v === null || typeof v !== 'object') return UNRESOLVED;
+        if (v === UNRESOLVED) continue;
+        if (v === null || typeof v !== 'object') continue;
         Object.assign(out, v);
       }
     } finally {
@@ -289,7 +319,10 @@ function resolveExport(
   if (direct) {
     ctx.inProgress.add(cycleKey);
     try {
-      return evalExpressionInModule(direct, modulePath, ctx);
+      const initVal = evalExpressionInModule(direct.init, modulePath, ctx);
+      if (initVal === UNRESOLVED) return UNRESOLVED;
+      if (!direct.path || direct.path.length === 0) return initVal;
+      return walkPath(initVal, direct.path);
     } finally {
       ctx.inProgress.delete(cycleKey);
     }
@@ -336,6 +369,30 @@ function resolveExport(
  * directly. When it does need scope resolution we lazily traverse to
  * find a NodePath.
  */
+/**
+ * Walk a destructure path (`{ a: { b } }` → `["a", "b"]`) on a value
+ * that's already been evaluated. Bails to UNRESOLVED if the path
+ * passes through a non-object or a missing key.
+ */
+function walkPath(
+  value: unknown,
+  path: ReadonlyArray<PathSegment>,
+): unknown | Unresolved {
+  let cur: unknown = value;
+  for (const seg of path) {
+    if (cur === UNRESOLVED) return UNRESOLVED;
+    if (cur === null || (typeof cur !== 'object' && !Array.isArray(cur))) {
+      return UNRESOLVED;
+    }
+    if (seg.kind === 'object') {
+      cur = (cur as Record<string, unknown>)[seg.key];
+    } else {
+      cur = (cur as unknown[])[seg.index];
+    }
+  }
+  return cur;
+}
+
 function evalExpressionInModule(
   node: t.Node,
   modulePath: string,
@@ -361,12 +418,7 @@ function evalWithModuleScope(
   ctx: InternalContext,
 ): unknown | Unresolved {
   // A small one-shot traversal that yields the NodePath for the
-  // target node. We import @babel/traverse lazily to avoid a circular
-  // module dependency at top-level (the parser also imports it).
-  const traverseMod = require('@babel/traverse');
-  const traverse: typeof import('@babel/traverse').default =
-    typeof traverseMod === 'function' ? traverseMod : traverseMod.default;
-
+  // target node, then evaluates with that scope handle.
   let result: unknown | Unresolved = UNRESOLVED;
   let found = false;
   traverse(ast, {
@@ -409,7 +461,7 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
     return null;
   }
 
-  const exports = new Map<string, t.Node>();
+  const exports = new Map<string, ExportEntry>();
   const reExports: ReExport[] = [];
 
   for (const stmt of ast.program.body) {
@@ -418,8 +470,15 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
       if (stmt.declaration) {
         if (t.isVariableDeclaration(stmt.declaration)) {
           for (const decl of stmt.declaration.declarations) {
-            if (t.isIdentifier(decl.id) && decl.init) {
-              exports.set(decl.id.name, decl.init);
+            if (!decl.init) continue;
+            if (t.isIdentifier(decl.id)) {
+              exports.set(decl.id.name, { init: decl.init });
+            } else {
+              // Destructured: `export const { primary } = colors` or
+              // `export const [first] = arr`. Walk the pattern,
+              // attaching a path to the shared `init` for each
+              // bound name.
+              collectPatternBindings(decl.id, decl.init, [], exports);
             }
           }
         } else if (
@@ -427,9 +486,9 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
             t.isClassDeclaration(stmt.declaration)) &&
           stmt.declaration.id
         ) {
-          // We can't statically evaluate functions/classes; record an
-          // unresolvable-ish placeholder so the lookup hits and bails.
-          exports.set(stmt.declaration.id.name, stmt.declaration);
+          // We can't statically evaluate functions/classes; record a
+          // placeholder so the lookup hits and bails.
+          exports.set(stmt.declaration.id.name, { init: stmt.declaration });
         }
       }
       // `export { x }` / `export { x } from './y'`
@@ -447,17 +506,15 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
               source: stmt.source.value,
             });
           } else {
-            // `export { x }` — link to the local declaration. Look up
-            // the binding's init at evaluation time via module scope.
-            // We mark with a placeholder that triggers a scope walk.
+            // `export { x }` — link to the local declaration.
             const decl = findLocalDeclaration(ast, local);
-            if (decl) exports.set(exported, decl);
+            if (decl) exports.set(exported, { init: decl });
           }
         }
       }
     } else if (t.isExportDefaultDeclaration(stmt)) {
       const d = stmt.declaration;
-      if (t.isExpression(d)) exports.set('default', d);
+      if (t.isExpression(d)) exports.set('default', { init: d });
       // Function/class default: leave unresolvable.
     } else if (t.isExportAllDeclaration(stmt)) {
       reExports.push({ kind: 'all', source: stmt.source.value });
@@ -467,6 +524,65 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
   const record: ModuleRecord = { path: modulePath, ast, exports, reExports };
   cache.set(modulePath, record);
   return record;
+}
+
+/**
+ * Walk a destructure pattern and register one ExportEntry per bound
+ * identifier, each carrying a path that — when applied to the shared
+ * `init` value — produces that identifier's destructured value.
+ *
+ * Supported:
+ *   - ObjectPattern shorthand: `{ a }` → path `[{ object: 'a' }]`
+ *   - ObjectPattern renamed:   `{ a: b }` → bind `b`, path `[{ object: 'a' }]`
+ *   - ArrayPattern:            `[a, b]` → path `[{ array: 0 }]`, …
+ *   - Nested patterns:         `{ a: { b } }` → path `[{ object: 'a' }, { object: 'b' }]`
+ *
+ * Unsupported (yields no binding for that slot):
+ *   - Computed property keys
+ *   - Default values (`{ a = 1 }`) — would need fallback semantics
+ *   - Rest patterns (`{ ...rest }`)
+ */
+function collectPatternBindings(
+  pattern: t.Node,
+  init: t.Node,
+  pathSoFar: ReadonlyArray<PathSegment>,
+  out: Map<string, ExportEntry>,
+): void {
+  if (t.isIdentifier(pattern)) {
+    out.set(pattern.name, { init, path: [...pathSoFar] });
+    return;
+  }
+  if (t.isObjectPattern(pattern)) {
+    for (const prop of pattern.properties) {
+      if (!t.isObjectProperty(prop) || prop.computed) continue;
+      let keyName: string;
+      if (t.isIdentifier(prop.key)) keyName = prop.key.name;
+      else if (t.isStringLiteral(prop.key)) keyName = prop.key.value;
+      else if (t.isNumericLiteral(prop.key)) keyName = String(prop.key.value);
+      else continue;
+      collectPatternBindings(
+        prop.value,
+        init,
+        [...pathSoFar, { kind: 'object', key: keyName }],
+        out,
+      );
+    }
+    return;
+  }
+  if (t.isArrayPattern(pattern)) {
+    pattern.elements.forEach((el, i) => {
+      if (el === null) return;
+      collectPatternBindings(
+        el,
+        init,
+        [...pathSoFar, { kind: 'array', index: i }],
+        out,
+      );
+    });
+    return;
+  }
+  // AssignmentPattern (`{ a = default }`) and RestElement intentionally
+  // skipped.
 }
 
 function findLocalDeclaration(ast: t.File, name: string): t.Node | null {

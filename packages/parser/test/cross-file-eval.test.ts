@@ -221,6 +221,84 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.dynamics.length).toBeGreaterThan(0);
   });
 
+  it('folds destructured object-pattern exports', () => {
+    writeFile(
+      'tokens.ts',
+      `const colors = { primary: '#3b82f6', accent: '#10b981' };
+       export const { primary, accent } = colors;`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { primary, accent } from './tokens';
+      export const X = () =>
+        <div {...cas().color(primary).backgroundColor(accent)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+    expect(r.rules[0]!.tree.bag['background-color']).toBe('#10b981');
+  });
+
+  it('folds destructured object-pattern with rename', () => {
+    writeFile(
+      'tokens.ts',
+      `const palette = { brand: '#3b82f6' };
+       export const { brand: PRIMARY } = palette;`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { PRIMARY } from './tokens';
+      export const X = () => <div {...cas().color(PRIMARY)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+  });
+
+  it('folds destructured array-pattern exports', () => {
+    writeFile(
+      'tokens.ts',
+      `const palette = ['#3b82f6', '#10b981'];
+       export const [PRIMARY, ACCENT] = palette;`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { PRIMARY, ACCENT } from './tokens';
+      export const X = () =>
+        <div {...cas().color(PRIMARY).backgroundColor(ACCENT)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+    expect(r.rules[0]!.tree.bag['background-color']).toBe('#10b981');
+  });
+
+  it('folds nested destructure patterns', () => {
+    writeFile(
+      'tokens.ts',
+      `const t = { brand: { primary: '#3b82f6' } };
+       export const { brand: { primary } } = t;`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { primary } from './tokens';
+      export const X = () => <div {...cas().color(primary)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+  });
+
+  it('namespace import tolerates unresolvable peer exports', () => {
+    // The theme file mixes a literal token with a function helper.
+    // Accessing the literal must still fold, even though the helper
+    // can never be statically evaluated.
+    writeFile(
+      'theme.ts',
+      `export const PRIMARY = '#3b82f6';
+       export const helper = () => 'computed';`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import * as theme from './theme';
+      export const X = () => <div {...cas().color(theme.PRIMARY)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+    expect(r.rules[0]!.dynamics).toHaveLength(0);
+  });
+
   it('reuses a passed module cache across calls', async () => {
     writeFile('theme.ts', `export const PRIMARY = '#3b82f6';`);
     const { createModuleCache } = await import('../src/index.js');
