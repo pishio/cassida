@@ -186,10 +186,16 @@ function evalExpression(
     }
     return UNRESOLVED;
   }
-  if (t.isUnaryExpression(node) && (node.operator === '-' || node.operator === '+')) {
+  if (t.isUnaryExpression(node)) {
     const inner = evalExpression(node.argument, hostPath, hostFile, ctx);
     if (inner === UNRESOLVED) return UNRESOLVED;
-    if (typeof inner === 'number') return node.operator === '-' ? -inner : inner;
+    if (node.operator === '-' || node.operator === '+') {
+      if (typeof inner === 'number') return node.operator === '-' ? -inner : inner;
+      return UNRESOLVED;
+    }
+    if (node.operator === '!') return !inner;
+    // `typeof`, `void`, `delete` would need execution semantics —
+    // out of scope for a literal evaluator.
     return UNRESOLVED;
   }
 
@@ -260,6 +266,20 @@ function resolveBinding(
   hostFile: string | undefined,
   ctx: InternalContext,
 ): unknown | Unresolved {
+  // Reassignable bindings can't be folded — `let x = 'red'; x = 'blue'`
+  // would otherwise compile to the init value, ignoring runtime
+  // mutation. `binding.constant` is true for `const` and unmutated
+  // imports; false for `let` / `var` / parameters / mutated imports.
+  if (!binding.constant) return UNRESOLVED;
+
+  // Local cycle detection — `const a = b; const b = a;` would recurse
+  // infinitely without a guard. Imports already use `<modulePath>::<name>`;
+  // for locals we mint a parallel key from the host file.
+  const cycleKey = hostFile
+    ? `${hostFile}::local::${binding.identifier.name}`
+    : null;
+  if (cycleKey && ctx.inProgress.has(cycleKey)) return UNRESOLVED;
+
   const declPath = binding.path;
   const node = declPath.node;
 
@@ -267,7 +287,12 @@ function resolveBinding(
   if (t.isVariableDeclarator(node)) {
     if (!node.init) return UNRESOLVED;
     if (!t.isExpression(node.init)) return UNRESOLVED;
-    return evalExpression(node.init, declPath, hostFile, ctx);
+    if (cycleKey) ctx.inProgress.add(cycleKey);
+    try {
+      return evalExpression(node.init, declPath, hostFile, ctx);
+    } finally {
+      if (cycleKey) ctx.inProgress.delete(cycleKey);
+    }
   }
 
   // Imported binding — follow the import declaration.
@@ -323,21 +348,38 @@ function resolveExport(
     const out: Record<string, unknown> = {};
     ctx.inProgress.add(cycleKey);
     try {
+      // 1) Local exports take precedence — they shadow any name that
+      // a star re-export would otherwise contribute.
       for (const name of record.exports.keys()) {
         out[name] = resolveExport(modulePath, name, ctx);
       }
-      // Re-export `*`: fold the foreign module's namespace in. If the
-      // entire foreign resolution failed (parse error, missing module,
-      // cycle), bail — that's structurally different from "some
-      // property within the foreign namespace is unresolvable".
+      // 2) Star re-exports follow ESM ambiguity semantics. A name
+      // contributed by exactly one star source flows through; a name
+      // contributed by two or more (and not shadowed by a local)
+      // becomes ambiguous in ECMAScript and would crash the consumer
+      // at import time, so we exclude it from the namespace and the
+      // chain falls through to dynamic for that property access.
+      const AMBIGUOUS = Symbol('ambiguous');
+      const starOrigin = new Map<string, string | typeof AMBIGUOUS>();
       for (const re of record.reExports) {
         if (re.kind !== 'all') continue;
         const target = resolveModule(modulePath, re.source);
         if (!target) continue;
         const v = resolveExport(target, '*', ctx);
-        if (v === UNRESOLVED) continue;
-        if (v === null || typeof v !== 'object') continue;
-        Object.assign(out, v);
+        if (v === UNRESOLVED || v === null || typeof v !== 'object') continue;
+        for (const name of Object.keys(v)) {
+          if (record.exports.has(name)) continue; // local shadows
+          const existing = starOrigin.get(name);
+          if (existing === undefined) {
+            starOrigin.set(name, target);
+            out[name] = (v as Record<string, unknown>)[name];
+          } else if (existing !== target) {
+            starOrigin.set(name, AMBIGUOUS);
+          }
+        }
+      }
+      for (const [name, origin] of starOrigin) {
+        if (origin === AMBIGUOUS) delete out[name];
       }
     } finally {
       ctx.inProgress.delete(cycleKey);
@@ -423,9 +465,9 @@ function walkPath(
   let cur: unknown = value;
   for (const seg of path) {
     if (cur === UNRESOLVED) return UNRESOLVED;
-    if (cur === null || (typeof cur !== 'object' && !Array.isArray(cur))) {
-      return UNRESOLVED;
-    }
+    // `typeof [] === 'object'`, so the bare object check covers both
+    // record and array shapes.
+    if (cur === null || typeof cur !== 'object') return UNRESOLVED;
     if (seg.kind === 'object') {
       cur = (cur as Record<string, unknown>)[seg.key];
     } else {
