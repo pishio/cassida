@@ -81,6 +81,13 @@ interface ModuleRecord {
   readonly exports: Map<string, ExportEntry>;
   /** Re-exports: `export { x } from './y'` or `export * from './y'`. */
   readonly reExports: ReadonlyArray<ReExport>;
+  /**
+   * Cached `NodePath<Program>` for the parsed AST. Captured by a
+   * single `traverse` at module-load time so identifier resolution
+   * can use the program scope without re-walking the AST per
+   * lookup. `null` until first use; populated lazily on demand.
+   */
+  programPath: NodePath<t.Program> | null;
 }
 
 /**
@@ -105,7 +112,20 @@ export type ModuleCache = Map<string, ModuleRecord | null>;
 
 export const createModuleCache = (): ModuleCache => new Map();
 
-const SUPPORTED_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+const SUPPORTED_EXTS = [
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  // Design tokens are commonly stored in JSON for cross-tool sharing
+  // (Style Dictionary, Figma plugins, Tailwind config). Treated below
+  // as a synthetic module exporting each top-level key as a named
+  // export plus the whole object as the default export, matching how
+  // Vite / Rollup interpret ESM JSON imports.
+  '.json',
+];
 
 interface InternalContext {
   readonly cache: ModuleCache;
@@ -405,36 +425,36 @@ function evalExpressionInModule(
   const cheap = evalExpression(node, null, modulePath, ctx);
   if (cheap !== UNRESOLVED) return cheap;
 
-  // Fall back to a scope-aware traversal of the foreign module's AST.
+  // Fall back to scope-aware evaluation. We anchor against the
+  // module's Program-scope NodePath rather than re-walking the AST
+  // to find the target node — the export init is, in the common
+  // case, a top-level expression whose Identifier references are all
+  // resolvable at program scope. Theme files rarely introduce inner
+  // function scopes that the evaluator can fold into anyway (calls
+  // are out of scope), so program scope is a safe fit.
   const record = ctx.cache.get(modulePath);
   if (!record) return UNRESOLVED;
-  return evalWithModuleScope(node, record.ast, modulePath, ctx);
+  const programPath = getProgramPath(record);
+  if (!programPath) return UNRESOLVED;
+  return evalExpression(node, programPath, modulePath, ctx);
 }
 
-function evalWithModuleScope(
-  target: t.Node,
-  ast: t.File,
-  modulePath: string,
-  ctx: InternalContext,
-): unknown | Unresolved {
-  // A small one-shot traversal that yields the NodePath for the
-  // target node, then evaluates with that scope handle.
-  let result: unknown | Unresolved = UNRESOLVED;
-  let found = false;
-  traverse(ast, {
-    enter(path) {
-      if (found) {
-        path.stop();
-        return;
-      }
-      if (path.node === target) {
-        found = true;
-        result = evalExpression(target, path, modulePath, ctx);
-        path.stop();
-      }
+/**
+ * Lazily compute and cache the `NodePath<Program>` for a module. One
+ * traversal per module amortizes across every identifier resolution
+ * that needs scope.
+ */
+function getProgramPath(record: ModuleRecord): NodePath<t.Program> | null {
+  if (record.programPath) return record.programPath;
+  let captured: NodePath<t.Program> | null = null;
+  traverse(record.ast, {
+    Program(path) {
+      captured = path;
+      path.stop();
     },
   });
-  return result;
+  record.programPath = captured;
+  return captured;
 }
 
 function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null {
@@ -449,12 +469,32 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
     return null;
   }
 
+  // JSON modules: parse natively and synthesize an AST that the rest
+  // of the resolver treats like any other module. Each top-level key
+  // becomes a named export; the whole object is also the default
+  // export — matching Vite / Rollup ESM JSON import semantics.
+  if (modulePath.endsWith('.json')) {
+    const record = loadJsonModule(modulePath, source);
+    cache.set(modulePath, record);
+    return record;
+  }
+
   let ast: t.File;
   try {
     ast = parse(source, {
       sourceType: 'module',
       sourceFilename: modulePath,
-      plugins: ['typescript', 'jsx'],
+      // Theme files commonly use modern syntax. Babel handles unused
+      // grammars lazily so the cost is negligible; the upside is
+      // fewer parse errors that silently disable cross-file folding.
+      plugins: [
+        'typescript',
+        'jsx',
+        'classProperties',
+        'decorators-legacy',
+        'exportDefaultFrom',
+        'exportNamespaceFrom',
+      ],
     });
   } catch {
     cache.set(modulePath, null);
@@ -506,9 +546,10 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
               source: stmt.source.value,
             });
           } else {
-            // `export { x }` — link to the local declaration.
-            const decl = findLocalDeclaration(ast, local);
-            if (decl) exports.set(exported, { init: decl });
+            // `export { x }` — link to the local declaration. Honors
+            // destructured locals via the shared pattern walker.
+            const entry = findLocalExportEntry(ast, local);
+            if (entry) exports.set(exported, entry);
           }
         }
       }
@@ -521,9 +562,65 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
     }
   }
 
-  const record: ModuleRecord = { path: modulePath, ast, exports, reExports };
+  const record: ModuleRecord = {
+    path: modulePath,
+    ast,
+    exports,
+    reExports,
+    programPath: null,
+  };
   cache.set(modulePath, record);
   return record;
+}
+
+/**
+ * Build a synthetic ModuleRecord for a `.json` import.
+ *
+ * Each top-level JSON key becomes a named export; the whole object is
+ * also the default export. Each value is converted to an equivalent
+ * AST literal so the rest of the evaluator sees a normal-shaped
+ * record and the existing `evalExpression` path resolves everything.
+ */
+function loadJsonModule(modulePath: string, source: string): ModuleRecord | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    return null;
+  }
+
+  const ast = parse('', { sourceType: 'module', sourceFilename: modulePath });
+  const exports = new Map<string, ExportEntry>();
+  const defaultNode = jsonToAst(value);
+  exports.set('default', { init: defaultNode });
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    for (const [k, v] of Object.entries(value)) {
+      exports.set(k, { init: jsonToAst(v) });
+    }
+  }
+  return { path: modulePath, ast, exports, reExports: [], programPath: null };
+}
+
+function jsonToAst(value: unknown): t.Node {
+  if (value === null) return t.nullLiteral();
+  if (typeof value === 'string') return t.stringLiteral(value);
+  if (typeof value === 'number') return t.numericLiteral(value);
+  if (typeof value === 'boolean') return t.booleanLiteral(value);
+  if (Array.isArray(value)) {
+    return t.arrayExpression(value.map((v) => jsonToAst(v) as t.Expression));
+  }
+  if (typeof value === 'object') {
+    const props: t.ObjectProperty[] = [];
+    for (const [k, v] of Object.entries(value)) {
+      props.push(
+        t.objectProperty(t.identifier(k), jsonToAst(v) as t.Expression),
+      );
+    }
+    return t.objectExpression(props);
+  }
+  // `undefined` / function / symbol — JSON.parse can't produce these,
+  // but defend anyway by emitting a node the evaluator will refuse.
+  return t.identifier('undefined');
 }
 
 /**
@@ -585,19 +682,38 @@ function collectPatternBindings(
   // skipped.
 }
 
-function findLocalDeclaration(ast: t.File, name: string): t.Node | null {
+/**
+ * Finds the local declaration of `name` in a module's top-level
+ * scope, returning a fully-formed `ExportEntry` so destructured
+ * locals (`const { x } = colors; export { x };`) carry their path
+ * the same way `export const { x } = colors` does.
+ */
+function findLocalExportEntry(ast: t.File, name: string): ExportEntry | null {
   for (const stmt of ast.program.body) {
     if (t.isVariableDeclaration(stmt)) {
       for (const decl of stmt.declarations) {
-        if (t.isIdentifier(decl.id) && decl.id.name === name && decl.init) {
-          return decl.init;
+        if (!decl.init) continue;
+        if (t.isIdentifier(decl.id) && decl.id.name === name) {
+          return { init: decl.init };
+        }
+        // Destructure: walk the pattern, return only if it binds
+        // the requested name. Reusing the same collector keeps the
+        // semantics in lockstep with `export const { x } = ...`.
+        if (
+          t.isObjectPattern(decl.id) ||
+          t.isArrayPattern(decl.id)
+        ) {
+          const tmp = new Map<string, ExportEntry>();
+          collectPatternBindings(decl.id, decl.init, [], tmp);
+          const hit = tmp.get(name);
+          if (hit) return hit;
         }
       }
     } else if (
       (t.isFunctionDeclaration(stmt) || t.isClassDeclaration(stmt)) &&
       stmt.id?.name === name
     ) {
-      return stmt;
+      return { init: stmt };
     }
   }
   return null;

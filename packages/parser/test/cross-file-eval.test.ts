@@ -299,6 +299,46 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.dynamics).toHaveLength(0);
   });
 
+  it('folds JSON imports', () => {
+    writeFile(
+      'tokens.json',
+      JSON.stringify({ brand: { primary: '#3b82f6' }, spacing: { md: 16 } }),
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import tokens from './tokens.json';
+      export const X = () =>
+        <div {...cas().color(tokens.brand.primary).padding(tokens.spacing.md)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+    expect(r.rules[0]!.tree.bag.padding).toBe('16px');
+  });
+
+  it('folds JSON imports via named import (top-level keys)', () => {
+    writeFile('tokens.json', JSON.stringify({ PRIMARY: '#3b82f6' }));
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { PRIMARY } from './tokens.json';
+      export const X = () => <div {...cas().color(PRIMARY)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+  });
+
+  it('resolves destructured locals re-exported via `export { x }`', () => {
+    writeFile(
+      'theme.ts',
+      `const palette = { primary: '#3b82f6' };
+       const { primary } = palette;
+       export { primary };`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { primary } from './theme';
+      export const X = () => <div {...cas().color(primary)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+  });
+
   it('reuses a passed module cache across calls', async () => {
     writeFile('theme.ts', `export const PRIMARY = '#3b82f6';`);
     const { createModuleCache } = await import('../src/index.js');
