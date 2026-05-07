@@ -577,10 +577,7 @@ function readArgs(argPaths: readonly NodePath[], ctx: WalkContext): unknown[] | 
     // in separate modules (`import { theme } from './theme'`). Babel's
     // own evaluator stops at the import boundary; ours follows it.
     if (ctx.crossFile) {
-      const folded = evaluateNode(argPath, {
-        filename: ctx.crossFile.filename,
-        ...(ctx.crossFile.cache !== undefined ? { cache: ctx.crossFile.cache } : {}),
-      });
+      const folded = evaluateNode(argPath, ctx.crossFile);
       if (folded !== UNRESOLVED) {
         const validated = EvaluatedPrimitiveSchema.safeParse(folded);
         if (validated.success) {
@@ -609,7 +606,7 @@ function resolveCrossFileConfig(options: TransformOptions): CrossFileConfig | nu
   const filename = options.filename;
   if (!filename) return null;
   if (typeof flag === 'object' && flag !== null) {
-    return flag.cache !== undefined ? { filename, cache: flag.cache } : { filename };
+    return { filename, ...flag };
   }
   return { filename };
 }

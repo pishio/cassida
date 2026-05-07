@@ -262,24 +262,25 @@ function resolveExport(
   // Namespace import — build an object from every named export.
   if (exportName === '*') {
     const out: Record<string, unknown> = {};
-    for (const name of record.exports.keys()) {
-      ctx.inProgress.add(cycleKey);
-      const v = resolveExport(modulePath, name, ctx);
+    ctx.inProgress.add(cycleKey);
+    try {
+      for (const name of record.exports.keys()) {
+        const v = resolveExport(modulePath, name, ctx);
+        if (v === UNRESOLVED) return UNRESOLVED;
+        out[name] = v;
+      }
+      // Also fold in re-export `*` sources.
+      for (const re of record.reExports) {
+        if (re.kind !== 'all') continue;
+        const target = resolveModule(modulePath, re.source);
+        if (!target) return UNRESOLVED;
+        const v = resolveExport(target, '*', ctx);
+        if (v === UNRESOLVED) return UNRESOLVED;
+        if (v === null || typeof v !== 'object') return UNRESOLVED;
+        Object.assign(out, v);
+      }
+    } finally {
       ctx.inProgress.delete(cycleKey);
-      if (v === UNRESOLVED) return UNRESOLVED;
-      out[name] = v;
-    }
-    // Also fold in re-export `*` sources.
-    for (const re of record.reExports) {
-      if (re.kind !== 'all') continue;
-      const target = resolveModule(modulePath, re.source);
-      if (!target) return UNRESOLVED;
-      ctx.inProgress.add(cycleKey);
-      const v = resolveExport(target, '*', ctx);
-      ctx.inProgress.delete(cycleKey);
-      if (v === UNRESOLVED) return UNRESOLVED;
-      if (v === null || typeof v !== 'object') return UNRESOLVED;
-      Object.assign(out, v);
     }
     return out;
   }
@@ -288,11 +289,7 @@ function resolveExport(
   if (direct) {
     ctx.inProgress.add(cycleKey);
     try {
-      const evalCtx: InternalContext = {
-        cache: ctx.cache,
-        inProgress: ctx.inProgress,
-      };
-      return evalExpressionInModule(direct, modulePath, evalCtx);
+      return evalExpressionInModule(direct, modulePath, ctx);
     } finally {
       ctx.inProgress.delete(cycleKey);
     }
