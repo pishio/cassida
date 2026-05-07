@@ -210,7 +210,7 @@ const withInteractive = (c: CassChain) =>
 <button {...withInteractive(withCard(cas())).fontSize(14)} />
 ```
 
-The build-time parser walks `withCard`'s body, splices the ops into the input chain, and produces a single class for the merged surface. Phase 6c-2 supports same-file `const` arrow functions and `function` declarations with one `CassChain` param. Cross-file composition is on the [roadmap](#roadmap).
+The build-time parser walks `withCard`'s body, splices the ops into the input chain, and produces a single class for the merged surface. Phase 6c-2 supports same-file `const` arrow functions and `function` declarations with one `CassChain` param. Mixin composition across files is a separate concern from value-level cross-file evaluation (covered below).
 
 ### Constant injection — `cas(preset)`
 
@@ -223,7 +223,53 @@ const card = { padding: 12, borderRadius: 8, backgroundColor: '#fff' } as const;
 //          ^^^^ same hash whether `card` is in this file or imported
 ```
 
-`path.evaluate()` resolves const-bound objects across files (within Babel's confidence boundary). Non-confident inputs fall through to runtime inline-style.
+For local `const` bindings Cassida uses Babel's `path.evaluate()`. For imports, see *Cross-file design tokens* below — values defined in another module are folded at build time.
+
+### Cross-file design tokens
+
+Values defined in a separate module are resolved at build time so design tokens drive *static* class hashing instead of runtime inline styles:
+
+```ts
+// theme.ts
+export const theme = {
+  brand: { primary: '#3b82f6', onPrimary: '#ffffff' },
+  spacing: { sm: 8, md: 16, lg: 24 },
+  radius: 6,
+} as const;
+
+// component.tsx
+import { theme } from './theme';
+
+<button
+  {...cas()
+    .padding(theme.spacing.md)
+    .backgroundColor(theme.brand.primary)
+    .color(theme.brand.onPrimary)
+    .borderRadius(theme.radius)}
+/>
+```
+
+The chain compiles to a single class — `padding:16px;background-color:#3b82f6;color:#fff;border-radius:6px;`. No CSS variables, no inline styles, no runtime cost.
+
+**What's resolved**
+
+- Literal values (string / number / boolean / null), object & array literals
+- Member access on the above (`theme.brand.primary`, `theme["spacing"]["md"]`)
+- Identifiers resolved through local `const`, named / default / namespace imports
+- Re-exports (`export { x } from './y'`, `export * from './y'`)
+- Directory imports (`./theme` → `./theme/index.ts`)
+- Destructured exports (`export const { primary } = palette`, including renames and nested patterns)
+- TypeScript `as const`, `satisfies`, parenthesized expressions
+- JSON imports (`import tokens from './tokens.json'`) — top-level keys become named exports
+
+**What stays dynamic** (chain bails to inline style or CSS variable):
+
+- Function-call results, including `Object.freeze(...)`
+- Template literals with substitutions (`` `hsl(${hue}deg ...)` ``)
+- Bare-package specifiers (`from 'some-theme-pkg'`) — design tokens are user-owned files; walking `node_modules` would be an eval-by-AST footgun. A future opt-in option will whitelist trusted theme packages.
+- TypeScript path aliases (`@/tokens`) — planned, requires tsconfig discovery
+
+`@cassida/parser` exposes `createModuleCache()` so a Vite build can amortize parsing across many files. The vite-plugin wires this in automatically; no config required for typical projects.
 
 ### Dynamic values — auto CSS variables
 
@@ -392,7 +438,7 @@ function Box({ tone }: { tone: string }) {
 }
 ```
 
-This compiles fine — `tone` becomes a CSS variable, the className is computed from the chain's *shape*. The hash is stable across builds even when `tone` is wired to user input or random state. If the value is confidently evaluable at build time (e.g. `THEME.primary` from a const), it's inlined as a literal instead of becoming a variable.
+This compiles fine — `tone` becomes a CSS variable, the className is computed from the chain's *shape*. The hash is stable across builds even when `tone` is wired to user input or random state. If the value is statically evaluable at build time — `THEME.primary` from a local const, or `theme.brand.primary` imported from another module via the [cross-file evaluator](#cross-file-design-tokens) — it's inlined as a literal instead of becoming a variable.
 
 ### `Math.random()` in a chain
 
@@ -495,7 +541,10 @@ See `packages/plugin-hover-fix/src/index.ts` for a 30-line reference implementat
 | 6c-2  | ✅ | Same-file function composition (`withCard(cas())`) |
 | 6c-3  | ✅ | `set()` escape hatch + opaque animation/transition/transform |
 | 8a    | ✅ | Plugin system + `@cassida/plugin-hover-fix` |
-| 7     | 🚧 | Cross-file static evaluation (Linaria-class) |
+| 7     | ✅ | Cross-file static evaluation — design tokens fold to static classes (`v0.2.0`) |
+| —     | 🚧 | TypeScript path-alias resolution (`@/tokens` style imports) |
+| —     | 💭 | `cas.variants(...)` — branching encoded at build time |
+| —     | 💭 | Multi-property registry (`px-4`, `text-sm` style utilities) |
 | —     | 💭 | Additional first-party plugins (dark-mode duplicator, prefers-reduced-motion fallback) |
 | —     | 💭 | SWC plugin port for Next.js native integration |
 
