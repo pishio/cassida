@@ -362,7 +362,13 @@ function resolveExport(
     }
   }
 
-  // `export *` chains: walk each one looking for the name.
+  // `export *` chains. ESM resolution: a name re-exported by more
+  // than one star source becomes ambiguous and would crash the
+  // consumer at import time — so we *also* refuse to fold it. If we
+  // returned the first match we'd silently produce a class whose
+  // value the consumer can't actually access at runtime.
+  let starHit: unknown | Unresolved = UNRESOLVED;
+  let ambiguous = false;
   for (const re of record.reExports) {
     if (re.kind !== 'all') continue;
     const target = resolveModule(modulePath, re.source);
@@ -370,13 +376,18 @@ function resolveExport(
     ctx.inProgress.add(cycleKey);
     try {
       const v = resolveExport(target, exportName, ctx);
-      if (v !== UNRESOLVED) return v;
+      if (v === UNRESOLVED) continue;
+      if (starHit !== UNRESOLVED) {
+        ambiguous = true;
+        break;
+      }
+      starHit = v;
     } finally {
       ctx.inProgress.delete(cycleKey);
     }
   }
-
-  return UNRESOLVED;
+  if (ambiguous) return UNRESOLVED;
+  return starHit;
 }
 
 /**

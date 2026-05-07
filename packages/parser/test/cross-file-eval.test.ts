@@ -339,6 +339,25 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
   });
 
+  it('rejects ambiguous export-* re-exports as UNRESOLVED', () => {
+    // ESM rule: a name re-exported by more than one star source is
+    // ambiguous and crashes the consumer at import time. The
+    // evaluator must NOT silently pick a winner — that would fold a
+    // value the consumer can't actually access at runtime.
+    writeFile('a.ts', `export const SHARED = 'from-a';`);
+    writeFile('b.ts', `export const SHARED = 'from-b';`);
+    writeFile(
+      'barrel.ts',
+      `export * from './a';\nexport * from './b';`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { SHARED } from './barrel';
+      export const X = () => <div {...cas().color(SHARED)} />;
+    `);
+    expect(r.rules[0]!.dynamics.length).toBeGreaterThan(0);
+  });
+
   it('reuses a passed module cache across calls', async () => {
     writeFile('theme.ts', `export const PRIMARY = '#3b82f6';`);
     const { createModuleCache } = await import('../src/index.js');
