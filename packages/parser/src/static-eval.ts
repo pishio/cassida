@@ -551,6 +551,8 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
       // Theme files commonly use modern syntax. Babel handles unused
       // grammars lazily so the cost is negligible; the upside is
       // fewer parse errors that silently disable cross-file folding.
+      // `importAttributes` covers both stage-4 `with { type: 'json' }`
+      // and the legacy `assert { type: 'json' }` form.
       plugins: [
         'typescript',
         'jsx',
@@ -558,6 +560,7 @@ function loadModule(modulePath: string, cache: ModuleCache): ModuleRecord | null
         'decorators-legacy',
         'exportDefaultFrom',
         'exportNamespaceFrom',
+        'importAttributes',
       ],
     });
   } catch {

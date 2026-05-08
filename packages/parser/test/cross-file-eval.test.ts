@@ -361,6 +361,23 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
   });
 
+  it('parses theme files using `import ... with { type: "json" }`', () => {
+    // The theme file pulls a JSON dataset via stage-4 import
+    // attributes. Without the `importAttributes` Babel plugin, this
+    // would silently fail to parse and the chain would bail.
+    writeFile('data.json', JSON.stringify({ primary: '#3b82f6' }));
+    writeFile(
+      'theme.ts',
+      `import data from './data.json' with { type: 'json' };\nexport const PRIMARY = data.primary;`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { PRIMARY } from './theme';
+      export const X = () => <div {...cas().color(PRIMARY)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+  });
+
   it('rejects ambiguous export-* re-exports as UNRESOLVED', () => {
     // ESM rule: a name re-exported by more than one star source is
     // ambiguous and crashes the consumer at import time. The
