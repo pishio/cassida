@@ -201,7 +201,13 @@ function evalExpression(
 
   // Object / Array literals.
   if (t.isObjectExpression(node)) {
-    const out: Record<string, unknown> = {};
+    // `Object.create(null)` rather than `{}`: theme objects coming
+    // from arbitrary user data may contain keys that would collide
+    // with `Object.prototype` members (`__proto__`, `toString`,
+    // `constructor`, …). With a null-prototype object, every key
+    // lands as own-property and member access never reaches the
+    // built-in chain.
+    const out: Record<string, unknown> = Object.create(null);
     for (const prop of node.properties) {
       if (!t.isObjectProperty(prop) || prop.computed) return UNRESOLVED;
       const key = prop.key;
@@ -345,7 +351,10 @@ function resolveExport(
   // those specific properties.
   if (exportName === '*') {
     if (record.namespace !== undefined) return record.namespace;
-    const out: Record<string, unknown> = {};
+    // Null-prototype map for the same reason as ObjectExpression:
+    // module exports could include names that overlap with built-in
+    // prototype members.
+    const out: Record<string, unknown> = Object.create(null);
     ctx.inProgress.add(cycleKey);
     try {
       // 1) Local exports take precedence — they shadow any name that

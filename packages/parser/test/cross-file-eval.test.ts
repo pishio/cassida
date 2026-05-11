@@ -361,6 +361,23 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
   });
 
+  it('does not pollute Object.prototype on `__proto__` keys in theme', () => {
+    // The theme object intentionally carries a `__proto__` key that
+    // would mutate the prototype chain on a normal object literal.
+    // The evaluator should treat it as an ordinary own property and
+    // still fold the sibling key correctly.
+    writeFile(
+      'theme.ts',
+      `export const theme = { __proto__: 'sneaky', primary: '#3b82f6' };`,
+    );
+    const r = compile(`
+      import { cas } from '@cassida/core';
+      import { theme } from './theme';
+      export const X = () => <div {...cas().color(theme.primary)} />;
+    `);
+    expect(r.rules[0]!.tree.bag.color).toBe('#3b82f6');
+  });
+
   it('parses theme files using `import ... with { type: "json" }`', () => {
     // The theme file pulls a JSON dataset via stage-4 import
     // attributes. Without the `importAttributes` Babel plugin, this
