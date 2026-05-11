@@ -43,8 +43,8 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
-**v0.1.1** — packaging hardening over the v0.1.0 first release.
-The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0. The feature set described below is implemented and covered by 174 unit tests across 5 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun.
+**v0.2.0** — adds cross-file static evaluation: design tokens defined in a separate module (or `.json` file) are folded at build time into the consuming chains, so `import { theme } from './theme'` followed by `cas().color(theme.brand.primary)` compiles to a single static class with no inline-style fallback.
+The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0. The feature set described below is implemented and covered by 200 unit tests across 5 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun.
 
 ```bash
 pnpm add @cassida/core

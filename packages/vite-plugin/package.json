@@ -1,6 +1,6 @@
 {
   "name": "@cassida/vite-plugin",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Vite plugin for Cassida: transforms cas() chains to static className + CSS at build time, served via virtual:cassida.css.",
   "license": "MIT",
   "sideEffects": false,
