@@ -161,7 +161,8 @@ export function transform(source: string, options: TransformOptions): TransformR
     JSXSpreadAttribute(path) {
       // path.get('argument') on a typed NodePath<JSXSpreadAttribute>
       // returns NodePath<Expression>; no cast needed.
-      const argPath = path.get('argument');
+      const argPath = peelPropsAccess(path.get('argument'));
+
       const ops = walkChain(argPath, casBindings, ctx);
       if (!ops) return;
 
@@ -180,7 +181,7 @@ export function transform(source: string, options: TransformOptions): TransformR
         path.parentPath?.traverse({
           JSXSpreadAttribute(p) {
             if (p.node === a) {
-              probed = walkChain(p.get('argument'), casBindings, probeCtx);
+              probed = walkChain(peelPropsAccess(p.get('argument')), casBindings, probeCtx);
               p.stop();
             }
           },
@@ -263,6 +264,28 @@ export function transform(source: string, options: TransformOptions): TransformR
   if (options.filename !== undefined) generateOpts.sourceFileName = options.filename;
   const out = generate(ast, generateOpts, source);
   return { code: out.code, rules, map: out.map ?? null, transformed: true };
+}
+
+/**
+ * Strip a trailing `.props` member access from a JSX-spread argument.
+ *
+ * From v0.3 the documented shape is `{...cas().X().props}` — the
+ * terminator that exposes only `{ className, style }` to JSX so the
+ * chain's CSS-property-named methods don't collide with React's HTML
+ * attribute typings. The parser treats `<chain>.props` as an
+ * equivalent walking root to the bare chain; the rewrite output is
+ * identical for both forms, so this helper just peels and hands the
+ * inner path to `walkChain`.
+ *
+ * Bare chains (`{...cas()...}` without `.props`) pass through
+ * unchanged for the v0.3.x migration window.
+ */
+function peelPropsAccess(argPath: NodePath): NodePath {
+  const memberArg = pathAs(argPath, t.isMemberExpression);
+  if (!memberArg || memberArg.node.computed) return argPath;
+  const propPath = pathAs(memberArg.get('property'), t.isIdentifier);
+  if (!propPath || propPath.node.name !== 'props') return argPath;
+  return memberArg.get('object');
 }
 
 /**

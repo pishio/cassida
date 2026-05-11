@@ -124,14 +124,36 @@ export interface ChainSetMethod {
 export interface CassChainExtensions {}
 
 /**
- * Terminal members read by JSX spread. `style` is a `CSS.Properties`
- * object (camelCase keys, csstype-typed values); `className` is filled
- * in only by the build-time transform — at runtime this is undefined
- * and the spread carries `style` instead.
+ * Output shape of a finalized chain — the *implementation* side of
+ * `cas()`. Spread into a JSX element via the `.props` terminator:
+ *
+ *   ```tsx
+ *   <div {...cas().padding(8).color('red').props} />
+ *   ```
+ *
+ * Why a terminator rather than spreading the chain object directly:
+ * the chain carries ~460 method handles named after CSS properties,
+ * some of which collide with HTML attribute names (`translate`,
+ * `disabled`, `hidden`, …). React's JSX typings reject the
+ * resulting union, so the chain isn't JSX-spreadable on its own.
+ * `.props` strips everything except the two attributes JSX actually
+ * needs, restoring type-correctness without sacrificing chain
+ * autocomplete.
+ */
+export interface CassChainProps {
+  readonly className: string;
+  readonly style: Readonly<CSS.Properties>;
+}
+
+/**
+ * Terminal members of the chain. Surfaces `.props` for type-correct
+ * JSX spread. The build-time parser also recognizes spreads of the
+ * bare chain (`{...cas()...}`) for backward compatibility, but the
+ * type system intentionally hides the chain's method surface from
+ * JSX — direct spread is a type error from v0.3 onward.
  */
 export interface CassChainTerminus {
-  readonly style: Readonly<CSS.Properties>;
-  readonly className?: string;
+  readonly props: CassChainProps;
 }
 
 /**
@@ -361,20 +383,64 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): CassChain {
     },
   });
 
-  // Only the root chain exposes `style` to JSX spread. Inner chains
-  // accumulate ops for the outer; spreading them would leak the inner
-  // bag.
+  // The `.props` terminator — type-correct JSX spread target. Returns
+  // a frozen `{ className, style }` derived from the same `compileOps`
+  // pipeline the build-time parser uses, so dev-mode (parser-bypassed)
+  // and prod-mode outputs match byte-for-byte for the same chain.
+  // Non-enumerable so that `{...chain}` without `.props` doesn't
+  // accidentally spread a literal `{props: {...}}`.
+  //
+  // Defined on every chain (root and inner) rather than only the root
+  // because `CassChain` is the same type the modifier callback param
+  // (`.hover(c => ...)`) is typed as. If `.props` only existed on the
+  // root, `c.props` in callback bodies would typecheck but be
+  // `undefined` at runtime. Inner-chain `.props` reflects only the
+  // inner scope's ops — semantically odd to spread into JSX, but
+  // never throws and never lies about types.
+  //
+  // Memoized by `ops.length`: every chain method push grows ops by
+  // one, so a length match means the bag is unchanged and the
+  // previous result is still authoritative. Repeated `.props`
+  // reads on the same finalized chain (common in renders with
+  // memo'd children) skip the entire canonicalize pass.
+  let cachedProps: CassChainProps | null = null;
+  let cachedOpsLength = -1;
+  const buildProps = (): CassChainProps => {
+    if (cachedProps !== null && ops.length === cachedOpsLength) return cachedProps;
+    const result = compileOps(ops, { registry });
+    const style: Record<string, string> = {};
+    for (const k of Object.keys(result.tree.bag)) {
+      // CSS custom properties (`--foo`) must stay kebab-case in the
+      // React `style` object — React treats them as raw CSS variable
+      // names rather than camelCased property identifiers. The
+      // canonical-spec longhands are kebab-case and get camelized,
+      // but `set('--foo', ...)` writes go through unchanged.
+      const outKey = k.startsWith('--') ? k : cssToCamel(k);
+      style[outKey] = result.tree.bag[k]!;
+    }
+    cachedProps = Object.freeze({
+      className: result.className,
+      style: Object.freeze(style) as Readonly<CSS.Properties>,
+    });
+    cachedOpsLength = ops.length;
+    return cachedProps;
+  };
+
+  Object.defineProperty(chain, 'props', {
+    enumerable: false,
+    configurable: false,
+    get: buildProps,
+  });
+
+  // Legacy direct-spread support on the root only — read-only style.
+  // Will be removed in v1.0 alongside the parser's tolerance for
+  // bare-chain spreads. The type already excludes it from v0.3.
   if (isRoot) {
     Object.defineProperty(chain, 'style', {
       enumerable: true,
       configurable: false,
       get(): Readonly<CSS.Properties> {
-        const { tree } = compileOps(ops, { registry });
-        const style: Record<string, string> = {};
-        for (const k of Object.keys(tree.bag)) {
-          style[cssToCamel(k)] = tree.bag[k]!;
-        }
-        return Object.freeze(style) as Readonly<CSS.Properties>;
+        return buildProps().style;
       },
     });
   }
