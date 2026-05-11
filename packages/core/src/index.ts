@@ -410,7 +410,13 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): CassChain {
     const result = compileOps(ops, { registry });
     const style: Record<string, string> = {};
     for (const k of Object.keys(result.tree.bag)) {
-      style[cssToCamel(k)] = result.tree.bag[k]!;
+      // CSS custom properties (`--foo`) must stay kebab-case in the
+      // React `style` object — React treats them as raw CSS variable
+      // names rather than camelCased property identifiers. The
+      // canonical-spec longhands are kebab-case and get camelized,
+      // but `set('--foo', ...)` writes go through unchanged.
+      const outKey = k.startsWith('--') ? k : cssToCamel(k);
+      style[outKey] = result.tree.bag[k]!;
     }
     cachedProps = Object.freeze({
       className: result.className,

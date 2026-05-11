@@ -110,6 +110,19 @@ describe('runtime cas()', () => {
       expect(a).toBe(b);
     });
 
+    it('preserves CSS custom property names in `style` (no camelCase)', () => {
+      // React treats `style: { --my-var: '...' }` as a raw CSS
+      // variable — running it through cssToCamel produces `-MyVar`
+      // which React rejects. Custom properties must keep their
+      // kebab-case form.
+      const chain = (cas() as unknown as {
+        set: (k: string, v: string | number) => unknown;
+      }).set('--brand-scale', 1.5);
+      const props = (chain as unknown as { props: { style: Record<string, unknown> } }).props;
+      expect(props.style['--brand-scale']).toBe('1.5');
+      expect(props.style['-BrandScale']).toBeUndefined();
+    });
+
     it('invalidates the memo when the chain grows', () => {
       const chain = cas().color('red');
       const before = chain.props;

@@ -267,17 +267,6 @@ export function transform(source: string, options: TransformOptions): TransformR
 }
 
 /**
- * Walks a `cas().a().b()...` chain backward from the outermost call,
- * accumulating ops in source order. Modifiers (`hover`, `focus`,
- * `media`, `on`, …) recurse into their callback's body.
- *
- * Type-narrowing is handled through `pathAs`, so this function never
- * needs to spread `as NodePath` casts. Once a path is confirmed to be
- * a `CallExpression`, `path.get('callee')` and `.get('arguments')`
- * return correctly typed sub-paths automatically.
- *
- * Returns null when the expression isn't rooted at one of `chainRoots`,
-/**
  * Strip a trailing `.props` member access from a JSX-spread argument.
  *
  * From v0.3 the documented shape is `{...cas().X().props}` — the
@@ -300,6 +289,16 @@ function peelPropsAccess(argPath: NodePath): NodePath {
 }
 
 /**
+ * Walks a `cas().a().b()...` chain backward from the outermost call,
+ * accumulating ops in source order. Modifiers (`hover`, `focus`,
+ * `media`, `on`, …) recurse into their callback's body.
+ *
+ * Type-narrowing is handled through `pathAs`, so this function never
+ * needs to spread `as NodePath` casts. Once a path is confirmed to be
+ * a `CallExpression`, `path.get('callee')` and `.get('arguments')`
+ * return correctly typed sub-paths automatically.
+ *
+ * Returns null when the expression isn't rooted at one of `chainRoots`,
  * an op has unsupported argument shape (mixed dynamic+literal, spread
  * arguments, multiple-or-zero callback params, etc.), or any other
  * structural mismatch. On null the caller leaves the JSX untouched.
