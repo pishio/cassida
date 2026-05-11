@@ -21,6 +21,15 @@ import {
   type ShorthandPolicy,
 } from '@cassida/compiler';
 import { pathAs } from './path-guard.js';
+import {
+  createModuleCache,
+  evaluateNode,
+  UNRESOLVED,
+  type ModuleCache,
+} from './static-eval.js';
+
+export { createModuleCache } from './static-eval.js';
+export type { ModuleCache } from './static-eval.js';
 
 // Babel's ESM packaging exposes the function under `.default` when imported
 // from a Node ESM consumer. Tolerate either shape.
@@ -50,6 +59,27 @@ export interface TransformOptions {
    * one; the className is derived from the post-plugin form.
    */
   readonly plugins?: readonly CassPlugin[];
+  /**
+   * Cross-file static evaluator controls. When the parser hits an
+   * argument that Babel's local `path.evaluate()` can't resolve, it
+   * walks `import` declarations from the file at `filename` and tries
+   * to fold the value at build time — design tokens defined in
+   * separate modules become static class names rather than dynamic
+   * slots.
+   *
+   *   - `false`         disables cross-file evaluation entirely
+   *   - omitted / true  enabled when `filename` is provided
+   *   - object          enabled with explicit options (e.g. a shared
+   *                     `cache` for warm reads across many files)
+   *
+   * Without `filename` the evaluator can't anchor relative resolution,
+   * so it stays dormant regardless of this flag.
+   */
+  readonly crossFileEvaluation?:
+    | boolean
+    | {
+        readonly cache?: ModuleCache;
+      };
 }
 
 export interface TransformResult {
@@ -65,6 +95,17 @@ type NonLiteral = typeof NON_LITERAL;
 interface WalkContext {
   readonly dynamicSources: Map<string, t.Expression>;
   readonly counter: { n: number };
+  /**
+   * Cross-file evaluator config. `null` means "skip the import-graph
+   * walk entirely" — used when the user opted out or when no filename
+   * was provided to anchor resolution.
+   */
+  readonly crossFile: CrossFileConfig | null;
+}
+
+interface CrossFileConfig {
+  readonly filename: string;
+  readonly cache?: ModuleCache;
 }
 
 export function transform(source: string, options: TransformOptions): TransformResult {
@@ -113,7 +154,8 @@ export function transform(source: string, options: TransformOptions): TransformR
   let transformed = false;
   const dynamicSources = new Map<string, t.Expression>();
   const counter = { n: 0 };
-  const ctx: WalkContext = { dynamicSources, counter };
+  const crossFile = resolveCrossFileConfig(options);
+  const ctx: WalkContext = { dynamicSources, counter, crossFile };
 
   traverse(ast, {
     JSXSpreadAttribute(path) {
@@ -130,6 +172,7 @@ export function transform(source: string, options: TransformOptions): TransformR
       const probeCtx: WalkContext = {
         dynamicSources: new Map(),
         counter: { n: 0 },
+        crossFile,
       };
       const otherCasSpreads = opening.attributes.filter((a) => {
         if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
@@ -531,12 +574,51 @@ function readArgs(argPaths: readonly NodePath[], ctx: WalkContext): unknown[] | 
       }
     }
 
-    // 3) Dynamic — promote to CSS variable.
+    // 3) Cross-file static evaluator — handles design tokens defined
+    // in separate modules (`import { theme } from './theme'`). Babel's
+    // own evaluator stops at the import boundary; ours follows it.
+    if (ctx.crossFile) {
+      const folded = evaluateNode(argPath, ctx.crossFile);
+      if (folded !== UNRESOLVED) {
+        const validated = EvaluatedPrimitiveSchema.safeParse(folded);
+        if (validated.success) {
+          out.push(validated.data);
+          continue;
+        }
+      }
+    }
+
+    // 4) Dynamic — promote to CSS variable.
     const id = `slot-${++ctx.counter.n}`;
     ctx.dynamicSources.set(id, node);
     out.push({ [DYNAMIC_TAG]: true, id });
   }
   return out;
+}
+
+/**
+ * Resolves the cross-file evaluator config from `TransformOptions`.
+ * Returns `null` when the evaluator is disabled or can't anchor
+ * (no filename → can't resolve relative imports).
+ */
+function resolveCrossFileConfig(options: TransformOptions): CrossFileConfig | null {
+  const flag = options.crossFileEvaluation;
+  if (flag === false) return null;
+  const filename = options.filename;
+  if (!filename) return null;
+  // Allocate a cache once per `transform()` call when the caller
+  // didn't pass one. Otherwise every chain arg builds its own cache
+  // and re-reads / re-parses the same imported modules — turning a
+  // typical 10-method component into 10× the file IO and parse work.
+  const cache = createModuleCacheLocal(flag);
+  return { filename, cache };
+}
+
+function createModuleCacheLocal(
+  flag: TransformOptions['crossFileEvaluation'],
+): ModuleCache {
+  if (typeof flag === 'object' && flag !== null && flag.cache) return flag.cache;
+  return createModuleCache();
 }
 
 function inferScope(

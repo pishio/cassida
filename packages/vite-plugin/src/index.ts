@@ -14,7 +14,7 @@ import {
   type Registry,
   type ResolvedCassConfig,
 } from '@cassida/compiler';
-import { transform } from '@cassida/parser';
+import { createModuleCache, transform } from '@cassida/parser';
 import type { Plugin, ViteDevServer } from 'vite';
 
 /**
@@ -66,6 +66,11 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
   // queries. `null` means "no targets passed → lightningcss default".
   let cachedTargets: Targets | null = null;
   let projectRoot = process.cwd();
+  // Shared cross-file module cache, scoped to the plugin instance
+  // (and therefore the build). Without this, every consumer file's
+  // `transform()` call would re-read and re-parse `theme.ts` etc.;
+  // with it, each design-token module is parsed once per build.
+  const crossFileCache = createModuleCache();
 
   function emitForFile(file: string): string {
     const rules = rulesByFile.get(file);
@@ -143,6 +148,7 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
         filename: cleanId,
         importSource: resolved.importSource,
         shorthandPolicy: resolved.shorthand.policy,
+        crossFileEvaluation: { cache: crossFileCache },
         ...(options.plugins ? { plugins: options.plugins } : {}),
       });
 

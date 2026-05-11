@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cas, type CassChain } from '@cassida/core';
+import { tokens } from './tokens';
 
 // Phase 6c-2: same-file style mixins. Compose via plain functions.
 const withCard = (c: CassChain) =>
@@ -180,6 +181,23 @@ export default function App() {
         paddingTop(32) only inside @media. Strict policy permits this because
         the longhand sits in a separate scope.
       </div>
+
+      {/* Cross-file static evaluator demo — tokens are imported from
+          ./tokens.ts and folded at build time into a single class.
+          Verify in DevTools: only one `cas-XXXXXXXX` class, no inline
+          `style` carrying these values. */}
+      <button
+        {...cas()
+          .marginTop(tokens.spacing.md)
+          .padding(tokens.spacing.sm, 'px')
+          .borderRadius(tokens.radius)
+          .backgroundColor(tokens.brand.primary)
+          .color(tokens.brand.onPrimary)
+          .borderWidth(0)
+          .cursor('pointer')}
+      >
+        Build-time-folded design tokens
+      </button>
     </main>
   );
 }
