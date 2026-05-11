@@ -74,5 +74,50 @@ describe('runtime cas()', () => {
       expect(Object.isFrozen(props)).toBe(true);
       expect(Object.isFrozen(props.style)).toBe(true);
     });
+
+    it('inner chains also expose `.props` (type-runtime consistency)', () => {
+      // The modifier callback receives a chain typed as `CassChain`,
+      // and `CassChain.props` is required in the type definition.
+      // Without exposing `.props` on inner chains, `c.props` would
+      // typecheck but be undefined at runtime — a footgun. The inner
+      // result reflects only the inner scope's ops, not the
+      // surrounding wrapping; spreading it into JSX is semantically
+      // odd but never throws.
+      let innerProps: { className: string; style: object } | undefined;
+      cas()
+        .color('red')
+        .hover(c => {
+          c.color('blue');
+          // Read after the inner scope has accumulated its ops.
+          innerProps = (c as unknown as {
+            props: { className: string; style: object };
+          }).props;
+          return c;
+        });
+      expect(innerProps).toBeDefined();
+      expect(innerProps!.className).toMatch(/^cas-[0-9a-f]{8}$/);
+      expect(innerProps!.style).toEqual({ color: 'blue' });
+    });
+
+    it('memoizes `.props` while the chain is stable', () => {
+      // Each method push grows ops by one; same length means same
+      // bag and the previous result stays authoritative. Identity
+      // preservation matters for React.memo on children that read
+      // the chain's props.
+      const chain = cas().color('red').padding(8);
+      const a = chain.props;
+      const b = chain.props;
+      expect(a).toBe(b);
+    });
+
+    it('invalidates the memo when the chain grows', () => {
+      const chain = cas().color('red');
+      const before = chain.props;
+      const mutable = chain as unknown as { padding: (v: number) => unknown };
+      mutable.padding(8);
+      const after = chain.props;
+      expect(after).not.toBe(before);
+      expect(after.style).toEqual({ color: 'red', padding: '8px' });
+    });
   });
 });

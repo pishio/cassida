@@ -161,21 +161,7 @@ export function transform(source: string, options: TransformOptions): TransformR
     JSXSpreadAttribute(path) {
       // path.get('argument') on a typed NodePath<JSXSpreadAttribute>
       // returns NodePath<Expression>; no cast needed.
-      let argPath = path.get('argument');
-
-      // Peel off a trailing `.props` member access. From v0.3 onward
-      // the documented shape is `{...cas().X().props}` so the chain's
-      // method handles don't collide with HTML attribute types at the
-      // JSX-spread call site. The parser treats `<chain>.props` as an
-      // equivalent walking root to the bare chain — the rewrite
-      // output is the same either way.
-      const memberArg = pathAs(argPath, t.isMemberExpression);
-      if (memberArg && !memberArg.node.computed) {
-        const propPath = pathAs(memberArg.get('property'), t.isIdentifier);
-        if (propPath && propPath.node.name === 'props') {
-          argPath = memberArg.get('object');
-        }
-      }
+      const argPath = peelPropsAccess(path.get('argument'));
 
       const ops = walkChain(argPath, casBindings, ctx);
       if (!ops) return;
@@ -195,15 +181,7 @@ export function transform(source: string, options: TransformOptions): TransformR
         path.parentPath?.traverse({
           JSXSpreadAttribute(p) {
             if (p.node === a) {
-              let pArg = p.get('argument');
-              const pMember = pathAs(pArg, t.isMemberExpression);
-              if (pMember && !pMember.node.computed) {
-                const pProp = pathAs(pMember.get('property'), t.isIdentifier);
-                if (pProp && pProp.node.name === 'props') {
-                  pArg = pMember.get('object');
-                }
-              }
-              probed = walkChain(pArg, casBindings, probeCtx);
+              probed = walkChain(peelPropsAccess(p.get('argument')), casBindings, probeCtx);
               p.stop();
             }
           },
@@ -299,6 +277,29 @@ export function transform(source: string, options: TransformOptions): TransformR
  * return correctly typed sub-paths automatically.
  *
  * Returns null when the expression isn't rooted at one of `chainRoots`,
+/**
+ * Strip a trailing `.props` member access from a JSX-spread argument.
+ *
+ * From v0.3 the documented shape is `{...cas().X().props}` — the
+ * terminator that exposes only `{ className, style }` to JSX so the
+ * chain's CSS-property-named methods don't collide with React's HTML
+ * attribute typings. The parser treats `<chain>.props` as an
+ * equivalent walking root to the bare chain; the rewrite output is
+ * identical for both forms, so this helper just peels and hands the
+ * inner path to `walkChain`.
+ *
+ * Bare chains (`{...cas()...}` without `.props`) pass through
+ * unchanged for the v0.3.x migration window.
+ */
+function peelPropsAccess(argPath: NodePath): NodePath {
+  const memberArg = pathAs(argPath, t.isMemberExpression);
+  if (!memberArg || memberArg.node.computed) return argPath;
+  const propPath = pathAs(memberArg.get('property'), t.isIdentifier);
+  if (!propPath || propPath.node.name !== 'props') return argPath;
+  return memberArg.get('object');
+}
+
+/**
  * an op has unsupported argument shape (mixed dynamic+literal, spread
  * arguments, multiple-or-zero callback params, etc.), or any other
  * structural mismatch. On null the caller leaves the JSX untouched.

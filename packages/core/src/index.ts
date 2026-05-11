@@ -390,33 +390,46 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): CassChain {
   // Non-enumerable so that `{...chain}` without `.props` doesn't
   // accidentally spread a literal `{props: {...}}`.
   //
-  // The legacy `style` getter is kept enumerable on the root chain so
-  // existing v0.2 code that still spreads the chain directly keeps
-  // working at runtime even after the type-side breaking change. The
-  // type only exposes `.props` from v0.3 onward; users who ignore
-  // the type error and use `{...cas()...}` get only `style` (no
-  // className) — the same behavior they had pre-v0.3 in dev mode.
-  if (isRoot) {
-    const buildProps = (): CassChainProps => {
-      const result = compileOps(ops, { registry });
-      const style: Record<string, string> = {};
-      for (const k of Object.keys(result.tree.bag)) {
-        style[cssToCamel(k)] = result.tree.bag[k]!;
-      }
-      return Object.freeze({
-        className: result.className,
-        style: Object.freeze(style) as Readonly<CSS.Properties>,
-      });
-    };
-
-    Object.defineProperty(chain, 'props', {
-      enumerable: false,
-      configurable: false,
-      get: buildProps,
+  // Defined on every chain (root and inner) rather than only the root
+  // because `CassChain` is the same type the modifier callback param
+  // (`.hover(c => ...)`) is typed as. If `.props` only existed on the
+  // root, `c.props` in callback bodies would typecheck but be
+  // `undefined` at runtime. Inner-chain `.props` reflects only the
+  // inner scope's ops — semantically odd to spread into JSX, but
+  // never throws and never lies about types.
+  //
+  // Memoized by `ops.length`: every chain method push grows ops by
+  // one, so a length match means the bag is unchanged and the
+  // previous result is still authoritative. Repeated `.props`
+  // reads on the same finalized chain (common in renders with
+  // memo'd children) skip the entire canonicalize pass.
+  let cachedProps: CassChainProps | null = null;
+  let cachedOpsLength = -1;
+  const buildProps = (): CassChainProps => {
+    if (cachedProps !== null && ops.length === cachedOpsLength) return cachedProps;
+    const result = compileOps(ops, { registry });
+    const style: Record<string, string> = {};
+    for (const k of Object.keys(result.tree.bag)) {
+      style[cssToCamel(k)] = result.tree.bag[k]!;
+    }
+    cachedProps = Object.freeze({
+      className: result.className,
+      style: Object.freeze(style) as Readonly<CSS.Properties>,
     });
+    cachedOpsLength = ops.length;
+    return cachedProps;
+  };
 
-    // Legacy direct-spread support — read-only style only. Will be
-    // removed in v1.0; the type system already excludes it.
+  Object.defineProperty(chain, 'props', {
+    enumerable: false,
+    configurable: false,
+    get: buildProps,
+  });
+
+  // Legacy direct-spread support on the root only — read-only style.
+  // Will be removed in v1.0 alongside the parser's tolerance for
+  // bare-chain spreads. The type already excludes it from v0.3.
+  if (isRoot) {
     Object.defineProperty(chain, 'style', {
       enumerable: true,
       configurable: false,
