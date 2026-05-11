@@ -43,4 +43,36 @@ describe('runtime cas()', () => {
     const r1 = (c as unknown as { color: (v: string) => unknown }).color('red');
     expect(r1).toBe(c);
   });
+
+  describe('.props terminator (v0.3+)', () => {
+    it('returns { className, style } from `.props`', () => {
+      const props = cas().color('red').padding(8).props;
+      expect(props.className).toMatch(/^cas-[0-9a-f]{8}$/);
+      expect(props.style).toEqual({ color: 'red', padding: '8px' });
+    });
+
+    it('is non-enumerable so `{...chain}` does not spread `{props: {...}}`', () => {
+      const chain = cas().color('red');
+      // Direct spread carries only the legacy `style` field, not a
+      // nested `props` object. This keeps v0.2 user code working at
+      // runtime even though the type system stops surfacing the
+      // chain's spread shape from v0.3 onward.
+      const spread = { ...chain };
+      expect('props' in spread).toBe(false);
+      expect(spread).toEqual({ style: { color: 'red' } });
+    });
+
+    it('className is stable across calls for the same chain shape', () => {
+      const a = cas().color('red').padding(8).props.className;
+      const b = cas().padding(8).color('red').props.className;
+      // Canonical ordering means key permutations yield the same hash.
+      expect(a).toBe(b);
+    });
+
+    it('returns a frozen result', () => {
+      const props = cas().color('red').props;
+      expect(Object.isFrozen(props)).toBe(true);
+      expect(Object.isFrozen(props.style)).toBe(true);
+    });
+  });
 });

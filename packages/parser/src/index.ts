@@ -161,7 +161,22 @@ export function transform(source: string, options: TransformOptions): TransformR
     JSXSpreadAttribute(path) {
       // path.get('argument') on a typed NodePath<JSXSpreadAttribute>
       // returns NodePath<Expression>; no cast needed.
-      const argPath = path.get('argument');
+      let argPath = path.get('argument');
+
+      // Peel off a trailing `.props` member access. From v0.3 onward
+      // the documented shape is `{...cas().X().props}` so the chain's
+      // method handles don't collide with HTML attribute types at the
+      // JSX-spread call site. The parser treats `<chain>.props` as an
+      // equivalent walking root to the bare chain — the rewrite
+      // output is the same either way.
+      const memberArg = pathAs(argPath, t.isMemberExpression);
+      if (memberArg && !memberArg.node.computed) {
+        const propPath = pathAs(memberArg.get('property'), t.isIdentifier);
+        if (propPath && propPath.node.name === 'props') {
+          argPath = memberArg.get('object');
+        }
+      }
+
       const ops = walkChain(argPath, casBindings, ctx);
       if (!ops) return;
 
@@ -180,7 +195,15 @@ export function transform(source: string, options: TransformOptions): TransformR
         path.parentPath?.traverse({
           JSXSpreadAttribute(p) {
             if (p.node === a) {
-              probed = walkChain(p.get('argument'), casBindings, probeCtx);
+              let pArg = p.get('argument');
+              const pMember = pathAs(pArg, t.isMemberExpression);
+              if (pMember && !pMember.node.computed) {
+                const pProp = pathAs(pMember.get('property'), t.isIdentifier);
+                if (pProp && pProp.node.name === 'props') {
+                  pArg = pMember.get('object');
+                }
+              }
+              probed = walkChain(pArg, casBindings, probeCtx);
               p.stop();
             }
           },

@@ -728,4 +728,45 @@ describe('transform — JSX surgery (style merge / className concat)', () => {
     expect(r.code).toMatch(/opacity:\s*0\.5/);
     expect(r.code).toMatch(/"--cas-[0-9a-f]{8}-color":\s*c/);
   });
+
+  describe('.props terminator (v0.3+)', () => {
+    it('rewrites `{...chain.props}` the same as `{...chain}`', () => {
+      const src = `
+        import { cas } from '@cassida/core';
+        export const App = () => <div {...cas().color("red").props} />;
+      `;
+      const r = transform(src, opts);
+      expect(r.transformed).toBe(true);
+      expect(r.code).toMatch(/className=("|')cas-[0-9a-f]{8}\1/);
+      expect(r.code).not.toMatch(/\.props/);
+      expect(r.rules).toHaveLength(1);
+      expect(r.rules[0]!.tree.bag).toEqual({ color: 'red' });
+    });
+
+    it('produces an identical className for `{...chain}` and `{...chain.props}`', () => {
+      const bare = transform(
+        `import { cas } from '@cassida/core';
+         export const App = () => <div {...cas().color("red").padding(8)} />;`,
+        opts,
+      );
+      const propsForm = transform(
+        `import { cas } from '@cassida/core';
+         export const App = () => <div {...cas().color("red").padding(8).props} />;`,
+        opts,
+      );
+      expect(bare.rules[0]!.className).toBe(propsForm.rules[0]!.className);
+    });
+
+    it('handles `.props` on chains containing modifier scopes', () => {
+      const src = `
+        import { cas } from '@cassida/core';
+        export const App = () =>
+          <button {...cas().color("red").hover(c => c.color("blue")).props} />;
+      `;
+      const r = transform(src, opts);
+      expect(r.transformed).toBe(true);
+      expect(r.code).toMatch(/className=("|')cas-[0-9a-f]{8}\1/);
+      expect(r.rules[0]!.tree.children).toHaveLength(1);
+    });
+  });
 });

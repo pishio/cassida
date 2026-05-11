@@ -19,7 +19,8 @@ import { cas } from '@cassida/core';
 <button {...cas()
   .padding(12).backgroundColor('#1a73e8').color('white')
   .hover(c => c.backgroundColor('#1557b0'))
-  .focus(c => c.backgroundColor('#0e3f87'))} />
+  .focus(c => c.backgroundColor('#0e3f87'))
+  .props} />
 ```
 
 becomes:
@@ -94,8 +95,8 @@ import { cas } from '@cassida/core';
 
 export default function App() {
   return (
-    <main {...cas().padding(24).maxWidth(720)}>
-      <h1 {...cas().color('crimson').fontSize(28)}>Hello, Cassida.</h1>
+    <main {...cas().padding(24).maxWidth(720).props}>
+      <h1 {...cas().color('crimson').fontSize(28).props}>Hello, Cassida.</h1>
     </main>
   );
 }
@@ -104,6 +105,19 @@ export default function App() {
 That's it. Open DevTools: each element has exactly one `cas-xxxxxxxx` class, and every rule lives inside `@layer cas`.
 
 `cas` is the canonical name; `css` and `cassida` are aliases for the same function — pick whichever reads best in your codebase. (Note: `css` collides with `emotion` / `vanilla-extract`; if you use those alongside Cassida, prefer `cas` or alias explicitly.)
+
+### The `.props` terminator
+
+Every chain ends with `.props`, which yields a `{ className, style }` JSX-spreadable shape:
+
+```tsx
+<div {...cas().padding(8).color('red').props} />
+//                                     ^^^^^ required terminator
+```
+
+Why a terminator instead of spreading the chain directly? The chain object carries ~460 method handles named after CSS properties, and a handful of those names collide with HTML attributes (`translate`, `disabled`, `hidden`, …). React's JSX typings reject the resulting union. `.props` strips everything except the two attributes JSX actually needs, restoring type-correctness without losing chain autocomplete.
+
+The build-time parser recognizes both `{...chain.props}` and the legacy `{...chain}` form (the latter is a type error from v0.3 onward but still produces a working bundle so v0.2 codebases keep running while they migrate).
 
 ## Why Cassida
 
@@ -114,7 +128,7 @@ There are roughly two camps in CSS-in-JS today:
 
 Cassida picks a third path:
 
-- **No runtime fog.** The build replaces `{...cas().a().b()}` with `className="cas-XXXXXXXX"`. Production bundles contain *zero* `cas(` calls.
+- **No runtime fog.** The build replaces `{...cas().a().b().props}` with `className="cas-XXXXXXXX"`. Production bundles contain *zero* `cas(` calls.
 - **No utility-class explosion.** Each element gets *one* class. Conflicts resolve at compile time via LIFO (`cas().color('red').color('blue')` → only blue survives, red is never written to the CSS).
 - **Honest types.** Every standard CSS property is callable as a typed method (csstype-driven autocomplete on the curated set, mdn-data-derived for the long tail). Blacklisted shorthands (`background`, `font`) require an explicit `cas.unsafe(...)` opt-in.
 - **Pluggable opinions.** Browser-bug fixes and platform conventions live in `@cassida/plugin-*` packages, never in the core. The hash reflects post-plugin output, so caches invalidate cleanly when plugins change.
@@ -146,9 +160,9 @@ The class hash is derived from the *canonical bag* — a sorted, normalized repr
 
 ```ts
 // File A
-<div {...cas().color('crimson').padding(12)} />
+<div {...cas().color('crimson').padding(12).props} />
 // File B
-<div {...cas().padding(12).color('crimson')} />
+<div {...cas().padding(12).color('crimson').props} />
 // → both compile to .cas-AAAAAAAA (same bag, source order doesn't matter for hash)
 ```
 
@@ -219,7 +233,7 @@ Receive a static design token object and continue from there:
 ```ts
 const card = { padding: 12, borderRadius: 8, backgroundColor: '#fff' } as const;
 
-<div {...cas(card).marginTop(16).color('#222')} />
+<div {...cas(card).marginTop(16).color('#222').props} />
 //          ^^^^ same hash whether `card` is in this file or imported
 ```
 
@@ -245,7 +259,8 @@ import { theme } from './theme';
     .padding(theme.spacing.md)
     .backgroundColor(theme.brand.primary)
     .color(theme.brand.onPrimary)
-    .borderRadius(theme.radius)}
+    .borderRadius(theme.radius)
+    .props}
 />
 ```
 
@@ -277,7 +292,7 @@ When an argument is non-literal, Cassida promotes the property to a CSS custom p
 
 ```ts
 function ThemedBox({ accent }: { accent: string }) {
-  return <div {...cas().color(accent).padding(16)} />;
+  return <div {...cas().color(accent).padding(16).props} />;
 }
 ```
 
@@ -301,7 +316,7 @@ For CSS shorthands that Cassida deliberately rejects from its safe surface (`bac
 
 ```ts
 // Preset object that includes a blacklisted shorthand
-<div {...cas.unsafe({ background: 'linear-gradient(...)' }).marginTop(16)} />
+<div {...cas.unsafe({ background: 'linear-gradient(...)' }).marginTop(16).props} />
 
 // Direct CSS property write inside a chain
 cas()
@@ -425,7 +440,7 @@ Why: Cassida's emitter sorts declarations alphabetically inside a rule; CSS casc
 `background` is a real CSS shorthand (writes color, image, position, repeat, ...); aliasing it as a single-property write would lie about CSS. The safe `cas(preset)` type rejects it. Use:
 
 ```ts
-<div {...cas.unsafe({ background: 'linear-gradient(...)' })} />
+<div {...cas.unsafe({ background: 'linear-gradient(...)' }).props} />
 ```
 
 Same applies to `font`, `border`, `flex`, `grid`, `transition`, `animation`, etc. All are reachable via `cas.unsafe` or `.set('background', '...')`.
@@ -434,7 +449,7 @@ Same applies to `font`, `border`, `flex`, `grid`, `transition`, `animation`, etc
 
 ```ts
 function Box({ tone }: { tone: string }) {
-  return <div {...cas().color(tone)} />;
+  return <div {...cas().color(tone).props} />;
 }
 ```
 
@@ -464,7 +479,7 @@ Most consumers install only `@cassida/core` (runtime) and `@cassida/vite-plugin`
 
 ```
 source.tsx                                       (your code)
-  │  <div {...cas().mt(10,'em').color('red').color('blue')} />
+  │  <div {...cas().mt(10,'em').color('red').color('blue').props} />
   ▼
 @cassida/parser                                  (Babel AST)
   │  collects Op[] from chain:
