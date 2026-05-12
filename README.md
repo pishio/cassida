@@ -6,7 +6,9 @@
 
 [![@cassida/core](https://img.shields.io/npm/v/%40cassida%2Fcore?label=%40cassida%2Fcore&color=2ea44f)](https://www.npmjs.com/package/@cassida/core)
 [![@cassida/vite-plugin](https://img.shields.io/npm/v/%40cassida%2Fvite-plugin?label=%40cassida%2Fvite-plugin&color=2ea44f)](https://www.npmjs.com/package/@cassida/vite-plugin)
+[![@cassida/recommended](https://img.shields.io/npm/v/%40cassida%2Frecommended?label=%40cassida%2Frecommended&color=2ea44f)](https://www.npmjs.com/package/@cassida/recommended)
 [![@cassida/plugin-hover-fix](https://img.shields.io/npm/v/%40cassida%2Fplugin-hover-fix?label=%40cassida%2Fplugin-hover-fix&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-hover-fix)
+[![@cassida/plugin-conditional](https://img.shields.io/npm/v/%40cassida%2Fplugin-conditional?label=%40cassida%2Fplugin-conditional&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-conditional)
 [![license MIT](https://img.shields.io/npm/l/%40cassida%2Fcore?color=blue)](./LICENSE)
 
 > **One element, one class — compiled, not cascaded.**
@@ -44,18 +46,18 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
-**v0.3.0** — adds the `.props` terminator (`<div {...cas().X().props} />`) that separates the chain's method surface from the JSX-spread shape. This resolves the long-standing collision between chain methods named after CSS properties (`translate`, `disabled`, …) and React's HTML-attribute typings — `tsc --noEmit` against a Cassida-using component now passes on strict settings. The bare-chain spread form is a type error from this release; the runtime keeps it working for the v0.3.x migration window.
+**v0.4.0** — opens a parser-plugin extension point so non-default JSX-spread shapes (conditional ternaries, short-circuit `&&`) can be claimed by independently-publishable packages instead of bloating the parser core. Ships two new packages on top: `@cassida/plugin-conditional` (lifts conditional / short-circuit spreads from runtime fallback into the build-time class table) and `@cassida/recommended` (curated bundle for one-line opt-in).
 
-Earlier surface stays: cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 211 unit tests across 5 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — now including `tsc --noEmit` against the consumer for every Vite leg.
+Earlier surface stays: `.props` terminator from v0.3 (separates chain methods from JSX prop typings — strict `tsc --noEmit` passes), cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 241 unit tests across 7 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — including `tsc --noEmit` against the consumer for every Vite leg.
 
 The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0.
 
 ```bash
 pnpm add @cassida/core
-pnpm add -D @cassida/vite-plugin
-# optional plugin
-pnpm add -D @cassida/plugin-hover-fix
+pnpm add -D @cassida/vite-plugin @cassida/recommended
 ```
+
+`@cassida/recommended` bundles the maintainers' default-on plugin set (hover-fix + conditional spreads); the underlying plugin packages come along as transitive deps. See [Quick start](#quick-start) for the `vite.config.ts` shape.
 
 ## Table of contents
 
@@ -76,7 +78,7 @@ pnpm add -D @cassida/plugin-hover-fix
 
 ```bash
 pnpm add @cassida/core
-pnpm add -D @cassida/vite-plugin
+pnpm add -D @cassida/vite-plugin @cassida/recommended
 ```
 
 `vite.config.ts`:
@@ -85,11 +87,19 @@ pnpm add -D @cassida/vite-plugin
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import cassida from '@cassida/vite-plugin';
+import { recommended } from '@cassida/recommended';
 
 export default defineConfig({
-  plugins: [cassida(), react()],
+  plugins: [cassida(recommended()), react()],
 });
 ```
+
+`@cassida/recommended` opts in to the maintainers' default-on plugin set with one import:
+
+- **`@cassida/plugin-hover-fix`** — gates `:hover` rules in `@media (hover: hover)` so iOS Safari doesn't get stuck on touch-triggered hovers.
+- **`@cassida/plugin-conditional`** — lifts `{...(cond ? cas().X() : cas().Y()).props}` and `{...(cond && cas().X()).props}` JSX spreads from runtime fallback into the build-time class table.
+
+To run lean, pass `cassida()` directly (skipping plugins). To customize, pass per-plugin options: `recommended({ hoverFix: false })`, `recommended({ conditional: { shortCircuit: false } })`. See the [Plugins section](#plugins) for details.
 
 `App.tsx`:
 
@@ -330,19 +340,30 @@ cas()
 
 Both bypass the registry, the shorthand-policy guard, and family tracking. The escape is named explicitly so accidental misuse stands out at the call site. (Numeric values are *not* auto-unitized in `set` — pass full CSS values like `'10px'`.)
 
-### Plugins — `@cassida/plugin-hover-fix`
+### Plugins
+
+Cassida has two plugin layers, each operating at a different stage of the build:
+
+| Layer | Stage | Use case | Example |
+|---|---|---|---|
+| **CSS plugins** | post-canonicalize, on `ScopeBag` tree | Mutate the rule structure (wrap scopes, expand pseudo-classes, prefix vendor properties) | `@cassida/plugin-hover-fix` |
+| **Parser plugins** | pre-canonicalize, on Babel AST | Recognize non-default JSX-spread shapes that the chain walker doesn't claim | `@cassida/plugin-conditional` |
+
+The fastest opt-in is `@cassida/recommended`, which bundles the maintainers' default-on set behind a single import:
 
 ```ts
 // vite.config.ts
 import cassida from '@cassida/vite-plugin';
-import hoverFix from '@cassida/plugin-hover-fix';
+import { recommended } from '@cassida/recommended';
 
 export default defineConfig({
-  plugins: [cassida({ plugins: [hoverFix()] }), react()],
+  plugins: [cassida(recommended()), react()],
 });
 ```
 
-`hoverFix` wraps every `:hover` scope in `@media (hover: hover)` so iOS Safari's sticky-hover artifact never fires:
+#### `@cassida/plugin-hover-fix`
+
+Wraps every `:hover` scope in `@media (hover: hover)` so iOS Safari's sticky-hover artifact never fires:
 
 ```css
 /* without plugin */
@@ -351,7 +372,34 @@ export default defineConfig({
 @media (hover: hover) { .cas-X:hover { color: red } }
 ```
 
-Plugins run between collapse and hash, so the className itself reflects the post-plugin tree — turning a plugin on or off changes hashes and invalidates browser caches cleanly. See [Plugin authoring](#plugin-authoring) for the contract.
+#### `@cassida/plugin-conditional`
+
+Lifts `{...(cond ? cas().X() : cas().Y())}` and `{...(cond && cas().X())}` JSX spreads from runtime fallback into the build-time class table — each branch becomes its own `cas-XXXXXXXX` and the spread is rewritten to a ternary `className` expression:
+
+```tsx
+// before
+<button {...(highlight ? cas().shadowXl() : cas().shadowMd()).props} />
+
+// after build
+<button className={highlight ? "cas-XXXXXXXX" : "cas-YYYYYYYY"} />
+```
+
+Both branches register independent CSS rules, so they participate in the standard dedup pipeline (a branch that matches a sibling bare-chain elsewhere shares the same hash). v0.4 covers pure-static branches; dynamic-slot branches remain on the runtime path.
+
+#### Custom composition
+
+For projects that want a subset, skip `recommended` and import the factories directly — they're re-exported from `@cassida/recommended` for convenience:
+
+```ts
+import { hoverFix, conditionalSpread } from '@cassida/recommended';
+
+cassida({
+  plugins: [hoverFix({ query: '(hover: hover) and (pointer: fine)' })],
+  parserPlugins: [conditionalSpread({ shortCircuit: false })],
+});
+```
+
+Plugins run between collapse and hash (CSS) or before walk (parser), so flipping a plugin on or off changes hashes and invalidates browser caches cleanly. See [Plugin authoring](#plugin-authoring) for the contract.
 
 ### Mobile-first media sort
 
@@ -472,11 +520,13 @@ Babel's `path.evaluate()` returns `confident: false` for `Math.random()`, so the
 |---|---|
 | [`@cassida/core`](./packages/core)        | Runtime `cas()` chain builder. Replaced at build time for static chains. |
 | [`@cassida/compiler`](./packages/compiler)    | Pure compile-time core: registry, canonicalizer, hasher, emitter, plugin pipeline. |
-| [`@cassida/parser`](./packages/parser)      | Babel-based AST transform. Detects chains in JSX spread and rewrites them. |
+| [`@cassida/parser`](./packages/parser)      | Babel-based AST transform. Detects chains in JSX spread and rewrites them. Hosts the parser-plugin extension point (`CassParserPlugin`). |
 | [`@cassida/vite-plugin`](./packages/vite-plugin) | Vite integration. Per-file virtual CSS module + lightningcss postprocess. |
-| [`@cassida/plugin-hover-fix`](./packages/plugin-hover-fix) | First-party plugin: gates `:hover` in `@media (hover: hover)` for iOS sticky-hover. |
+| [`@cassida/recommended`](./packages/recommended) | Curated bundle factory. One-line opt-in for the maintainers' default plugin set. |
+| [`@cassida/plugin-hover-fix`](./packages/plugin-hover-fix) | First-party CSS plugin: gates `:hover` in `@media (hover: hover)` for iOS sticky-hover. |
+| [`@cassida/plugin-conditional`](./packages/plugin-conditional) | First-party parser plugin: lifts conditional / short-circuit JSX spreads to build-time classes. |
 
-Most consumers install only `@cassida/core` (runtime) and `@cassida/vite-plugin` (build-time integration); the other packages are workspace internals.
+Most consumers install three packages: `@cassida/core` (runtime), `@cassida/vite-plugin` (build-time integration), and `@cassida/recommended` (which brings the default plugin set as transitive deps). The other packages are workspace internals plus opt-in factories for bespoke composition.
 
 ## Architecture
 
@@ -514,7 +564,11 @@ Key invariants:
 
 ## Plugin authoring
 
-A Cassida plugin is a sync, pure, immutable transform from `ScopeBag` to `ScopeBag`:
+Cassida has two plugin interfaces, each for a different phase of the build.
+
+### CSS plugins (`CassPlugin`)
+
+Sync, pure, immutable transform from `ScopeBag` to `ScopeBag`. Runs after canonicalize, before hash:
 
 ```ts
 import {
@@ -526,7 +580,6 @@ export default function darkModePlugin(): CassPlugin {
   return {
     name: 'my-dark-mode',
     transform(tree: ScopeBag): ScopeBag {
-      // Walk the tree bottom-up; return a new tree (input is never mutated).
       return mapScopeBag(tree, (node) => {
         // ... your logic — return a new node, or null to leave as-is ...
       });
@@ -535,14 +588,59 @@ export default function darkModePlugin(): CassPlugin {
 }
 ```
 
-The contract:
+Contract:
 
-- **Sync**: build determinism + zero microtask cost on the hot path. Async plugins are intentionally not supported in v1.
-- **Pure**: same input must always produce the same output. Cross-call state belongs in your factory closure, not the plugin object.
-- **Immutable**: return a new tree. Helpers like `mapScopeBag` and `wrapInMediaScope` make this ergonomic and fast (the input tree is returned reference-equal when nothing matched).
-- **Hash-aware**: any change you make to the tree changes the className. That's the design — plugins are part of the compile, not a post-processor.
+- **Sync**: build determinism + zero microtask cost on the hot path.
+- **Pure**: same input must always produce the same output.
+- **Immutable**: return a new tree. `mapScopeBag` / `wrapInMediaScope` keep this ergonomic and fast (input returned reference-equal when nothing matched).
+- **Hash-aware**: any change you make to the tree changes the className. That's the design — plugins are part of the compile.
 
-See `packages/plugin-hover-fix/src/index.ts` for a 30-line reference implementation.
+Reference: `packages/plugin-hover-fix/src/index.ts` — ~30 lines.
+
+### Parser plugins (`CassParserPlugin`)
+
+Claim JSX-spread shapes that the default chain walker doesn't recognize. Runs before canonicalize, on raw Babel AST:
+
+```ts
+import * as t from '@babel/types';
+import type {
+  CassParserPlugin, ParserPluginHelpers, SpreadPlan,
+} from '@cassida/parser';
+
+export const conditionalSpread = (): CassParserPlugin => ({
+  name: 'my-conditional',
+  trySpread(argPath, helpers): SpreadPlan | null {
+    if (!argPath.isConditionalExpression()) return null;
+    const cOps = helpers.walkChain(helpers.peelPropsAccess(argPath.get('consequent')));
+    const aOps = helpers.walkChain(helpers.peelPropsAccess(argPath.get('alternate')));
+    if (!cOps || !aOps) return null;
+    const cRule = helpers.compileOps(cOps);
+    const aRule = helpers.compileOps(aOps);
+    return {
+      rules: [cRule, aRule],
+      buildAttrs(existing) {
+        const ternary = t.conditionalExpression(
+          t.cloneNode(argPath.node.test),
+          t.stringLiteral(cRule.className),
+          t.stringLiteral(aRule.className),
+        );
+        return [helpers.makeClassNameAttr(existing.className, ternary)];
+      },
+    };
+  },
+});
+```
+
+The `helpers` object exposes the parser's own internals (`walkChain`, `compileOps`, `peelPropsAccess`, `makeClassNameAttr`, `makeStyleAttr`, `registerDynamicSource`) so plugins compose existing logic instead of re-implementing chain walking or className merging.
+
+Contract:
+
+- **First-match wins**: each registered plugin's `trySpread` is invoked in order; the first non-null `SpreadPlan` claims the spread. Return `null` conservatively so other plugins get a turn.
+- **No side effects on bail**: helpers are safe to call during a probe, but plugins shouldn't register external state unless they're going to return a plan.
+- **Multi-spread guard**: an element with one bare-chain spread *and* one plugin-claimed spread still throws — Single Class Principle applies regardless of which path claimed each.
+- **Clone before re-parenting**: when lifting nodes from the original AST into a synthesized expression, use `t.cloneNode` to avoid Babel parent-pointer confusion.
+
+Reference: `packages/plugin-conditional/src/index.ts` — ~150 lines covering both `ConditionalExpression` and `LogicalExpression &&`.
 
 ## Roadmap
 
@@ -558,11 +656,13 @@ See `packages/plugin-hover-fix/src/index.ts` for a 30-line reference implementat
 | 6c-1  | ✅ | `cas(preset)` + `cas.unsafe(preset)` |
 | 6c-2  | ✅ | Same-file function composition (`withCard(cas())`) |
 | 6c-3  | ✅ | `set()` escape hatch + opaque animation/transition/transform |
-| 8a    | ✅ | Plugin system + `@cassida/plugin-hover-fix` |
+| 8a    | ✅ | CSS plugin system + `@cassida/plugin-hover-fix` |
 | 7     | ✅ | Cross-file static evaluation — design tokens fold to static classes (`v0.2.0`) |
+| —     | ✅ | `.props` terminator — chain methods hidden from JSX prop typings (`v0.3.0`) |
+| —     | ✅ | Parser plugin extension point + `@cassida/plugin-conditional` + `@cassida/recommended` bundle (`v0.4.0`) |
 | —     | 🚧 | TypeScript path-alias resolution (`@/tokens` style imports) |
-| —     | 💭 | `cas.variants(...)` — branching encoded at build time |
 | —     | 💭 | Multi-property registry (`px-4`, `text-sm` style utilities) |
+| —     | 💭 | Dynamic-slot support in conditional spreads (currently bails to runtime) |
 | —     | 💭 | Additional first-party plugins (dark-mode duplicator, prefers-reduced-motion fallback) |
 | —     | 💭 | SWC plugin port for Next.js native integration |
 
