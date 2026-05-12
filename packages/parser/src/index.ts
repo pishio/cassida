@@ -80,6 +80,131 @@ export interface TransformOptions {
     | {
         readonly cache?: ModuleCache;
       };
+  /**
+   * AST-level plugins that get a chance to handle `{...<expr>}` JSX
+   * spreads the default bare-chain walk does not recognize. Each
+   * plugin's `trySpread` is invoked in registration order; the first
+   * plugin to return a non-null `SpreadPlan` wins. Plugins should be
+   * conservative — return `null` quickly for anything they don't
+   * own — so others downstream still get a turn.
+   *
+   * Distinct from the existing CSS-level `plugins` field, which
+   * operates on the post-canonicalize `ScopeBag` tree. Parser
+   * plugins fire earlier, on raw Babel paths.
+   */
+  readonly parserPlugins?: readonly CassParserPlugin[];
+}
+
+/**
+ * AST-level plugin for the parser. Plugins can intercept JSX
+ * spreads that the default chain walk doesn't recognize and emit
+ * their own rules + rewritten attributes. The interface is open
+ * for additional hooks in future minor versions; today only
+ * `trySpread` exists.
+ */
+export interface CassParserPlugin {
+  readonly name: string;
+  /**
+   * Called when the default bare-chain walk over the spread
+   * argument returned `null`. Plugins inspect the AST and either
+   * return a `SpreadPlan` (taking ownership of the rewrite) or
+   * `null` (deferring to the next plugin / runtime fallback).
+   */
+  readonly trySpread?: (
+    argPath: NodePath,
+    helpers: ParserPluginHelpers,
+  ) => SpreadPlan | null;
+}
+
+/**
+ * Helpers exposed to parser plugins. Plugins compose these to walk
+ * sub-chains, compile ops, and peel `.props` terminators — sharing
+ * the parser's internal logic without re-implementing it.
+ */
+export interface ParserPluginHelpers {
+  /**
+   * Walk a NodePath as a chain root. Returns `null` if the path
+   * isn't a chain rooted at a known cas-binding. Plugins typically
+   * call this on sub-expressions (each branch of a conditional,
+   * each item of an array, etc.).
+   */
+  readonly walkChain: (path: NodePath) => Op[] | null;
+  /**
+   * Compile a chain's ops into a `CompiledRule`. Plugins call this
+   * once per logical class they want to register.
+   */
+  readonly compileOps: (ops: Op[]) => CompiledRule;
+  /**
+   * Strip a trailing `.props` member access from a path. Lets
+   * plugins accept both `chain.props` and bare-chain shapes
+   * uniformly without duplicating the peel logic.
+   */
+  readonly peelPropsAccess: (path: NodePath) => NodePath;
+  /**
+   * Allocate a fresh dynamic-slot id and remember the source AST
+   * node for later inline-style emission. Plugins that emit their
+   * own dynamic rules (rare) can use this to keep the slot
+   * namespace coherent.
+   */
+  readonly registerDynamicSource: (node: t.Expression) => string;
+  /**
+   * Build a `className=` JSX attribute that merges the supplied
+   * value (either a literal hash string or an arbitrary Expression
+   * such as a ternary) with the host element's existing
+   * `className`. Plugins use this to avoid re-implementing the
+   * four-way merge logic (no-existing / string + string /
+   * string + expression / expression + expression).
+   */
+  readonly makeClassNameAttr: (
+    existing: t.JSXAttribute | null,
+    value: string | t.Expression,
+  ) => t.JSXAttribute;
+  /**
+   * Build a `style=` JSX attribute that merges the supplied object
+   * expression with the host element's existing `style`. Use this
+   * when a plugin emits inline-style additions (e.g. CSS variable
+   * bindings for dynamic slots). Returns `null` when both the
+   * plugin contribution and the existing attr are empty.
+   *
+   * `casWins` controls precedence on key collision: `true` means
+   * the plugin's keys override the user's; `false` means the user's
+   * keys override. Mirrors the existing `decideStyleAttr` ordering
+   * (cas wins when the spread comes later in source order).
+   */
+  readonly makeStyleAttr: (
+    existing: t.JSXAttribute | null,
+    additions: t.ObjectExpression,
+    casWins: boolean,
+  ) => t.JSXAttribute | null;
+}
+
+/**
+ * The product of a `trySpread` decision: a list of compiled rules
+ * to register with the CSS emitter, and a function that builds the
+ * JSX attributes that replace the original spread.
+ */
+export interface SpreadPlan {
+  /** Rules the CSS emitter should emit. Order is preserved. */
+  readonly rules: readonly CompiledRule[];
+  /**
+   * Produce the JSX attributes that replace the original
+   * `{...<expr>}`. The plugin receives the host element's existing
+   * `className` / `style` attributes so it can merge with them
+   * (the parser handles the actual attribute insertion / removal).
+   */
+  readonly buildAttrs: (
+    existing: ExistingHostAttrs,
+  ) => readonly t.JSXAttribute[];
+}
+
+/**
+ * The host JSX element's `className` and `style` attributes at the
+ * moment the spread is being rewritten. `null` for either field
+ * means the host doesn't carry that attribute today.
+ */
+export interface ExistingHostAttrs {
+  readonly className: t.JSXAttribute | null;
+  readonly style: t.JSXAttribute | null;
 }
 
 export interface TransformResult {
@@ -146,7 +271,12 @@ export function transform(source: string, options: TransformOptions): TransformR
     },
   });
 
-  if (casBindings.size === 0) {
+  // Fast-path: no Cassida chain bindings AND no parser plugins → no
+  // spread the parser could possibly transform. Plugins, however,
+  // may recognize spread shapes that don't reference `cas` at all
+  // (custom DSLs, marker identifiers), so when plugins are
+  // registered we still run the visitor.
+  if (casBindings.size === 0 && (options.parserPlugins?.length ?? 0) === 0) {
     return { code: source, rules: [], map: null, transformed: false };
   }
 
@@ -156,6 +286,164 @@ export function transform(source: string, options: TransformOptions): TransformR
   const counter = { n: 0 };
   const crossFile = resolveCrossFileConfig(options);
   const ctx: WalkContext = { dynamicSources, counter, crossFile };
+  const parserPlugins = options.parserPlugins ?? [];
+
+  /**
+   * Apply a plugin-produced `SpreadPlan` to the JSX element that
+   * hosts the spread. Mirrors the attribute-rewriting logic the
+   * default single-chain handler uses, but defers the attr shape
+   * to `plan.buildAttrs` so the plugin owns the merge with
+   * existing className / style.
+   */
+  function applyPluginSpreadPlan(
+    path: NodePath<t.JSXSpreadAttribute>,
+    plan: SpreadPlan,
+  ): void {
+    const opening = path.parent;
+    if (!t.isJSXOpeningElement(opening)) return;
+
+    const {
+      spreadIdx,
+      styleIdx,
+      classNameIdx,
+      existingStyleAttr,
+      existingClassNameAttr,
+    } = findAttributeIndices(opening, path.node);
+
+    const newSpreadAttrs = plan.buildAttrs({
+      className: existingClassNameAttr,
+      style: existingStyleAttr,
+    });
+
+    // The plan's attrs determine the final shape. If the plan
+    // doesn't return a className / style attr, the existing one is
+    // kept; if it does, the existing one is replaced.
+    const planAttrNames = new Set<string>();
+    for (const attr of newSpreadAttrs) {
+      if (t.isJSXIdentifier(attr.name)) planAttrNames.add(attr.name.name);
+    }
+
+    for (const rule of plan.rules) rules.push(rule);
+
+    opening.attributes = rebuildAttributes(
+      opening,
+      spreadIdx,
+      newSpreadAttrs,
+      classNameIdx >= 0 && planAttrNames.has('className') ? classNameIdx : null,
+      styleIdx >= 0 && planAttrNames.has('style') ? styleIdx : null,
+    );
+  }
+
+  /**
+   * Helpers handed to parser plugins. Wraps the parser's internal
+   * walkers so plugins can compose them on sub-expressions without
+   * re-implementing the chain logic. Each helper is a thin façade
+   * with no plugin-specific state.
+   */
+  const pluginHelpers: ParserPluginHelpers = {
+    walkChain: (p) => walkChain(p, casBindings, ctx),
+    compileOps: (chainOps) =>
+      compileOps(chainOps, {
+        registry: options.registry,
+        ...(options.shorthandPolicy !== undefined
+          ? { shorthandPolicy: options.shorthandPolicy }
+          : {}),
+        ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+      }),
+    peelPropsAccess,
+    registerDynamicSource: (node) => {
+      const id = `slot-${++ctx.counter.n}`;
+      ctx.dynamicSources.set(id, node);
+      return id;
+    },
+    makeClassNameAttr,
+    makeStyleAttr,
+  };
+
+  /**
+   * Returns `true` if the spread at `siblingIndex` on the host
+   * element would be claimed by Cassida — either by the default
+   * bare-chain walker OR by any registered parser plugin. Uses
+   * isolated probe contexts so the probe never mutates the real
+   * dynamic-slot or rules state.
+   *
+   * Direct NodePath access via `parentPath.get('attributes')[i]` —
+   * cheaper than a Babel `traverse(parentPath, ...)` lookup,
+   * especially when an element has many sibling attributes.
+   */
+  function isCassidaClaimedSpread(
+    siblingIndex: number,
+    fromPath: NodePath<t.JSXSpreadAttribute>,
+  ): boolean {
+    const parentPath = fromPath.parentPath;
+    if (!parentPath || !parentPath.isJSXOpeningElement()) return false;
+    const attrPaths = parentPath.get('attributes');
+    const attrPath = attrPaths[siblingIndex];
+    if (!attrPath || !attrPath.isJSXSpreadAttribute()) return false;
+    const probeArgPath = peelPropsAccess(attrPath.get('argument'));
+    const probeCtx: WalkContext = {
+      dynamicSources: new Map(),
+      counter: { n: 0 },
+      crossFile,
+    };
+    // 1) Bare-chain claim.
+    if (walkChain(probeArgPath, casBindings, probeCtx) !== null) return true;
+    // 2) Plugin claims. Build a throwaway helper bound to the probe
+    // ctx so any dynamic-slot registrations the plugin triggers
+    // during detection don't leak into the real state.
+    const probeHelpers: ParserPluginHelpers = {
+      walkChain: (q) => walkChain(q, casBindings, probeCtx),
+      compileOps: (chainOps) =>
+        compileOps(chainOps, {
+          registry: options.registry,
+          ...(options.shorthandPolicy !== undefined
+            ? { shorthandPolicy: options.shorthandPolicy }
+            : {}),
+          ...(options.plugins !== undefined
+            ? { plugins: options.plugins }
+            : {}),
+        }),
+      peelPropsAccess,
+      registerDynamicSource: (node) => {
+        const id = `probe-slot-${++probeCtx.counter.n}`;
+        probeCtx.dynamicSources.set(id, node);
+        return id;
+      },
+      makeClassNameAttr,
+      makeStyleAttr,
+    };
+    for (const plugin of parserPlugins) {
+      if (!plugin.trySpread) continue;
+      try {
+        if (plugin.trySpread(probeArgPath, probeHelpers) !== null) return true;
+      } catch {
+        // A plugin that throws during probe is treated as
+        // non-claiming. The "real" pass below will re-invoke
+        // and surface the error with the proper code-frame.
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Throw if the host element carries any *other* Cassida-claimed
+   * spread besides the current one. Single Class Principle demands
+   * one chain per element; multi-spread is an authorship mistake.
+   */
+  function assertNoOtherCassidaSpreads(
+    opening: t.JSXOpeningElement,
+    path: NodePath<t.JSXSpreadAttribute>,
+  ): void {
+    for (let i = 0; i < opening.attributes.length; i++) {
+      const a = opening.attributes[i]!;
+      if (a === path.node || !t.isJSXSpreadAttribute(a)) continue;
+      if (isCassidaClaimedSpread(i, path)) {
+        throw path.buildCodeFrameError(
+          '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
+        );
+      }
+    }
+  }
 
   traverse(ast, {
     JSXSpreadAttribute(path) {
@@ -164,35 +452,41 @@ export function transform(source: string, options: TransformOptions): TransformR
       const argPath = peelPropsAccess(path.get('argument'));
 
       const ops = walkChain(argPath, casBindings, ctx);
-      if (!ops) return;
+      if (ops === null) {
+        // Bare chain didn't match. Give registered parser plugins a
+        // turn before we leave the JSX untouched. First-match wins;
+        // each plugin is responsible for its own conservative-bail
+        // semantics so others get a turn when a plugin defers.
+        for (const plugin of parserPlugins) {
+          if (!plugin.trySpread) continue;
+          let plan: SpreadPlan | null;
+          try {
+            plan = plugin.trySpread(argPath, pluginHelpers);
+          } catch (err) {
+            throw path.buildCodeFrameError(
+              `[cassida] parser plugin "${plugin.name}" threw while handling a JSX spread: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+          if (plan === null) continue;
+          // Same multi-spread guard as the default path — plugin-
+          // claimed spreads count just as much as bare-chain ones.
+          const opening = path.parent;
+          if (t.isJSXOpeningElement(opening)) {
+            assertNoOtherCassidaSpreads(opening, path);
+          }
+          applyPluginSpreadPlan(path, plan);
+          transformed = true;
+          return;
+        }
+        return;
+      }
 
       const opening = path.parent;
       if (!t.isJSXOpeningElement(opening)) return;
 
-      // Reject multiple {...cas()} spreads on the same element.
-      const probeCtx: WalkContext = {
-        dynamicSources: new Map(),
-        counter: { n: 0 },
-        crossFile,
-      };
-      const otherCasSpreads = opening.attributes.filter((a) => {
-        if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
-        let probed: Op[] | null = null;
-        path.parentPath?.traverse({
-          JSXSpreadAttribute(p) {
-            if (p.node === a) {
-              probed = walkChain(peelPropsAccess(p.get('argument')), casBindings, probeCtx);
-              p.stop();
-            }
-          },
-        });
-        return probed !== null;
-      });
-      if (otherCasSpreads.length > 0) {
-        throw path.buildCodeFrameError(
-          '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
-        );
-      }
+      assertNoOtherCassidaSpreads(opening, path);
 
       const compiled = compileOps(ops, {
         registry: options.registry,
@@ -201,28 +495,13 @@ export function transform(source: string, options: TransformOptions): TransformR
       });
       rules.push(compiled);
 
-      let spreadIdx = -1;
-      let styleIdx = -1;
-      let classNameIdx = -1;
-      let existingStyleAttr: t.JSXAttribute | null = null;
-      let existingClassNameAttr: t.JSXAttribute | null = null;
-
-      for (let i = 0; i < opening.attributes.length; i++) {
-        const a = opening.attributes[i]!;
-        if (a === path.node) {
-          spreadIdx = i;
-          continue;
-        }
-        if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name)) {
-          if (a.name.name === 'style') {
-            existingStyleAttr = a;
-            styleIdx = i;
-          } else if (a.name.name === 'className') {
-            existingClassNameAttr = a;
-            classNameIdx = i;
-          }
-        }
-      }
+      const {
+        spreadIdx,
+        styleIdx,
+        classNameIdx,
+        existingStyleAttr,
+        existingClassNameAttr,
+      } = findAttributeIndices(opening, path.node);
 
       const casWins = spreadIdx > styleIdx;
       const casBaseCssProps = Object.keys(compiled.tree.bag);
@@ -236,18 +515,17 @@ export function transform(source: string, options: TransformOptions): TransformR
         casWins,
       );
 
-      const newAttrs: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
-      for (let i = 0; i < opening.attributes.length; i++) {
-        if (i === spreadIdx) {
-          newAttrs.push(newClassNameAttr);
-          if (styleResult.attr !== null) newAttrs.push(styleResult.attr);
-          continue;
-        }
-        if (i === classNameIdx) continue;
-        if (i === styleIdx && styleResult.replacesExisting) continue;
-        newAttrs.push(opening.attributes[i]!);
-      }
-      opening.attributes = newAttrs;
+      const replacement: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [
+        newClassNameAttr,
+      ];
+      if (styleResult.attr !== null) replacement.push(styleResult.attr);
+      opening.attributes = rebuildAttributes(
+        opening,
+        spreadIdx,
+        replacement,
+        classNameIdx >= 0 ? classNameIdx : null,
+        styleIdx >= 0 && styleResult.replacesExisting ? styleIdx : null,
+      );
 
       transformed = true;
     },
@@ -717,39 +995,215 @@ function literalToValue(node: t.Node): unknown | NonLiteral {
   return NON_LITERAL;
 }
 
+/**
+ * Build a `className=` JSX attribute that merges Cassida's contribution
+ * with the host element's existing `className` attribute. Accepts
+ * either a literal class string (the default-path case) or an
+ * arbitrary Expression (the plugin-path case: ternaries from
+ * conditional spreads, etc.). Covers all four merge combinations
+ * — no-existing, string + string, string + expression, expression
+ * + expression — so plugin authors don't reimplement them.
+ */
 function makeClassNameAttr(
   existing: t.JSXAttribute | null,
-  fssClass: string,
+  value: string | t.Expression,
 ): t.JSXAttribute {
+  const asExpr: t.Expression =
+    typeof value === 'string' ? t.stringLiteral(value) : value;
+  const asString = typeof value === 'string' ? value : null;
+
   if (existing === null || existing.value === null || existing.value === undefined) {
-    return t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(fssClass));
+    return t.jsxAttribute(t.jsxIdentifier('className'), wrapForAttr(asExpr));
   }
-  const value = existing.value;
-  if (t.isStringLiteral(value)) {
-    return t.jsxAttribute(
-      t.jsxIdentifier('className'),
-      t.stringLiteral(`${value.value} ${fssClass}`),
-    );
-  }
-  if (t.isJSXExpressionContainer(value)) {
-    const expr = value.expression;
-    if (t.isJSXEmptyExpression(expr)) {
-      return t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(fssClass));
+  const existingValue = existing.value;
+
+  if (t.isStringLiteral(existingValue)) {
+    // existing is "extra"; new is either string or expression.
+    if (asString !== null) {
+      return t.jsxAttribute(
+        t.jsxIdentifier('className'),
+        t.stringLiteral(`${existingValue.value} ${asString}`),
+      );
     }
+    // string + expression → template literal `"extra " + <expr>`
     return t.jsxAttribute(
       t.jsxIdentifier('className'),
       t.jsxExpressionContainer(
         t.templateLiteral(
           [
-            t.templateElement({ raw: '', cooked: '' }, false),
-            t.templateElement({ raw: ` ${fssClass}`, cooked: ` ${fssClass}` }, true),
+            t.templateElement({
+              raw: `${existingValue.value} `,
+              cooked: `${existingValue.value} `,
+            }, false),
+            t.templateElement({ raw: '', cooked: '' }, true),
           ],
-          [expr],
+          [asExpr],
         ),
       ),
     );
   }
-  return t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(fssClass));
+
+  if (t.isJSXExpressionContainer(existingValue)) {
+    const existingExpr = existingValue.expression;
+    if (t.isJSXEmptyExpression(existingExpr)) {
+      return t.jsxAttribute(t.jsxIdentifier('className'), wrapForAttr(asExpr));
+    }
+    // expression + (string | expression) → template literal that
+    // composes both with a separating space.
+    const suffixRaw = asString !== null ? ` ${asString}` : ' ';
+    const quasis: t.TemplateElement[] =
+      asString !== null
+        ? [
+            t.templateElement({ raw: '', cooked: '' }, false),
+            t.templateElement({ raw: suffixRaw, cooked: suffixRaw }, true),
+          ]
+        : [
+            t.templateElement({ raw: '', cooked: '' }, false),
+            t.templateElement({ raw: ' ', cooked: ' ' }, false),
+            t.templateElement({ raw: '', cooked: '' }, true),
+          ];
+    const expressions: t.Expression[] =
+      asString !== null ? [existingExpr] : [existingExpr, asExpr];
+    return t.jsxAttribute(
+      t.jsxIdentifier('className'),
+      t.jsxExpressionContainer(t.templateLiteral(quasis, expressions)),
+    );
+  }
+  return t.jsxAttribute(t.jsxIdentifier('className'), wrapForAttr(asExpr));
+}
+
+/**
+ * Wrap an expression in the form a JSX attribute value expects:
+ * bare string literal stays bare; anything else becomes a
+ * `JSXExpressionContainer`.
+ */
+function wrapForAttr(
+  expr: t.Expression,
+): t.StringLiteral | t.JSXExpressionContainer {
+  if (t.isStringLiteral(expr)) return expr;
+  return t.jsxExpressionContainer(expr);
+}
+
+/**
+ * Build a `style=` JSX attribute that merges the supplied object
+ * expression with the host element's existing `style`. Returns
+ * `null` when there's nothing to emit (no existing, no additions).
+ *
+ * `casWins` controls precedence on key collision. When `true` the
+ * plugin contribution comes *after* the existing object spread, so
+ * its keys take effect on collision. When `false` the order is
+ * reversed.
+ */
+function makeStyleAttr(
+  existing: t.JSXAttribute | null,
+  additions: t.ObjectExpression,
+  casWins: boolean,
+): t.JSXAttribute | null {
+  const hasAdditions = additions.properties.length > 0;
+  const existingExpr = getExistingStyleExpr(existing);
+
+  if (!hasAdditions && existingExpr === null) return null;
+  if (!hasAdditions) {
+    // Nothing to merge; preserving the existing attr means returning
+    // null and signalling "no replace" to the caller. The caller
+    // keeps the original attr in place.
+    return null;
+  }
+  if (existingExpr === null) {
+    return t.jsxAttribute(
+      t.jsxIdentifier('style'),
+      t.jsxExpressionContainer(additions),
+    );
+  }
+
+  // Both exist — emit a merged object via spread. casWins picks the
+  // order; the second spread overrides on key collision.
+  const merged = casWins
+    ? t.objectExpression([
+        t.spreadElement(existingExpr),
+        ...additions.properties,
+      ])
+    : t.objectExpression([
+        t.spreadElement(additions),
+        ...(t.isObjectExpression(existingExpr)
+          ? existingExpr.properties
+          : [t.spreadElement(existingExpr)]),
+      ]);
+  return t.jsxAttribute(
+    t.jsxIdentifier('style'),
+    t.jsxExpressionContainer(merged),
+  );
+}
+
+/**
+ * Find the positions of the current spread attribute and any
+ * existing `className` / `style` siblings on the host JSX element.
+ * Shared by the default chain handler and the plugin path.
+ */
+function findAttributeIndices(
+  opening: t.JSXOpeningElement,
+  currentSpread: t.JSXSpreadAttribute,
+): {
+  readonly spreadIdx: number;
+  readonly classNameIdx: number;
+  readonly styleIdx: number;
+  readonly existingClassNameAttr: t.JSXAttribute | null;
+  readonly existingStyleAttr: t.JSXAttribute | null;
+} {
+  let spreadIdx = -1;
+  let styleIdx = -1;
+  let classNameIdx = -1;
+  let existingStyleAttr: t.JSXAttribute | null = null;
+  let existingClassNameAttr: t.JSXAttribute | null = null;
+  for (let i = 0; i < opening.attributes.length; i++) {
+    const a = opening.attributes[i]!;
+    if (a === currentSpread) {
+      spreadIdx = i;
+      continue;
+    }
+    if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name)) {
+      if (a.name.name === 'style') {
+        existingStyleAttr = a;
+        styleIdx = i;
+      } else if (a.name.name === 'className') {
+        existingClassNameAttr = a;
+        classNameIdx = i;
+      }
+    }
+  }
+  return {
+    spreadIdx,
+    classNameIdx,
+    styleIdx,
+    existingClassNameAttr,
+    existingStyleAttr,
+  };
+}
+
+/**
+ * Splice a list of replacement attributes into the JSX element at
+ * the position of the original spread, optionally dropping the
+ * existing `className` / `style` siblings (when they're being
+ * overridden by the replacement set).
+ */
+function rebuildAttributes(
+  opening: t.JSXOpeningElement,
+  spreadIdx: number,
+  replacement: ReadonlyArray<t.JSXAttribute | t.JSXSpreadAttribute>,
+  dropClassNameIdx: number | null,
+  dropStyleIdx: number | null,
+): (t.JSXAttribute | t.JSXSpreadAttribute)[] {
+  const out: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
+  for (let i = 0; i < opening.attributes.length; i++) {
+    if (i === spreadIdx) {
+      for (const attr of replacement) out.push(attr);
+      continue;
+    }
+    if (dropClassNameIdx !== null && i === dropClassNameIdx) continue;
+    if (dropStyleIdx !== null && i === dropStyleIdx) continue;
+    out.push(opening.attributes[i]!);
+  }
+  return out;
 }
 
 function getStaticKeyName(key: t.Expression | t.PrivateName): string | null {

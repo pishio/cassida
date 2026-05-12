@@ -14,7 +14,11 @@ import {
   type Registry,
   type ResolvedCassConfig,
 } from '@cassida/compiler';
-import { createModuleCache, transform } from '@cassida/parser';
+import {
+  createModuleCache,
+  transform,
+  type CassParserPlugin,
+} from '@cassida/parser';
 import type { Plugin, ViteDevServer } from 'vite';
 
 /**
@@ -49,6 +53,17 @@ export interface CassPluginOptions extends CassConfig {
    * this option lives on the inline plugin options only.
    */
   readonly plugins?: readonly CassPlugin[];
+  /**
+   * AST-level parser plugins. Run earlier than the CSS-level
+   * `plugins` above: each plugin gets a chance to handle JSX
+   * spreads the default chain walk doesn't recognize (e.g.
+   * conditional spreads, custom DSL shapes). See
+   * `@cassida/parser`'s `CassParserPlugin` interface for the shape.
+   *
+   * Like CSS plugins, these are inline-only (function values are
+   * not serializable to `cassida.config.json`).
+   */
+  readonly parserPlugins?: readonly CassParserPlugin[];
 }
 
 export default function cassida(options: CassPluginOptions = {}): Plugin {
@@ -150,6 +165,9 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
         shorthandPolicy: resolved.shorthand.policy,
         crossFileEvaluation: { cache: crossFileCache },
         ...(options.plugins ? { plugins: options.plugins } : {}),
+        ...(options.parserPlugins
+          ? { parserPlugins: options.parserPlugins }
+          : {}),
       });
 
       if (!result.transformed) {
@@ -182,8 +200,9 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
  * surface as a single error at plugin construction time.
  */
 function extractConfig(options: CassPluginOptions): CassConfig | undefined {
-  const { registry, include, plugins, ...cfg } = options;
+  const { registry, include, plugins, parserPlugins, ...cfg } = options;
   void registry;
+  void parserPlugins;
   void include;
   void plugins;
   if (Object.keys(cfg).length === 0) return undefined;
