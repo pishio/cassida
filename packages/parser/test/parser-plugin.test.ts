@@ -192,6 +192,66 @@ describe('parser plugin: trySpread', () => {
     expect(r.code).toMatch(/className=\{`extra \$\{active \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}`\}/);
   });
 
+  it('plugins can use `makeStyleAttr` helper to merge style additions', () => {
+    // A plugin that always emits a fixed `style={{'--brand': '#3b82f6'}}`
+    // alongside a literal className. Exercises the helper's merge
+    // semantics: no-existing → just additions; existing → spread merge.
+    const styleAddingPlugin: CassParserPlugin = {
+      name: 'style-test',
+      trySpread(argPath, helpers): SpreadPlan | null {
+        // Recognize a unique marker — `cas.token` identifier (not a real
+        // export) — purely so the test plugin can target a known shape
+        // distinct from chains.
+        if (!argPath.isIdentifier() || argPath.node.name !== '__styleTest') {
+          return null;
+        }
+        return {
+          rules: [],
+          buildAttrs(existing) {
+            const additions = t.objectExpression([
+              t.objectProperty(
+                t.stringLiteral('--brand'),
+                t.stringLiteral('#3b82f6'),
+              ),
+            ]);
+            const styleAttr = helpers.makeStyleAttr(
+              existing.style,
+              additions,
+              true,
+            );
+            return styleAttr ? [styleAttr] : [];
+          },
+        };
+      },
+    };
+
+    const merged = transform(
+      `
+      const __styleTest = null as unknown as { foo: string };
+      export const App = () =>
+        <div style={{ color: 'red' }} {...__styleTest} />;
+    `,
+      { ...opts, parserPlugins: [styleAddingPlugin] },
+    );
+    expect(merged.transformed).toBe(true);
+    // existing { color: 'red' } merges with { '--brand': '#3b82f6' }.
+    expect(merged.code).toMatch(/style=\{\{\s*\.\.\.\{\s*color:\s*['"]red['"]\s*\},\s*['"]--brand['"]:\s*['"]#3b82f6['"]\s*\}\}/);
+  });
+
+  it('rejects multiple Cassida-claimed spreads even across default + plugin paths', () => {
+    // One bare chain + one plugin-handled conditional on the same
+    // element. Both are Cassida-claimed; the parser should refuse
+    // the combination just like it rejects two bare-chain spreads.
+    const src = `
+      import { cas } from '@cassida/core';
+      export const App = ({ a }: { a: boolean }) =>
+        <div {...cas().color("red")} {...(a ? cas().color("green") : cas().color("blue"))} />;
+    `;
+    expect(() =>
+      transform(src, { ...opts, parserPlugins: [conditionalPlugin] }),
+    ).toThrow(/Multiple \{\.\.\.cas\(\)\} spreads/);
+  });
+
   it('throws a useful error when a plugin itself throws', () => {
     const broken: CassParserPlugin = {
       name: 'broken',

@@ -159,6 +159,23 @@ export interface ParserPluginHelpers {
     existing: t.JSXAttribute | null,
     value: string | t.Expression,
   ) => t.JSXAttribute;
+  /**
+   * Build a `style=` JSX attribute that merges the supplied object
+   * expression with the host element's existing `style`. Use this
+   * when a plugin emits inline-style additions (e.g. CSS variable
+   * bindings for dynamic slots). Returns `null` when both the
+   * plugin contribution and the existing attr are empty.
+   *
+   * `casWins` controls precedence on key collision: `true` means
+   * the plugin's keys override the user's; `false` means the user's
+   * keys override. Mirrors the existing `decideStyleAttr` ordering
+   * (cas wins when the spread comes later in source order).
+   */
+  readonly makeStyleAttr: (
+    existing: t.JSXAttribute | null,
+    additions: t.ObjectExpression,
+    casWins: boolean,
+  ) => t.JSXAttribute | null;
 }
 
 /**
@@ -254,7 +271,12 @@ export function transform(source: string, options: TransformOptions): TransformR
     },
   });
 
-  if (casBindings.size === 0) {
+  // Fast-path: no Cassida chain bindings AND no parser plugins → no
+  // spread the parser could possibly transform. Plugins, however,
+  // may recognize spread shapes that don't reference `cas` at all
+  // (custom DSLs, marker identifiers), so when plugins are
+  // registered we still run the visitor.
+  if (casBindings.size === 0 && (options.parserPlugins?.length ?? 0) === 0) {
     return { code: source, rules: [], map: null, transformed: false };
   }
 
@@ -335,7 +357,99 @@ export function transform(source: string, options: TransformOptions): TransformR
       return id;
     },
     makeClassNameAttr,
+    makeStyleAttr,
   };
+
+  /**
+   * Returns `true` if a sibling spread (`siblingNode`) on the same
+   * JSX element would be claimed by Cassida — either by the default
+   * bare-chain walker OR by any registered parser plugin. Uses
+   * isolated probe contexts so the probe never mutates the real
+   * dynamic-slot or rules state.
+   */
+  function isCassidaClaimedSpread(
+    siblingNode: t.JSXSpreadAttribute,
+    fromPath: NodePath<t.JSXSpreadAttribute>,
+  ): boolean {
+    let claimed = false;
+    fromPath.parentPath?.traverse({
+      JSXSpreadAttribute(p) {
+        if (p.node !== siblingNode) return;
+        const probeArgPath = peelPropsAccess(p.get('argument'));
+        const probeCtx: WalkContext = {
+          dynamicSources: new Map(),
+          counter: { n: 0 },
+          crossFile,
+        };
+        // 1) Bare-chain claim.
+        if (walkChain(probeArgPath, casBindings, probeCtx) !== null) {
+          claimed = true;
+          p.stop();
+          return;
+        }
+        // 2) Plugin claims. Build a throwaway helper bound to the
+        // probe ctx so any dynamic-slot registrations the plugin
+        // triggers during detection don't leak into the real state.
+        const probeHelpers: ParserPluginHelpers = {
+          walkChain: (q) => walkChain(q, casBindings, probeCtx),
+          compileOps: (chainOps) =>
+            compileOps(chainOps, {
+              registry: options.registry,
+              ...(options.shorthandPolicy !== undefined
+                ? { shorthandPolicy: options.shorthandPolicy }
+                : {}),
+              ...(options.plugins !== undefined
+                ? { plugins: options.plugins }
+                : {}),
+            }),
+          peelPropsAccess,
+          registerDynamicSource: (node) => {
+            const id = `probe-slot-${++probeCtx.counter.n}`;
+            probeCtx.dynamicSources.set(id, node);
+            return id;
+          },
+          makeClassNameAttr,
+          makeStyleAttr,
+        };
+        for (const plugin of parserPlugins) {
+          if (!plugin.trySpread) continue;
+          try {
+            if (plugin.trySpread(probeArgPath, probeHelpers) !== null) {
+              claimed = true;
+              p.stop();
+              return;
+            }
+          } catch {
+            // A plugin that throws during probe is treated as
+            // non-claiming. The "real" pass below will re-invoke
+            // and surface the error with the proper code-frame.
+          }
+        }
+        p.stop();
+      },
+    });
+    return claimed;
+  }
+
+  /**
+   * Throw if the host element carries any *other* Cassida-claimed
+   * spread besides the current one. Single Class Principle demands
+   * one chain per element; multi-spread is an authorship mistake.
+   */
+  function assertNoOtherCassidaSpreads(
+    opening: t.JSXOpeningElement,
+    path: NodePath<t.JSXSpreadAttribute>,
+  ): void {
+    const others = opening.attributes.filter((a) => {
+      if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
+      return isCassidaClaimedSpread(a, path);
+    });
+    if (others.length > 0) {
+      throw path.buildCodeFrameError(
+        '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
+      );
+    }
+  }
 
   traverse(ast, {
     JSXSpreadAttribute(path) {
@@ -362,6 +476,12 @@ export function transform(source: string, options: TransformOptions): TransformR
             );
           }
           if (plan === null) continue;
+          // Same multi-spread guard as the default path — plugin-
+          // claimed spreads count just as much as bare-chain ones.
+          const opening = path.parent;
+          if (t.isJSXOpeningElement(opening)) {
+            assertNoOtherCassidaSpreads(opening, path);
+          }
           applyPluginSpreadPlan(path, plan);
           transformed = true;
           return;
@@ -372,30 +492,7 @@ export function transform(source: string, options: TransformOptions): TransformR
       const opening = path.parent;
       if (!t.isJSXOpeningElement(opening)) return;
 
-      // Reject multiple {...cas()} spreads on the same element.
-      const probeCtx: WalkContext = {
-        dynamicSources: new Map(),
-        counter: { n: 0 },
-        crossFile,
-      };
-      const otherCasSpreads = opening.attributes.filter((a) => {
-        if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
-        let probed: Op[] | null = null;
-        path.parentPath?.traverse({
-          JSXSpreadAttribute(p) {
-            if (p.node === a) {
-              probed = walkChain(peelPropsAccess(p.get('argument')), casBindings, probeCtx);
-              p.stop();
-            }
-          },
-        });
-        return probed !== null;
-      });
-      if (otherCasSpreads.length > 0) {
-        throw path.buildCodeFrameError(
-          '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
-        );
-      }
+      assertNoOtherCassidaSpreads(opening, path);
 
       const compiled = compileOps(ops, {
         registry: options.registry,
@@ -991,6 +1088,57 @@ function wrapForAttr(
 ): t.StringLiteral | t.JSXExpressionContainer {
   if (t.isStringLiteral(expr)) return expr;
   return t.jsxExpressionContainer(expr);
+}
+
+/**
+ * Build a `style=` JSX attribute that merges the supplied object
+ * expression with the host element's existing `style`. Returns
+ * `null` when there's nothing to emit (no existing, no additions).
+ *
+ * `casWins` controls precedence on key collision. When `true` the
+ * plugin contribution comes *after* the existing object spread, so
+ * its keys take effect on collision. When `false` the order is
+ * reversed.
+ */
+function makeStyleAttr(
+  existing: t.JSXAttribute | null,
+  additions: t.ObjectExpression,
+  casWins: boolean,
+): t.JSXAttribute | null {
+  const hasAdditions = additions.properties.length > 0;
+  const existingExpr = getExistingStyleExpr(existing);
+
+  if (!hasAdditions && existingExpr === null) return null;
+  if (!hasAdditions) {
+    // Nothing to merge; preserving the existing attr means returning
+    // null and signalling "no replace" to the caller. The caller
+    // keeps the original attr in place.
+    return null;
+  }
+  if (existingExpr === null) {
+    return t.jsxAttribute(
+      t.jsxIdentifier('style'),
+      t.jsxExpressionContainer(additions),
+    );
+  }
+
+  // Both exist — emit a merged object via spread. casWins picks the
+  // order; the second spread overrides on key collision.
+  const merged = casWins
+    ? t.objectExpression([
+        t.spreadElement(existingExpr),
+        ...additions.properties,
+      ])
+    : t.objectExpression([
+        t.spreadElement(t.objectExpression(additions.properties.slice())),
+        ...(t.isObjectExpression(existingExpr)
+          ? existingExpr.properties
+          : [t.spreadElement(existingExpr)]),
+      ]);
+  return t.jsxAttribute(
+    t.jsxIdentifier('style'),
+    t.jsxExpressionContainer(merged),
+  );
 }
 
 /**
