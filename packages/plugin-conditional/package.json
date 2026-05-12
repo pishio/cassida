@@ -1,0 +1,61 @@
+{
+  "name": "@cassida/plugin-conditional",
+  "version": "0.3.0",
+  "description": "Cassida parser plugin: rewrites `{...(cond ? cas().X() : cas().Y()).props}` and `{...cond && cas().X().props}` JSX spreads to a single className expression at build time. Lets component libraries express prop-driven variants without a runtime variant DSL.",
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@babel/types": "^7.26.0",
+    "@cassida/parser": "workspace:*"
+  },
+  "devDependencies": {
+    "@babel/traverse": "^7.25.9",
+    "@cassida/compiler": "workspace:*",
+    "@types/babel__traverse": "^7.20.6",
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pishio/cassida.git",
+    "directory": "packages/plugin-conditional"
+  },
+  "homepage": "https://github.com/pishio/cassida/tree/main/packages/plugin-conditional#readme",
+  "bugs": {
+    "url": "https://github.com/pishio/cassida/issues"
+  },
+  "author": "pishio",
+  "keywords": [
+    "cassida",
+    "css-in-js",
+    "compile-time",
+    "single-class",
+    "react",
+    "conditional"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
