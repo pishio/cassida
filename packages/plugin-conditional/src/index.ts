@@ -73,7 +73,12 @@ function planConditional(
   argPath: NodePath<t.ConditionalExpression>,
   helpers: ParserPluginHelpers,
 ): SpreadPlan | null {
-  const testExpr = argPath.node.test;
+  // Clone before re-parenting: the original spread argument is
+  // being removed from the tree by the rewrite, and Babel's
+  // internal node tracking gets confused if a node ends up with
+  // multiple parents. `cloneNode` (deep clone) is the defensive
+  // move regardless of the actual reachability after replacement.
+  const testExpr = t.cloneNode(argPath.node.test);
   const consequent = helpers.peelPropsAccess(argPath.get('consequent'));
   const alternate = helpers.peelPropsAccess(argPath.get('alternate'));
 
@@ -105,7 +110,9 @@ function planShortCircuit(
   argPath: NodePath<t.LogicalExpression>,
   helpers: ParserPluginHelpers,
 ): SpreadPlan | null {
-  const left = argPath.node.left;
+  // See `planConditional` — clone for the same parent-pointer
+  // hygiene reasons.
+  const left = t.cloneNode(argPath.node.left);
   const right = helpers.peelPropsAccess(argPath.get('right'));
   const ops = helpers.walkChain(right);
   if (!ops) return null;
