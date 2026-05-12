@@ -9,11 +9,11 @@ export function App() {
   const [hue, setHue] = useState(180);
 
   return (
-    <main {...cas().padding(24).maxWidth(720)}>
-      <h1 {...cas().fontSize(24).fontWeight(700).color('#111')}>Cassida e2e</h1>
+    <main {...cas().padding(24).maxWidth(720).props}>
+      <h1 {...cas().fontSize(24).fontWeight(700).color('#111').props}>Cassida e2e</h1>
 
-      <section {...withCard(cas())}>
-        <p {...cas().margin(0).fontSize(14)}>Static chain compiles to a class.</p>
+      <section {...withCard(cas()).props}>
+        <p {...cas().margin(0).fontSize(14).props}>Static chain compiles to a class.</p>
       </section>
 
       {/* Modifier scope (:hover) — must produce a single class with a
@@ -25,7 +25,8 @@ export function App() {
           .color('#fff')
           .borderRadius(4)
           .cursor('pointer')
-          .hover((c) => c.backgroundColor('#2563eb'))}
+          .hover((c) => c.backgroundColor('#2563eb'))
+          .props}
       >
         Click me
       </button>
@@ -36,7 +37,8 @@ export function App() {
         {...cas()
           .padding(16)
           .marginTop(16)
-          .color(`hsl(${hue}deg 70% 50%)`)}
+          .color(`hsl(${hue}deg 70% 50%)`)
+          .props}
       >
         Dynamic colour: hue = {hue}
       </div>

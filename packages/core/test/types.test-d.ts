@@ -37,11 +37,12 @@ if (_execute) {
   // @ts-expect-error -- color expects a CSS color string, not a plain number
   cas().color(123);
 
-  // 5) Spread surfaces a CSS.Properties-typed style object; methods are
-  //    non-enumerable and do not leak.
+  // 5) `.props` surfaces only the JSX-shaped output; methods on the
+  //    chain are not part of the spread type. v0.2 spread the chain
+  //    directly; v0.3+ requires `.props` as the explicit terminator.
   const chain: CassChain = cas().color('red');
-  const spread: { style: object } = { ...chain };
-  void spread;
+  const props: { className: string; style: object } = chain.props;
+  void props;
 
   // 6) Phase 6b: generated mdn-data methods are callable with a
   //    permissive string | number payload.

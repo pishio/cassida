@@ -66,3 +66,6 @@ npx vite build
 
 echo "==> Running assertions"
 node scripts/assert.mjs
+
+echo "==> Type-checking consumer"
+npx tsc --noEmit
