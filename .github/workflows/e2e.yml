@@ -127,6 +127,15 @@ jobs:
         working-directory: e2e/consumer
         run: node scripts/assert.mjs
 
+      # Type-check the consumer with strict TS settings. From v0.3
+      # this is meaningful: the chain's CSS-property-named methods
+      # no longer leak into JSX prop typings (the `.props`
+      # terminator hides them), so a real consumer's `tsc --noEmit`
+      # is expected to pass against the published tarballs.
+      - name: Type-check consumer
+        working-directory: e2e/consumer
+        run: npx tsc --noEmit
+
   consumer-bun:
     name: consumer · bun
     needs: pack
