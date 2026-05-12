@@ -64,16 +64,13 @@ export function recommended(options: RecommendedOptions = {}): RecommendedBundle
   const parserPlugins: CassParserPlugin[] = [];
 
   if (options.hoverFix !== false) {
-    plugins.push(
-      hoverFix(typeof options.hoverFix === 'object' ? options.hoverFix : {}),
-    );
+    // `|| {}` instead of `typeof === 'object'` — `typeof null` is
+    // `'object'` in JS, so the type-guard form would pass `null`
+    // straight into the factory and crash on property access.
+    plugins.push(hoverFix(options.hoverFix || {}));
   }
   if (options.conditional !== false) {
-    parserPlugins.push(
-      conditionalSpread(
-        typeof options.conditional === 'object' ? options.conditional : {},
-      ),
-    );
+    parserPlugins.push(conditionalSpread(options.conditional || {}));
   }
 
   return { plugins, parserPlugins };
