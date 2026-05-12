@@ -9,6 +9,7 @@
 [![@cassida/recommended](https://img.shields.io/npm/v/%40cassida%2Frecommended?label=%40cassida%2Frecommended&color=2ea44f)](https://www.npmjs.com/package/@cassida/recommended)
 [![@cassida/plugin-hover-fix](https://img.shields.io/npm/v/%40cassida%2Fplugin-hover-fix?label=%40cassida%2Fplugin-hover-fix&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-hover-fix)
 [![@cassida/plugin-conditional](https://img.shields.io/npm/v/%40cassida%2Fplugin-conditional?label=%40cassida%2Fplugin-conditional&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-conditional)
+[![@cassida/plugin-global-css](https://img.shields.io/npm/v/%40cassida%2Fplugin-global-css?label=%40cassida%2Fplugin-global-css&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-global-css)
 [![license MIT](https://img.shields.io/npm/l/%40cassida%2Fcore?color=blue)](./LICENSE)
 
 > **One element, one class — compiled, not cascaded.**
@@ -348,6 +349,7 @@ Cassida has two plugin layers, each operating at a different stage of the build:
 |---|---|---|---|
 | **CSS plugins** | post-canonicalize, on `ScopeBag` tree | Mutate the rule structure (wrap scopes, expand pseudo-classes, prefix vendor properties) | `@cassida/plugin-hover-fix` |
 | **Parser plugins** | pre-canonicalize, on Babel AST | Recognize non-default JSX-spread shapes that the chain walker doesn't claim | `@cassida/plugin-conditional` |
+| **Vite-level plugins** | Vite's own plugin pipeline | Serve out-of-band stylesheets (preflight, resets, print) Cassida itself never emits | `@cassida/plugin-global-css` |
 
 The fastest opt-in is `@cassida/recommended`, which bundles the maintainers' default-on set behind a single import:
 
@@ -385,6 +387,21 @@ Lifts `{...(cond ? cas().X() : cas().Y())}` and `{...(cond && cas().X())}` JSX s
 ```
 
 Both branches register independent CSS rules, so they participate in the standard dedup pipeline (a branch that matches a sibling bare-chain elsewhere shares the same hash). v0.4 covers pure-static branches; dynamic-slot branches remain on the runtime path.
+
+#### `@cassida/plugin-global-css`
+
+Vite plugin that serves arbitrary global CSS — preflight, resets, body / tag-selector rules — through a virtual module, wrapped in a configurable `@layer` so it cooperates with Cassida's single-class output. Cassida's chains always emit exactly one class per element; this plugin fills the gap for rules like `body { ... }` or `*, ::before, ::after { ... }` without introducing a second styling system.
+
+```ts
+import { cassidaGlobalCss } from '@cassida/plugin-global-css';
+import preflight from './preflight.css?raw';
+
+cassidaGlobalCss({ css: preflight, layer: 'base' });
+// then in main.tsx:
+import 'virtual:cassida-global.css';
+```
+
+Defaults to `@layer base` so Cassida's classes in `@layer cas` win the cascade declaration `@layer base, cas;` without specificity bumps. Pass `layer: null` to skip the wrap, or `virtualId` to mount multiple instances (e.g. one for preflight, one for print).
 
 #### Custom composition
 
@@ -525,6 +542,7 @@ Babel's `path.evaluate()` returns `confident: false` for `Math.random()`, so the
 | [`@cassida/recommended`](./packages/recommended) | Curated bundle factory. One-line opt-in for the maintainers' default plugin set. |
 | [`@cassida/plugin-hover-fix`](./packages/plugin-hover-fix) | First-party CSS plugin: gates `:hover` in `@media (hover: hover)` for iOS sticky-hover. |
 | [`@cassida/plugin-conditional`](./packages/plugin-conditional) | First-party parser plugin: lifts conditional / short-circuit JSX spreads to build-time classes. |
+| [`@cassida/plugin-global-css`](./packages/plugin-global-css) | First-party Vite plugin: serves preflight / reset / tag-selector CSS through a virtual module, wrapped in a configurable cascade `@layer`. |
 
 Most consumers install three packages: `@cassida/core` (runtime), `@cassida/vite-plugin` (build-time integration), and `@cassida/recommended` (which brings the default plugin set as transitive deps). The other packages are workspace internals plus opt-in factories for bespoke composition.
 
