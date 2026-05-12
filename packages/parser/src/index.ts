@@ -80,6 +80,102 @@ export interface TransformOptions {
     | {
         readonly cache?: ModuleCache;
       };
+  /**
+   * AST-level plugins that get a chance to handle `{...<expr>}` JSX
+   * spreads the default bare-chain walk does not recognize. Each
+   * plugin's `trySpread` is invoked in registration order; the first
+   * plugin to return a non-null `SpreadPlan` wins. Plugins should be
+   * conservative — return `null` quickly for anything they don't
+   * own — so others downstream still get a turn.
+   *
+   * Distinct from the existing CSS-level `plugins` field, which
+   * operates on the post-canonicalize `ScopeBag` tree. Parser
+   * plugins fire earlier, on raw Babel paths.
+   */
+  readonly parserPlugins?: readonly CassParserPlugin[];
+}
+
+/**
+ * AST-level plugin for the parser. Plugins can intercept JSX
+ * spreads that the default chain walk doesn't recognize and emit
+ * their own rules + rewritten attributes. The interface is open
+ * for additional hooks in future minor versions; today only
+ * `trySpread` exists.
+ */
+export interface CassParserPlugin {
+  readonly name: string;
+  /**
+   * Called when the default bare-chain walk over the spread
+   * argument returned `null`. Plugins inspect the AST and either
+   * return a `SpreadPlan` (taking ownership of the rewrite) or
+   * `null` (deferring to the next plugin / runtime fallback).
+   */
+  readonly trySpread?: (
+    argPath: NodePath,
+    helpers: ParserPluginHelpers,
+  ) => SpreadPlan | null;
+}
+
+/**
+ * Helpers exposed to parser plugins. Plugins compose these to walk
+ * sub-chains, compile ops, and peel `.props` terminators — sharing
+ * the parser's internal logic without re-implementing it.
+ */
+export interface ParserPluginHelpers {
+  /**
+   * Walk a NodePath as a chain root. Returns `null` if the path
+   * isn't a chain rooted at a known cas-binding. Plugins typically
+   * call this on sub-expressions (each branch of a conditional,
+   * each item of an array, etc.).
+   */
+  readonly walkChain: (path: NodePath) => Op[] | null;
+  /**
+   * Compile a chain's ops into a `CompiledRule`. Plugins call this
+   * once per logical class they want to register.
+   */
+  readonly compileOps: (ops: Op[]) => CompiledRule;
+  /**
+   * Strip a trailing `.props` member access from a path. Lets
+   * plugins accept both `chain.props` and bare-chain shapes
+   * uniformly without duplicating the peel logic.
+   */
+  readonly peelPropsAccess: (path: NodePath) => NodePath;
+  /**
+   * Allocate a fresh dynamic-slot id and remember the source AST
+   * node for later inline-style emission. Plugins that emit their
+   * own dynamic rules (rare) can use this to keep the slot
+   * namespace coherent.
+   */
+  readonly registerDynamicSource: (node: t.Expression) => string;
+}
+
+/**
+ * The product of a `trySpread` decision: a list of compiled rules
+ * to register with the CSS emitter, and a function that builds the
+ * JSX attributes that replace the original spread.
+ */
+export interface SpreadPlan {
+  /** Rules the CSS emitter should emit. Order is preserved. */
+  readonly rules: readonly CompiledRule[];
+  /**
+   * Produce the JSX attributes that replace the original
+   * `{...<expr>}`. The plugin receives the host element's existing
+   * `className` / `style` attributes so it can merge with them
+   * (the parser handles the actual attribute insertion / removal).
+   */
+  readonly buildAttrs: (
+    existing: ExistingHostAttrs,
+  ) => readonly t.JSXAttribute[];
+}
+
+/**
+ * The host JSX element's `className` and `style` attributes at the
+ * moment the spread is being rewritten. `null` for either field
+ * means the host doesn't carry that attribute today.
+ */
+export interface ExistingHostAttrs {
+  readonly className: t.JSXAttribute | null;
+  readonly style: t.JSXAttribute | null;
 }
 
 export interface TransformResult {
@@ -156,6 +252,95 @@ export function transform(source: string, options: TransformOptions): TransformR
   const counter = { n: 0 };
   const crossFile = resolveCrossFileConfig(options);
   const ctx: WalkContext = { dynamicSources, counter, crossFile };
+  const parserPlugins = options.parserPlugins ?? [];
+
+  /**
+   * Apply a plugin-produced `SpreadPlan` to the JSX element that
+   * hosts the spread. Mirrors the attribute-rewriting logic the
+   * default single-chain handler uses, but defers the attr shape
+   * to `plan.buildAttrs` so the plugin owns the merge with
+   * existing className / style.
+   */
+  function applyPluginSpreadPlan(
+    path: NodePath<t.JSXSpreadAttribute>,
+    plan: SpreadPlan,
+  ): void {
+    const opening = path.parent;
+    if (!t.isJSXOpeningElement(opening)) return;
+
+    let spreadIdx = -1;
+    let styleIdx = -1;
+    let classNameIdx = -1;
+    let existingStyleAttr: t.JSXAttribute | null = null;
+    let existingClassNameAttr: t.JSXAttribute | null = null;
+    for (let i = 0; i < opening.attributes.length; i++) {
+      const a = opening.attributes[i]!;
+      if (a === path.node) {
+        spreadIdx = i;
+        continue;
+      }
+      if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name)) {
+        if (a.name.name === 'style') {
+          existingStyleAttr = a;
+          styleIdx = i;
+        } else if (a.name.name === 'className') {
+          existingClassNameAttr = a;
+          classNameIdx = i;
+        }
+      }
+    }
+
+    const newSpreadAttrs = plan.buildAttrs({
+      className: existingClassNameAttr,
+      style: existingStyleAttr,
+    });
+
+    // The plan's attrs determine the final shape. If the plan
+    // doesn't return a className / style attr, the existing one is
+    // kept; if it does, the existing one is replaced.
+    const planAttrNames = new Set<string>();
+    for (const attr of newSpreadAttrs) {
+      if (t.isJSXIdentifier(attr.name)) planAttrNames.add(attr.name.name);
+    }
+
+    for (const rule of plan.rules) rules.push(rule);
+
+    const newAttrs: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
+    for (let i = 0; i < opening.attributes.length; i++) {
+      if (i === spreadIdx) {
+        for (const attr of newSpreadAttrs) newAttrs.push(attr);
+        continue;
+      }
+      if (i === classNameIdx && planAttrNames.has('className')) continue;
+      if (i === styleIdx && planAttrNames.has('style')) continue;
+      newAttrs.push(opening.attributes[i]!);
+    }
+    opening.attributes = newAttrs;
+  }
+
+  /**
+   * Helpers handed to parser plugins. Wraps the parser's internal
+   * walkers so plugins can compose them on sub-expressions without
+   * re-implementing the chain logic. Each helper is a thin façade
+   * with no plugin-specific state.
+   */
+  const pluginHelpers: ParserPluginHelpers = {
+    walkChain: (p) => walkChain(p, casBindings, ctx),
+    compileOps: (chainOps) =>
+      compileOps(chainOps, {
+        registry: options.registry,
+        ...(options.shorthandPolicy !== undefined
+          ? { shorthandPolicy: options.shorthandPolicy }
+          : {}),
+        ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+      }),
+    peelPropsAccess,
+    registerDynamicSource: (node) => {
+      const id = `slot-${++ctx.counter.n}`;
+      ctx.dynamicSources.set(id, node);
+      return id;
+    },
+  };
 
   traverse(ast, {
     JSXSpreadAttribute(path) {
@@ -164,7 +349,30 @@ export function transform(source: string, options: TransformOptions): TransformR
       const argPath = peelPropsAccess(path.get('argument'));
 
       const ops = walkChain(argPath, casBindings, ctx);
-      if (!ops) return;
+      if (ops === null) {
+        // Bare chain didn't match. Give registered parser plugins a
+        // turn before we leave the JSX untouched. First-match wins;
+        // each plugin is responsible for its own conservative-bail
+        // semantics so others get a turn when a plugin defers.
+        for (const plugin of parserPlugins) {
+          if (!plugin.trySpread) continue;
+          let plan: SpreadPlan | null;
+          try {
+            plan = plugin.trySpread(argPath, pluginHelpers);
+          } catch (err) {
+            throw path.buildCodeFrameError(
+              `[cassida] parser plugin "${plugin.name}" threw while handling a JSX spread: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+          if (plan === null) continue;
+          applyPluginSpreadPlan(path, plan);
+          transformed = true;
+          return;
+        }
+        return;
+      }
 
       const opening = path.parent;
       if (!t.isJSXOpeningElement(opening)) return;
