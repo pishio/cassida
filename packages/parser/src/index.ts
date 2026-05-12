@@ -361,74 +361,68 @@ export function transform(source: string, options: TransformOptions): TransformR
   };
 
   /**
-   * Returns `true` if a sibling spread (`siblingNode`) on the same
-   * JSX element would be claimed by Cassida — either by the default
+   * Returns `true` if the spread at `siblingIndex` on the host
+   * element would be claimed by Cassida — either by the default
    * bare-chain walker OR by any registered parser plugin. Uses
    * isolated probe contexts so the probe never mutates the real
    * dynamic-slot or rules state.
+   *
+   * Direct NodePath access via `parentPath.get('attributes')[i]` —
+   * cheaper than a Babel `traverse(parentPath, ...)` lookup,
+   * especially when an element has many sibling attributes.
    */
   function isCassidaClaimedSpread(
-    siblingNode: t.JSXSpreadAttribute,
+    siblingIndex: number,
     fromPath: NodePath<t.JSXSpreadAttribute>,
   ): boolean {
-    let claimed = false;
-    fromPath.parentPath?.traverse({
-      JSXSpreadAttribute(p) {
-        if (p.node !== siblingNode) return;
-        const probeArgPath = peelPropsAccess(p.get('argument'));
-        const probeCtx: WalkContext = {
-          dynamicSources: new Map(),
-          counter: { n: 0 },
-          crossFile,
-        };
-        // 1) Bare-chain claim.
-        if (walkChain(probeArgPath, casBindings, probeCtx) !== null) {
-          claimed = true;
-          p.stop();
-          return;
-        }
-        // 2) Plugin claims. Build a throwaway helper bound to the
-        // probe ctx so any dynamic-slot registrations the plugin
-        // triggers during detection don't leak into the real state.
-        const probeHelpers: ParserPluginHelpers = {
-          walkChain: (q) => walkChain(q, casBindings, probeCtx),
-          compileOps: (chainOps) =>
-            compileOps(chainOps, {
-              registry: options.registry,
-              ...(options.shorthandPolicy !== undefined
-                ? { shorthandPolicy: options.shorthandPolicy }
-                : {}),
-              ...(options.plugins !== undefined
-                ? { plugins: options.plugins }
-                : {}),
-            }),
-          peelPropsAccess,
-          registerDynamicSource: (node) => {
-            const id = `probe-slot-${++probeCtx.counter.n}`;
-            probeCtx.dynamicSources.set(id, node);
-            return id;
-          },
-          makeClassNameAttr,
-          makeStyleAttr,
-        };
-        for (const plugin of parserPlugins) {
-          if (!plugin.trySpread) continue;
-          try {
-            if (plugin.trySpread(probeArgPath, probeHelpers) !== null) {
-              claimed = true;
-              p.stop();
-              return;
-            }
-          } catch {
-            // A plugin that throws during probe is treated as
-            // non-claiming. The "real" pass below will re-invoke
-            // and surface the error with the proper code-frame.
-          }
-        }
-        p.stop();
+    const parentPath = fromPath.parentPath;
+    if (!parentPath || !parentPath.isJSXOpeningElement()) return false;
+    const attrPaths = parentPath.get('attributes');
+    const attrPath = attrPaths[siblingIndex];
+    if (!attrPath || !attrPath.isJSXSpreadAttribute()) return false;
+    const probeArgPath = peelPropsAccess(attrPath.get('argument'));
+    const probeCtx: WalkContext = {
+      dynamicSources: new Map(),
+      counter: { n: 0 },
+      crossFile,
+    };
+    // 1) Bare-chain claim.
+    if (walkChain(probeArgPath, casBindings, probeCtx) !== null) return true;
+    // 2) Plugin claims. Build a throwaway helper bound to the probe
+    // ctx so any dynamic-slot registrations the plugin triggers
+    // during detection don't leak into the real state.
+    const probeHelpers: ParserPluginHelpers = {
+      walkChain: (q) => walkChain(q, casBindings, probeCtx),
+      compileOps: (chainOps) =>
+        compileOps(chainOps, {
+          registry: options.registry,
+          ...(options.shorthandPolicy !== undefined
+            ? { shorthandPolicy: options.shorthandPolicy }
+            : {}),
+          ...(options.plugins !== undefined
+            ? { plugins: options.plugins }
+            : {}),
+        }),
+      peelPropsAccess,
+      registerDynamicSource: (node) => {
+        const id = `probe-slot-${++probeCtx.counter.n}`;
+        probeCtx.dynamicSources.set(id, node);
+        return id;
       },
-    });
-    return claimed;
+      makeClassNameAttr,
+      makeStyleAttr,
+    };
+    for (const plugin of parserPlugins) {
+      if (!plugin.trySpread) continue;
+      try {
+        if (plugin.trySpread(probeArgPath, probeHelpers) !== null) return true;
+      } catch {
+        // A plugin that throws during probe is treated as
+        // non-claiming. The "real" pass below will re-invoke
+        // and surface the error with the proper code-frame.
+      }
+    }
+    return false;
   }
 
   /**
@@ -440,14 +434,14 @@ export function transform(source: string, options: TransformOptions): TransformR
     opening: t.JSXOpeningElement,
     path: NodePath<t.JSXSpreadAttribute>,
   ): void {
-    const others = opening.attributes.filter((a) => {
-      if (a === path.node || !t.isJSXSpreadAttribute(a)) return false;
-      return isCassidaClaimedSpread(a, path);
-    });
-    if (others.length > 0) {
-      throw path.buildCodeFrameError(
-        '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
-      );
+    for (let i = 0; i < opening.attributes.length; i++) {
+      const a = opening.attributes[i]!;
+      if (a === path.node || !t.isJSXSpreadAttribute(a)) continue;
+      if (isCassidaClaimedSpread(i, path)) {
+        throw path.buildCodeFrameError(
+          '[cassida] Multiple {...cas()} spreads on the same JSX element are not supported. Combine them into a single chain.',
+        );
+      }
     }
   }
 
@@ -1130,7 +1124,7 @@ function makeStyleAttr(
         ...additions.properties,
       ])
     : t.objectExpression([
-        t.spreadElement(t.objectExpression(additions.properties.slice())),
+        t.spreadElement(additions),
         ...(t.isObjectExpression(existingExpr)
           ? existingExpr.properties
           : [t.spreadElement(existingExpr)]),
