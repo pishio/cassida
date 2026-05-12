@@ -44,8 +44,11 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
-**v0.2.0** — adds cross-file static evaluation: design tokens defined in a separate module (or `.json` file) are folded at build time into the consuming chains, so `import { theme } from './theme'` followed by `cas().color(theme.brand.primary)` compiles to a single static class with no inline-style fallback.
-The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0. The feature set described below is implemented and covered by 200 unit tests across 5 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun.
+**v0.3.0** — adds the `.props` terminator (`<div {...cas().X().props} />`) that separates the chain's method surface from the JSX-spread shape. This resolves the long-standing collision between chain methods named after CSS properties (`translate`, `disabled`, …) and React's HTML-attribute typings — `tsc --noEmit` against a Cassida-using component now passes on strict settings. The bare-chain spread form is a type error from this release; the runtime keeps it working for the v0.3.x migration window.
+
+Earlier surface stays: cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 211 unit tests across 5 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — now including `tsc --noEmit` against the consumer for every Vite leg.
+
+The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0.
 
 ```bash
 pnpm add @cassida/core
