@@ -132,12 +132,15 @@ function planShortCircuit(
       // of a trailing space, which browsers ignore).
       //
       // When no existing className is present, the ternary stands
-      // alone as the attribute value — `undefined` is the right
-      // shape there because React skips rendering `className={undefined}`
-      // entirely instead of emitting `class=""`.
+      // alone as the attribute value — `void 0` (canonical, never-
+      // shadowed `undefined`) is the right shape there because React
+      // skips rendering `className={undefined}` entirely instead of
+      // emitting `class=""`. Using `t.identifier('undefined')` would
+      // be subject to local-scope shadowing in pathological cases;
+      // `void 0` is immutable.
       const falsyBranch: t.Expression = existing.className
         ? t.stringLiteral('')
-        : t.identifier('undefined');
+        : t.unaryExpression('void', t.numericLiteral(0));
       const ternary = t.conditionalExpression(
         left,
         t.stringLiteral(rule.className),

@@ -109,7 +109,7 @@ describe('@cassida/plugin-conditional', () => {
   });
 
   describe('LogicalExpression `&&` short-circuit', () => {
-    it('rewrites `cond && cas().X()` to `cond ? "cas-X" : undefined`', () => {
+    it('rewrites `cond && cas().X()` to `cond ? "cas-X" : void 0`', () => {
       const r = transform(
         `
         import { cas } from '@cassida/core';
@@ -121,7 +121,7 @@ describe('@cassida/plugin-conditional', () => {
       expect(r.transformed).toBe(true);
       expect(r.rules).toHaveLength(1);
       expect(r.code).toMatch(
-        /className=\{active \? "cas-[0-9a-f]{8}" : undefined\}/,
+        /className=\{active \? "cas-[0-9a-f]{8}" : void 0\}/,
       );
     });
 
@@ -136,7 +136,7 @@ describe('@cassida/plugin-conditional', () => {
       );
       expect(r.transformed).toBe(true);
       expect(r.code).toMatch(
-        /className=\{active \? "cas-[0-9a-f]{8}" : undefined\}/,
+        /className=\{active \? "cas-[0-9a-f]{8}" : void 0\}/,
       );
     });
 
@@ -161,10 +161,11 @@ describe('@cassida/plugin-conditional', () => {
       expect(r.code).not.toContain('undefined');
     });
 
-    it('falsy branch stays `undefined` when no existing className', () => {
+    it('falsy branch stays `void 0` when no existing className', () => {
       // Without an existing class to interpolate into, the ternary
-      // stands alone; React skips `className={undefined}` cleanly
-      // instead of emitting an empty `class=""` attribute.
+      // stands alone; React skips `className={void 0}` (i.e.
+      // `undefined`) cleanly instead of emitting an empty `class=""`
+      // attribute. `void 0` is the canonical, shadow-proof form.
       const r = transform(
         `
         import { cas } from '@cassida/core';
@@ -174,7 +175,7 @@ describe('@cassida/plugin-conditional', () => {
         opts,
       );
       expect(r.code).toMatch(
-        /className=\{active \? "cas-[0-9a-f]{8}" : undefined\}/,
+        /className=\{active \? "cas-[0-9a-f]{8}" : void 0\}/,
       );
     });
 
