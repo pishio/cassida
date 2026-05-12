@@ -152,6 +152,46 @@ describe('parser plugin: trySpread', () => {
     expect(seen).toEqual([]);
   });
 
+  it('plugins can use `makeClassNameAttr` helper to merge with existing className', () => {
+    const mergePlugin: CassParserPlugin = {
+      name: 'merge-test',
+      trySpread(argPath, helpers): SpreadPlan | null {
+        if (!argPath.isConditionalExpression()) return null;
+        const cOps = helpers.walkChain(argPath.get('consequent'));
+        const aOps = helpers.walkChain(argPath.get('alternate'));
+        if (!cOps || !aOps) return null;
+        const cRule = helpers.compileOps(cOps);
+        const aRule = helpers.compileOps(aOps);
+        return {
+          rules: [cRule, aRule],
+          buildAttrs(existing) {
+            return [
+              helpers.makeClassNameAttr(
+                existing.className,
+                t.conditionalExpression(
+                  argPath.node.test,
+                  t.stringLiteral(cRule.className),
+                  t.stringLiteral(aRule.className),
+                ),
+              ),
+            ];
+          },
+        };
+      },
+    };
+
+    const src = `
+      import { cas } from '@cassida/core';
+      export const App = ({ active }: { active: boolean }) =>
+        <div className="extra" {...(active ? cas().color("red") : cas().color("blue"))} />;
+    `;
+    const r = transform(src, { ...opts, parserPlugins: [mergePlugin] });
+    expect(r.transformed).toBe(true);
+    // The "extra" prefix from the user's className survives, merged
+    // with the plugin's ternary via the shared helper.
+    expect(r.code).toMatch(/className=\{`extra \$\{active \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}`\}/);
+  });
+
   it('throws a useful error when a plugin itself throws', () => {
     const broken: CassParserPlugin = {
       name: 'broken',

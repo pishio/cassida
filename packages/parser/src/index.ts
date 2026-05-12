@@ -147,6 +147,18 @@ export interface ParserPluginHelpers {
    * namespace coherent.
    */
   readonly registerDynamicSource: (node: t.Expression) => string;
+  /**
+   * Build a `className=` JSX attribute that merges the supplied
+   * value (either a literal hash string or an arbitrary Expression
+   * such as a ternary) with the host element's existing
+   * `className`. Plugins use this to avoid re-implementing the
+   * four-way merge logic (no-existing / string + string /
+   * string + expression / expression + expression).
+   */
+  readonly makeClassNameAttr: (
+    existing: t.JSXAttribute | null,
+    value: string | t.Expression,
+  ) => t.JSXAttribute;
 }
 
 /**
@@ -268,27 +280,13 @@ export function transform(source: string, options: TransformOptions): TransformR
     const opening = path.parent;
     if (!t.isJSXOpeningElement(opening)) return;
 
-    let spreadIdx = -1;
-    let styleIdx = -1;
-    let classNameIdx = -1;
-    let existingStyleAttr: t.JSXAttribute | null = null;
-    let existingClassNameAttr: t.JSXAttribute | null = null;
-    for (let i = 0; i < opening.attributes.length; i++) {
-      const a = opening.attributes[i]!;
-      if (a === path.node) {
-        spreadIdx = i;
-        continue;
-      }
-      if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name)) {
-        if (a.name.name === 'style') {
-          existingStyleAttr = a;
-          styleIdx = i;
-        } else if (a.name.name === 'className') {
-          existingClassNameAttr = a;
-          classNameIdx = i;
-        }
-      }
-    }
+    const {
+      spreadIdx,
+      styleIdx,
+      classNameIdx,
+      existingStyleAttr,
+      existingClassNameAttr,
+    } = findAttributeIndices(opening, path.node);
 
     const newSpreadAttrs = plan.buildAttrs({
       className: existingClassNameAttr,
@@ -305,17 +303,13 @@ export function transform(source: string, options: TransformOptions): TransformR
 
     for (const rule of plan.rules) rules.push(rule);
 
-    const newAttrs: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
-    for (let i = 0; i < opening.attributes.length; i++) {
-      if (i === spreadIdx) {
-        for (const attr of newSpreadAttrs) newAttrs.push(attr);
-        continue;
-      }
-      if (i === classNameIdx && planAttrNames.has('className')) continue;
-      if (i === styleIdx && planAttrNames.has('style')) continue;
-      newAttrs.push(opening.attributes[i]!);
-    }
-    opening.attributes = newAttrs;
+    opening.attributes = rebuildAttributes(
+      opening,
+      spreadIdx,
+      newSpreadAttrs,
+      classNameIdx >= 0 && planAttrNames.has('className') ? classNameIdx : null,
+      styleIdx >= 0 && planAttrNames.has('style') ? styleIdx : null,
+    );
   }
 
   /**
@@ -340,6 +334,7 @@ export function transform(source: string, options: TransformOptions): TransformR
       ctx.dynamicSources.set(id, node);
       return id;
     },
+    makeClassNameAttr,
   };
 
   traverse(ast, {
@@ -409,28 +404,13 @@ export function transform(source: string, options: TransformOptions): TransformR
       });
       rules.push(compiled);
 
-      let spreadIdx = -1;
-      let styleIdx = -1;
-      let classNameIdx = -1;
-      let existingStyleAttr: t.JSXAttribute | null = null;
-      let existingClassNameAttr: t.JSXAttribute | null = null;
-
-      for (let i = 0; i < opening.attributes.length; i++) {
-        const a = opening.attributes[i]!;
-        if (a === path.node) {
-          spreadIdx = i;
-          continue;
-        }
-        if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name)) {
-          if (a.name.name === 'style') {
-            existingStyleAttr = a;
-            styleIdx = i;
-          } else if (a.name.name === 'className') {
-            existingClassNameAttr = a;
-            classNameIdx = i;
-          }
-        }
-      }
+      const {
+        spreadIdx,
+        styleIdx,
+        classNameIdx,
+        existingStyleAttr,
+        existingClassNameAttr,
+      } = findAttributeIndices(opening, path.node);
 
       const casWins = spreadIdx > styleIdx;
       const casBaseCssProps = Object.keys(compiled.tree.bag);
@@ -444,18 +424,17 @@ export function transform(source: string, options: TransformOptions): TransformR
         casWins,
       );
 
-      const newAttrs: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
-      for (let i = 0; i < opening.attributes.length; i++) {
-        if (i === spreadIdx) {
-          newAttrs.push(newClassNameAttr);
-          if (styleResult.attr !== null) newAttrs.push(styleResult.attr);
-          continue;
-        }
-        if (i === classNameIdx) continue;
-        if (i === styleIdx && styleResult.replacesExisting) continue;
-        newAttrs.push(opening.attributes[i]!);
-      }
-      opening.attributes = newAttrs;
+      const replacement: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [
+        newClassNameAttr,
+      ];
+      if (styleResult.attr !== null) replacement.push(styleResult.attr);
+      opening.attributes = rebuildAttributes(
+        opening,
+        spreadIdx,
+        replacement,
+        classNameIdx >= 0 ? classNameIdx : null,
+        styleIdx >= 0 && styleResult.replacesExisting ? styleIdx : null,
+      );
 
       transformed = true;
     },
@@ -925,39 +904,164 @@ function literalToValue(node: t.Node): unknown | NonLiteral {
   return NON_LITERAL;
 }
 
+/**
+ * Build a `className=` JSX attribute that merges Cassida's contribution
+ * with the host element's existing `className` attribute. Accepts
+ * either a literal class string (the default-path case) or an
+ * arbitrary Expression (the plugin-path case: ternaries from
+ * conditional spreads, etc.). Covers all four merge combinations
+ * — no-existing, string + string, string + expression, expression
+ * + expression — so plugin authors don't reimplement them.
+ */
 function makeClassNameAttr(
   existing: t.JSXAttribute | null,
-  fssClass: string,
+  value: string | t.Expression,
 ): t.JSXAttribute {
+  const asExpr: t.Expression =
+    typeof value === 'string' ? t.stringLiteral(value) : value;
+  const asString = typeof value === 'string' ? value : null;
+
   if (existing === null || existing.value === null || existing.value === undefined) {
-    return t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(fssClass));
+    return t.jsxAttribute(t.jsxIdentifier('className'), wrapForAttr(asExpr));
   }
-  const value = existing.value;
-  if (t.isStringLiteral(value)) {
-    return t.jsxAttribute(
-      t.jsxIdentifier('className'),
-      t.stringLiteral(`${value.value} ${fssClass}`),
-    );
-  }
-  if (t.isJSXExpressionContainer(value)) {
-    const expr = value.expression;
-    if (t.isJSXEmptyExpression(expr)) {
-      return t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(fssClass));
+  const existingValue = existing.value;
+
+  if (t.isStringLiteral(existingValue)) {
+    // existing is "extra"; new is either string or expression.
+    if (asString !== null) {
+      return t.jsxAttribute(
+        t.jsxIdentifier('className'),
+        t.stringLiteral(`${existingValue.value} ${asString}`),
+      );
     }
+    // string + expression → template literal `"extra " + <expr>`
     return t.jsxAttribute(
       t.jsxIdentifier('className'),
       t.jsxExpressionContainer(
         t.templateLiteral(
           [
-            t.templateElement({ raw: '', cooked: '' }, false),
-            t.templateElement({ raw: ` ${fssClass}`, cooked: ` ${fssClass}` }, true),
+            t.templateElement({
+              raw: `${existingValue.value} `,
+              cooked: `${existingValue.value} `,
+            }, false),
+            t.templateElement({ raw: '', cooked: '' }, true),
           ],
-          [expr],
+          [asExpr],
         ),
       ),
     );
   }
-  return t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(fssClass));
+
+  if (t.isJSXExpressionContainer(existingValue)) {
+    const existingExpr = existingValue.expression;
+    if (t.isJSXEmptyExpression(existingExpr)) {
+      return t.jsxAttribute(t.jsxIdentifier('className'), wrapForAttr(asExpr));
+    }
+    // expression + (string | expression) → template literal that
+    // composes both with a separating space.
+    const suffixRaw = asString !== null ? ` ${asString}` : ' ';
+    const quasis: t.TemplateElement[] =
+      asString !== null
+        ? [
+            t.templateElement({ raw: '', cooked: '' }, false),
+            t.templateElement({ raw: suffixRaw, cooked: suffixRaw }, true),
+          ]
+        : [
+            t.templateElement({ raw: '', cooked: '' }, false),
+            t.templateElement({ raw: ' ', cooked: ' ' }, false),
+            t.templateElement({ raw: '', cooked: '' }, true),
+          ];
+    const expressions: t.Expression[] =
+      asString !== null ? [existingExpr] : [existingExpr, asExpr];
+    return t.jsxAttribute(
+      t.jsxIdentifier('className'),
+      t.jsxExpressionContainer(t.templateLiteral(quasis, expressions)),
+    );
+  }
+  return t.jsxAttribute(t.jsxIdentifier('className'), wrapForAttr(asExpr));
+}
+
+/**
+ * Wrap an expression in the form a JSX attribute value expects:
+ * bare string literal stays bare; anything else becomes a
+ * `JSXExpressionContainer`.
+ */
+function wrapForAttr(
+  expr: t.Expression,
+): t.StringLiteral | t.JSXExpressionContainer {
+  if (t.isStringLiteral(expr)) return expr;
+  return t.jsxExpressionContainer(expr);
+}
+
+/**
+ * Find the positions of the current spread attribute and any
+ * existing `className` / `style` siblings on the host JSX element.
+ * Shared by the default chain handler and the plugin path.
+ */
+function findAttributeIndices(
+  opening: t.JSXOpeningElement,
+  currentSpread: t.JSXSpreadAttribute,
+): {
+  readonly spreadIdx: number;
+  readonly classNameIdx: number;
+  readonly styleIdx: number;
+  readonly existingClassNameAttr: t.JSXAttribute | null;
+  readonly existingStyleAttr: t.JSXAttribute | null;
+} {
+  let spreadIdx = -1;
+  let styleIdx = -1;
+  let classNameIdx = -1;
+  let existingStyleAttr: t.JSXAttribute | null = null;
+  let existingClassNameAttr: t.JSXAttribute | null = null;
+  for (let i = 0; i < opening.attributes.length; i++) {
+    const a = opening.attributes[i]!;
+    if (a === currentSpread) {
+      spreadIdx = i;
+      continue;
+    }
+    if (t.isJSXAttribute(a) && t.isJSXIdentifier(a.name)) {
+      if (a.name.name === 'style') {
+        existingStyleAttr = a;
+        styleIdx = i;
+      } else if (a.name.name === 'className') {
+        existingClassNameAttr = a;
+        classNameIdx = i;
+      }
+    }
+  }
+  return {
+    spreadIdx,
+    classNameIdx,
+    styleIdx,
+    existingClassNameAttr,
+    existingStyleAttr,
+  };
+}
+
+/**
+ * Splice a list of replacement attributes into the JSX element at
+ * the position of the original spread, optionally dropping the
+ * existing `className` / `style` siblings (when they're being
+ * overridden by the replacement set).
+ */
+function rebuildAttributes(
+  opening: t.JSXOpeningElement,
+  spreadIdx: number,
+  replacement: ReadonlyArray<t.JSXAttribute | t.JSXSpreadAttribute>,
+  dropClassNameIdx: number | null,
+  dropStyleIdx: number | null,
+): (t.JSXAttribute | t.JSXSpreadAttribute)[] {
+  const out: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [];
+  for (let i = 0; i < opening.attributes.length; i++) {
+    if (i === spreadIdx) {
+      for (const attr of replacement) out.push(attr);
+      continue;
+    }
+    if (dropClassNameIdx !== null && i === dropClassNameIdx) continue;
+    if (dropStyleIdx !== null && i === dropStyleIdx) continue;
+    out.push(opening.attributes[i]!);
+  }
+  return out;
 }
 
 function getStaticKeyName(key: t.Expression | t.PrivateName): string | null {
