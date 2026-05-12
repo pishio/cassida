@@ -140,6 +140,44 @@ describe('@cassida/plugin-conditional', () => {
       );
     });
 
+    it('falsy branch is "" (not undefined) when existing className is present', () => {
+      // If the falsy branch were `undefined`, the template-literal
+      // merge in `makeClassNameAttr` would stringify it to the
+      // literal text "undefined" and the DOM would carry
+      // `class="extra undefined"`. Empty string keeps the existing
+      // class clean — trailing space is harmless.
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ active }: { active: boolean }) =>
+          <div className="extra" {...(active && cas().color("red"))} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.code).toMatch(
+        /className=\{`extra \$\{active \? "cas-[0-9a-f]{8}" : ""\}`\}/,
+      );
+      expect(r.code).not.toContain('undefined');
+    });
+
+    it('falsy branch stays `undefined` when no existing className', () => {
+      // Without an existing class to interpolate into, the ternary
+      // stands alone; React skips `className={undefined}` cleanly
+      // instead of emitting an empty `class=""` attribute.
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ active }: { active: boolean }) =>
+          <div {...(active && cas().color("red"))} />;
+      `,
+        opts,
+      );
+      expect(r.code).toMatch(
+        /className=\{active \? "cas-[0-9a-f]{8}" : undefined\}/,
+      );
+    });
+
     it('can be disabled via `shortCircuit: false`', () => {
       const r = transform(
         `

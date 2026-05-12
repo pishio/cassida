@@ -122,14 +122,26 @@ function planShortCircuit(
   return {
     rules: [rule],
     buildAttrs(existing) {
-      // `cond ? "cas-X" : undefined` — when the chain is gated by a
-      // truthy check, the className collapses to absent (effectively
-      // empty in React) on falsy. Matches how `{...(false)}` would
-      // have produced no attributes at runtime.
+      // Falsy branch depends on whether the host element already
+      // carries a `className`. If it does, `makeClassNameAttr` builds
+      // a template literal that interpolates the ternary into the
+      // existing class string — and `undefined` inside a template
+      // literal stringifies to the literal text "undefined", which
+      // would leak into the DOM as `class="extra undefined"`. Using
+      // an empty string keeps the existing class clean (at the cost
+      // of a trailing space, which browsers ignore).
+      //
+      // When no existing className is present, the ternary stands
+      // alone as the attribute value — `undefined` is the right
+      // shape there because React skips rendering `className={undefined}`
+      // entirely instead of emitting `class=""`.
+      const falsyBranch: t.Expression = existing.className
+        ? t.stringLiteral('')
+        : t.identifier('undefined');
       const ternary = t.conditionalExpression(
         left,
         t.stringLiteral(rule.className),
-        t.identifier('undefined'),
+        falsyBranch,
       );
       return [helpers.makeClassNameAttr(existing.className, ternary)];
     },
