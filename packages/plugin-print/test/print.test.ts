@@ -46,27 +46,32 @@ describe('printPreflight()', () => {
     });
 
     it('appends the `href` URL after absolute external links only', () => {
-      // Absolute web URLs (`http`, `https`) and protocol-relative
-      // (`//host/...`) get the expansion. Relative paths (`/about`)
-      // and non-web schemes (`mailto:`, `tel:`, `javascript:`) are
-      // skipped — their expanded form would be uninformative noise
-      // on a printed page.
+      // Strict-prefix selectors (the trailing `://` matters): a bare
+      // `[href^="http"]` would also match a relative `http-server.pdf`,
+      // a real false-positive. Explicit `http://` / `https://` plus
+      // protocol-relative `//host/...` is the correct shape.
+      // Relative paths (`/about`) and non-web schemes (`mailto:`,
+      // `tel:`, `javascript:`) stay out — their expanded form is
+      // uninformative noise on a printed page.
       expect(css).toMatch(
-        /a\[href\^="http"\]::after,\s*a\[href\^="\/\/"\]::after\s*\{[^}]*content:\s*" \(" attr\(href\) "\)"/,
+        /a\[href\^="http:\/\/"\]::after,\s*a\[href\^="https:\/\/"\]::after,\s*a\[href\^="\/\/"\]::after\s*\{[^}]*content:\s*" \(" attr\(href\) "\)"/,
       );
     });
 
-    it('keeps `pre` / `blockquote` / `tr` / `img` from breaking across pages (modern `break-inside`)', () => {
+    it('keeps `pre` / `blockquote` / `tr` / `img` / `svg` from breaking across pages (modern `break-inside`)', () => {
       expect(css).toMatch(/pre,\s*blockquote\s*\{[^}]*break-inside:\s*avoid/);
       expect(css).toMatch(/tr\s*\{[^}]*break-inside:\s*avoid/);
-      expect(css).toMatch(/img\s*\{[^}]*break-inside:\s*avoid/);
+      expect(css).toMatch(/img,\s*svg\s*\{[^}]*break-inside:\s*avoid/);
       // Sanity: the legacy alias should NOT also appear — having both
       // double-emits the same constraint and signals stale CSS.
       expect(css).not.toMatch(/page-break-inside/);
     });
 
-    it('caps `img` width at the page area to prevent margin clipping', () => {
-      expect(css).toMatch(/img\s*\{[^}]*max-width:\s*100%/);
+    it('caps `img` and inline `svg` width at the page area to prevent margin clipping', () => {
+      // The shared `img, svg { ... max-width: 100% }` rule covers
+      // both raster images and inline SVGs — both can overflow the
+      // printable area otherwise.
+      expect(css).toMatch(/img,\s*svg\s*\{[^}]*max-width:\s*100%/);
     });
 
     it('sets widow / orphan thresholds for paragraph text only', () => {

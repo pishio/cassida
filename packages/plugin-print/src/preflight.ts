@@ -19,12 +19,15 @@
  *      colors flow through to print, while elements without an
  *      explicit color still default to ink-saving black.
  *   2. Append the `href` URL after every *absolute* external link —
- *      either `http`/`https` or protocol-relative `//host/...`.
- *      Relative paths (`/about`, `./contact`) are intentionally not
- *      expanded: they print without the origin and would render as
- *      uninformative fragments next to the visible text. Anchors with
- *      non-web schemes (`mailto:`, `tel:`, `javascript:`) are also
- *      excluded — the visible text already describes them.
+ *      explicit `http://` / `https://` or protocol-relative
+ *      `//host/...`. Relative paths (`/about`, `./contact`) are
+ *      intentionally not expanded: they print without the origin and
+ *      would render as uninformative fragments next to the visible
+ *      text. Anchors with non-web schemes (`mailto:`, `tel:`,
+ *      `javascript:`) are also excluded — the visible text already
+ *      describes them. Strict-prefix selectors (with the trailing
+ *      `://`) avoid the false-positive where `href="http-server.pdf"`
+ *      matches a bare `[href^="http"]`.
  *   3. Help printers keep blocks together: avoid breaking inside
  *      `pre`, `blockquote`, `tr`, `img`. Don't orphan headings.
  *      Uses the modern `break-inside` / `break-after` properties
@@ -57,7 +60,8 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
     text-decoration: underline;
   }
 
-  a[href^="http"]::after,
+  a[href^="http://"]::after,
+  a[href^="https://"]::after,
   a[href^="//"]::after {
     content: " (" attr(href) ")";
   }
@@ -75,10 +79,11 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
     break-inside: avoid;
   }
 
-  img {
+  img,
+  svg {
     break-inside: avoid;
-    /* Prevent oversized images from being clipped by the page
-       margins; the wider dimension scales down to fit. */
+    /* Prevent oversized images and inline SVGs from being clipped by
+       the page margins; the wider dimension scales down to fit. */
     max-width: 100%;
   }
 
