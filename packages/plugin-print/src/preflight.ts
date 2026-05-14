@@ -18,10 +18,13 @@
  *      cas;` plus class-vs-universal specificity lets explicit cas
  *      colors flow through to print, while elements without an
  *      explicit color still default to ink-saving black.
- *   2. Append the `href` URL after every external link (`a[href]`).
- *      Skip in-page anchors (`href="#..."`), `mailto:` / `tel:` (the
- *      visible text already describes those), and `javascript:` (the
- *      string is non-functional in print and would be visual noise).
+ *   2. Append the `href` URL after every *absolute* external link —
+ *      either `http`/`https` or protocol-relative `//host/...`.
+ *      Relative paths (`/about`, `./contact`) are intentionally not
+ *      expanded: they print without the origin and would render as
+ *      uninformative fragments next to the visible text. Anchors with
+ *      non-web schemes (`mailto:`, `tel:`, `javascript:`) are also
+ *      excluded — the visible text already describes them.
  *   3. Help printers keep blocks together: avoid breaking inside
  *      `pre`, `blockquote`, `tr`, `img`. Don't orphan headings.
  *      Uses the modern `break-inside` / `break-after` properties
@@ -50,7 +53,8 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
     text-decoration: underline;
   }
 
-  a[href]:not([href^="#"]):not([href^="mailto:"]):not([href^="tel:"]):not([href^="javascript:"])::after {
+  a[href^="http"]::after,
+  a[href^="//"]::after {
     content: " (" attr(href) ")";
   }
 
@@ -63,9 +67,15 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
     break-inside: avoid;
   }
 
-  tr,
+  tr {
+    break-inside: avoid;
+  }
+
   img {
     break-inside: avoid;
+    /* Prevent oversized images from being clipped by the page
+       margins; the wider dimension scales down to fit. */
+    max-width: 100%;
   }
 
   p,

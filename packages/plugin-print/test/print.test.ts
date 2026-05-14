@@ -43,22 +43,28 @@ describe('printPreflight()', () => {
       expect(css).not.toMatch(/!important/);
     });
 
-    it('appends the `href` URL after external links only', () => {
-      // The `::after` rule must be scoped to anchors that are NOT
-      // in-page (`#`), `mailto:`, `tel:`, or `javascript:` — those
-      // would clutter print output with redundant or non-functional
-      // strings.
+    it('appends the `href` URL after absolute external links only', () => {
+      // Absolute web URLs (`http`, `https`) and protocol-relative
+      // (`//host/...`) get the expansion. Relative paths (`/about`)
+      // and non-web schemes (`mailto:`, `tel:`, `javascript:`) are
+      // skipped — their expanded form would be uninformative noise
+      // on a printed page.
       expect(css).toMatch(
-        /a\[href\]:not\(\[href\^="#"\]\):not\(\[href\^="mailto:"\]\):not\(\[href\^="tel:"\]\):not\(\[href\^="javascript:"\]\)::after \{[^}]*content:\s*" \(" attr\(href\) "\)"/,
+        /a\[href\^="http"\]::after,\s*a\[href\^="\/\/"\]::after\s*\{[^}]*content:\s*" \(" attr\(href\) "\)"/,
       );
     });
 
     it('keeps `pre` / `blockquote` / `tr` / `img` from breaking across pages (modern `break-inside`)', () => {
       expect(css).toMatch(/pre,\s*blockquote\s*\{[^}]*break-inside:\s*avoid/);
-      expect(css).toMatch(/tr,\s*img\s*\{[^}]*break-inside:\s*avoid/);
+      expect(css).toMatch(/tr\s*\{[^}]*break-inside:\s*avoid/);
+      expect(css).toMatch(/img\s*\{[^}]*break-inside:\s*avoid/);
       // Sanity: the legacy alias should NOT also appear — having both
       // double-emits the same constraint and signals stale CSS.
       expect(css).not.toMatch(/page-break-inside/);
+    });
+
+    it('caps `img` width at the page area to prevent margin clipping', () => {
+      expect(css).toMatch(/img\s*\{[^}]*max-width:\s*100%/);
     });
 
     it('avoids orphaned headings and sets widow / orphan thresholds for body text', () => {

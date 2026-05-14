@@ -13,12 +13,17 @@ concern out of the box.
 - **Black-on-white, no shadows / backgrounds.** Saves ink and makes
   copy legible. The user opts back in when they actually need a
   brand-color page.
-- **External link URLs appended.** `a[href]::after { content: " (" attr(href) ")" }`
-  for every external anchor; in-page (`#`), `mailto:`, and `tel:`
-  links are skipped because their text already describes them.
+- **External link URLs appended.** Anchors with an absolute `http` /
+  `https` / `//` href get ` (https://example.com/...)` glued after
+  their visible text. Relative paths and non-web schemes (`mailto:`,
+  `tel:`, `javascript:`) are skipped — their expanded form would be
+  uninformative noise on a printed page.
 - **Page-break hygiene.** `pre`, `blockquote`, `tr`, `img` don't
   break across pages. Headings (`h2`, `h3`) don't orphan onto a new
   page from their bodies. Body text uses `orphans: 3` / `widows: 3`.
+- **Image width clamp.** `img { max-width: 100% }` keeps oversized
+  pictures inside the printable area instead of being clipped by the
+  page margins.
 - **Table header repetition.** `thead` is restored to
   `display: table-header-group` so printed tables repeat their header
   row across page boundaries.
