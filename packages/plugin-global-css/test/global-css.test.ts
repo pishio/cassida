@@ -81,4 +81,80 @@ describe('cassidaGlobalCss', () => {
     const plugin = cassidaGlobalCss({ css });
     expect(plugin.name).toBe('cassida-global-css');
   });
+
+  describe('query-suffixed module ids', () => {
+    // Vite synthesizes ids like `virtual:foo?inline`, `virtual:foo?url`,
+    // and HMR timestamps such as `virtual:foo?t=1700000000000`. The
+    // hooks must accept these so downstream behaviour (?inline / ?url)
+    // works against the virtual module.
+    it('resolves `virtualId?inline` to its `\\0`-prefixed form', () => {
+      const plugin = cassidaGlobalCss({ css });
+      expect(
+        callResolveId(plugin, 'virtual:cassida-global.css?inline'),
+      ).toBe('\0virtual:cassida-global.css?inline');
+    });
+
+    it('loads `\\0virtualId?inline` to the same payload as the bare id', () => {
+      const plugin = cassidaGlobalCss({ css });
+      const loaded = callLoad(
+        plugin,
+        '\0virtual:cassida-global.css?inline',
+      );
+      expect(loaded).toBe(`@layer base {\n${css}\n}`);
+    });
+
+    it('resolves HMR-timestamped ids', () => {
+      const plugin = cassidaGlobalCss({ css });
+      expect(
+        callResolveId(plugin, 'virtual:cassida-global.css?t=1700000000000'),
+      ).toBe('\0virtual:cassida-global.css?t=1700000000000');
+    });
+
+    it('does NOT match a different id that merely starts with the virtual id', () => {
+      // `virtual:cassida-global.cssX` shares no `?` boundary, so it
+      // must remain unclaimed.
+      const plugin = cassidaGlobalCss({ css });
+      expect(
+        callResolveId(plugin, 'virtual:cassida-global.cssX'),
+      ).toBeNull();
+    });
+  });
+
+  describe('layer name validation', () => {
+    it('accepts a dot-separated layer name', () => {
+      expect(() =>
+        cassidaGlobalCss({ css, layer: 'framework.preflight' }),
+      ).not.toThrow();
+    });
+
+    it('rejects a comma-separated layer list (declaration form, not block)', () => {
+      expect(() => cassidaGlobalCss({ css, layer: 'base, extra' })).toThrow(
+        /invalid `layer` option/,
+      );
+    });
+
+    it('rejects whitespace inside the layer name', () => {
+      expect(() => cassidaGlobalCss({ css, layer: 'base extra' })).toThrow(
+        /invalid `layer` option/,
+      );
+    });
+
+    it('rejects the empty string', () => {
+      expect(() => cassidaGlobalCss({ css, layer: '' })).toThrow(
+        /invalid `layer` option/,
+      );
+    });
+
+    it('rejects an opening brace', () => {
+      expect(() => cassidaGlobalCss({ css, layer: 'oops {' })).toThrow(
+        /invalid `layer` option/,
+      );
+    });
+
+    it('still accepts `null` as opt-out', () => {
+      expect(() =>
+        cassidaGlobalCss({ css, layer: null }),
+      ).not.toThrow();
+    });
+  });
 });

@@ -17,6 +17,12 @@ export interface GlobalCssOptions {
    * without specificity tricks. Pass `null` to skip the wrap entirely
    * — the CSS is then emitted at the document-default layer and ranks
    * above any layered rules, which is rarely what you want.
+   *
+   * The CSS spec only accepts a single `<layer-name>` here — one ident,
+   * optionally dot-separated (`base`, `framework.preflight`). A
+   * comma-separated list (`base, cas`) is the *declaration* form, not
+   * the *block* form, and would produce invalid CSS. The plugin
+   * validates this at construction.
    */
   readonly layer?: string | null;
   /**
@@ -28,6 +34,15 @@ export interface GlobalCssOptions {
 }
 
 const DEFAULT_VIRTUAL_ID = 'virtual:cassida-global.css';
+
+/**
+ * CSS `<layer-name>` accepts one ident token, optionally dot-separated.
+ * Matches the grammar from css-cascade-5 §4.1 closely enough to catch
+ * the realistic mistake (`'base, extra'`, `'base extra'`) without
+ * pretending to be a full CSS tokenizer. Errors here are config bugs
+ * caught at plugin construction, not silent miscompiles at runtime.
+ */
+const LAYER_NAME_RE = /^[A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*$/;
 
 /**
  * Global / tag-selector CSS injection for Cassida projects.
@@ -70,18 +85,36 @@ export function cassidaGlobalCss(options: GlobalCssOptions): Plugin {
   const resolvedVirtualId = '\0' + virtualId;
   // `layer === undefined` -> default to 'base'; `layer === null` -> no wrap.
   const layer = options.layer === undefined ? 'base' : options.layer;
+  if (layer !== null && !LAYER_NAME_RE.test(layer)) {
+    throw new Error(
+      `[cassida-global-css] invalid \`layer\` option ${JSON.stringify(layer)}. ` +
+        `CSS \`@layer name { ... }\` accepts a single ident (optionally dot-separated). ` +
+        `Pass \`null\` to skip the wrap.`,
+    );
+  }
   const payload =
     layer === null ? options.css : `@layer ${layer} {\n${options.css}\n}`;
 
   return {
     name: 'cassida-global-css',
     resolveId(id) {
-      if (id === virtualId) return resolvedVirtualId;
+      // Vite frequently appends query parameters (`?inline`, `?url`,
+      // HMR timestamps) to the import specifier. Match the bare id and
+      // any query-suffixed variant; pass the suffix through to `load`
+      // so downstream behavior (e.g. `?inline`) is preserved.
+      if (id === virtualId || id.startsWith(virtualId + '?')) {
+        return '\0' + id;
+      }
       return null;
     },
     load(id) {
-      if (id !== resolvedVirtualId) return null;
-      return payload;
+      if (
+        id === resolvedVirtualId ||
+        id.startsWith(resolvedVirtualId + '?')
+      ) {
+        return payload;
+      }
+      return null;
     },
   };
 }
