@@ -158,6 +158,21 @@ importers:
         specifier: ^2.1.4
         version: 2.1.9(@types/node@22.19.17)(lightningcss@1.32.0)
 
+  packages/plugin-global-css:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.9.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.13
+        version: 7.3.2(@types/node@22.19.17)(lightningcss@1.32.0)(tsx@4.21.0)
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.19.17)(lightningcss@1.32.0)
+
   packages/plugin-hover-fix:
     dependencies:
       '@cassida/compiler':
