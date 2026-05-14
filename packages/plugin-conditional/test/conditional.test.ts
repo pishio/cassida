@@ -306,6 +306,39 @@ describe('@cassida/plugin-conditional', () => {
       );
     });
 
+    it('respects JSX source-order precedence — `style=` AFTER the cas spread wins on key collision', () => {
+      // Default (spread last): cas keys override user style.
+      const casLast = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a, dyn }: { a: boolean; dyn: string }) =>
+          <div style={{ opacity: 0.5 }} {...(a ? cas().color(dyn) : cas().color('blue'))} />;
+      `,
+        opts,
+      );
+      // Cas-wins shape: existing first, plugin ternary spread last.
+      expect(casLast.code).toMatch(
+        /style=\{\{\s*opacity:\s*0\.5,\s*\.\.\.\(a \?[\s\S]*?\)\s*\}\}/,
+      );
+
+      // Reversed: cas spread first, user style last. User style wins
+      // on collision, so its properties must come AFTER the plugin
+      // spread inside the merged object literal.
+      const userLast = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a, dyn }: { a: boolean; dyn: string }) =>
+          <div {...(a ? cas().color(dyn) : cas().color('blue'))} style={{ opacity: 0.5 }} />;
+      `,
+        opts,
+      );
+      // User-wins shape: plugin ternary spread first, existing
+      // properties last.
+      expect(userLast.code).toMatch(
+        /style=\{\{\s*\.\.\.\(a \?[\s\S]*?\),\s*opacity:\s*0\.5\s*\}\}/,
+      );
+    });
+
     it('no `style=` attribute is emitted when both branches are pure-static', () => {
       // v1 behaviour preserved — when neither branch has a dynamic,
       // we don't bloat the JSX with `style={cond ? {} : {}}`.

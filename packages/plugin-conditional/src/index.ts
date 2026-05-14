@@ -111,6 +111,7 @@ function planConditional(
         t.cloneNode(argPath.node.test),
         cRule,
         aRule,
+        existing.casWins,
       );
       if (styleAttr) attrs.push(styleAttr);
       return attrs;
@@ -170,7 +171,11 @@ function planShortCircuit(
           voidZero(),
         );
         attrs.push(
-          helpers.mergeStyleExpression(existing.style, styleTernary, true),
+          helpers.mergeStyleExpression(
+            existing.style,
+            styleTernary,
+            existing.casWins,
+          ),
         );
       }
       return attrs;
@@ -200,6 +205,7 @@ function buildBranchedStyleAttr(
   testExpr: t.Expression,
   cRule: CompiledRule,
   aRule: CompiledRule,
+  casWins: boolean,
 ): t.JSXAttribute | null {
   if (cRule.dynamics.length === 0 && aRule.dynamics.length === 0) {
     return null;
@@ -213,7 +219,7 @@ function buildBranchedStyleAttr(
       ? buildBranchStyleObject(helpers, aRule.dynamics)
       : voidZero();
   const ternary = t.conditionalExpression(testExpr, cBranch, aBranch);
-  return helpers.mergeStyleExpression(existingStyle, ternary, true);
+  return helpers.mergeStyleExpression(existingStyle, ternary, casWins);
 }
 
 function buildBranchStyleObject(
