@@ -431,7 +431,7 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): CassChain {
       if (branch) {
         const innerOps: Op[] = [];
         branch(makeChain(registry, innerOps, false));
-        for (const op of innerOps) ops.push(op);
+        ops.push(...innerOps);
       }
       return chain as unknown as CassChain;
     },

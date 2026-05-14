@@ -230,6 +230,28 @@ describe('chain `.cond(test, truthy, falsy?)`', () => {
         /style=\{\{\s*opacity:\s*0\.5,\s*\.\.\.\(a \?\s*\{\s*"--cas-[a-z0-9-]+":\s*fg\s*\} : void 0\)\s*\}\}/,
       );
     });
+
+    it('respects JSX source-order precedence — `style=` AFTER the cas spread keeps user keys', () => {
+      // Reverse order: the user `style={{ opacity: 0.5 }}` comes
+      // AFTER the cas spread in JSX, so on key collision the user's
+      // declarations win. The plugin spread must therefore come FIRST
+      // inside the merged object literal.
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a, fg }: { a: boolean; fg: string }) =>
+          <div
+            {...cas().cond(a, c => c.color(fg)).props}
+            style={{ opacity: 0.5 }}
+          />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.code).toMatch(
+        /style=\{\{\s*\.\.\.\(a \?\s*\{\s*"--cas-[a-z0-9-]+":\s*fg\s*\} : void 0\),\s*opacity:\s*0\.5\s*\}\}/,
+      );
+    });
   });
 
   describe('Phase 1 limitation — `.cond()` inside modifier callbacks', () => {

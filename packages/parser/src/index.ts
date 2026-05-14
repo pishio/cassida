@@ -836,10 +836,15 @@ export function transform(source: string, options: TransformOptions): TransformR
     } = findAttributeIndices(opening, path.node);
 
     const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, classNameExpr);
+    // Match `handleSingleChain` / `applyPluginSpreadPlan`: cas-side
+    // keys win on collision when the Cassida spread appears after the
+    // host `style=` attr in source order. Reverse case (cas first,
+    // user style last) preserves the user-written declarations.
+    const casWins = spreadIdx > styleIdx;
     const newStyleAttr =
       styleExpr === null
         ? null
-        : mergeStyleExpression(existingStyleAttr, styleExpr, true);
+        : mergeStyleExpression(existingStyleAttr, styleExpr, casWins);
 
     const replacement: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [
       newClassNameAttr,
