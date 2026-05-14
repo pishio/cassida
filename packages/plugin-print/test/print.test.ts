@@ -10,9 +10,11 @@ describe('printPreflight()', () => {
 
   it('is wrapped in `@media print` — never affects screen rendering', () => {
     const css = printPreflight();
-    expect(css.trimStart()).toMatch(/^@media print \{/);
-    // No leaking rules outside the @media block.
-    const openCount = (css.match(/@media print/g) ?? []).length;
+    expect(css.trimStart()).toMatch(/^@media\s+print\s*\{/i);
+    // No leaking rules outside the @media block. Whitespace- and
+    // case-tolerant so the assertion survives a future reformat that
+    // collapses or expands the spacing.
+    const openCount = (css.match(/@media\s+print/gi) ?? []).length;
     expect(openCount).toBe(1);
   });
 
