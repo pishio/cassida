@@ -47,9 +47,14 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
-**v0.4.0** — opens a parser-plugin extension point so non-default JSX-spread shapes (conditional ternaries, short-circuit `&&`) can be claimed by independently-publishable packages instead of bloating the parser core. Ships two new packages on top: `@cassida/plugin-conditional` (lifts conditional / short-circuit spreads from runtime fallback into the build-time class table) and `@cassida/recommended` (curated bundle for one-line opt-in).
+**v0.4.0** — production-readiness sprint. Four substantive additions:
 
-Earlier surface stays: `.props` terminator from v0.3 (separates chain methods from JSX prop typings — strict `tsc --noEmit` passes), cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 241 unit tests across 7 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — including `tsc --noEmit` against the consumer for every Vite leg.
+- **Conditional branching in two shapes.** `@cassida/plugin-conditional` lifts `{...(cond ? cas().X() : cas().Y())}` and short-circuit `{...(cond && cas().X())}` JSX spreads from the runtime path into the build-time class table; dynamic-slot branches like `cond ? cas().color(theme.fg) : cas().color(theme.muted)` now compile too (each branch becomes its own class with a parallel `style={...}` ternary). The new `.cond(test, truthy, falsy?)` chain method keeps the branching inline: `cas().padding(8).cond(active, c => c.bg('blue'), c => c.bg('gray')).color('red')` materializes a Cartesian product of leaves with one nested `className` ternary, no JSX-level duplication of outer methods.
+- **Multi-property utilities.** Hand-crafted `px`, `py`, `mx`, `my` chain methods on `@cassida/core` write multiple longhands per call (`padding-inline-start` + `padding-inline-end`, etc.) with per-longhand LIFO collapse, full shorthand-policy guard, and dedup.
+- **`@cassida/plugin-global-css`.** First-party Vite plugin for serving preflight / `body { ... }` / `*, ::before, ::after { ... }` rules through a virtual module, wrapped in a configurable `@layer` so it composes with Cassida's single-class output.
+- **`@cassida/recommended`** stays as the one-line opt-in for the maintainers' default-on plugin bundle (hover-fix + conditional spreads).
+
+Earlier surface stays: `.props` terminator from v0.3 (separates chain methods from JSX prop typings — strict `tsc --noEmit` passes), cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 298 unit tests across 8 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — including `tsc --noEmit` against the consumer for every Vite leg.
 
 The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0.
 
@@ -58,7 +63,7 @@ pnpm add @cassida/core
 pnpm add -D @cassida/vite-plugin @cassida/recommended
 ```
 
-`@cassida/recommended` bundles the maintainers' default-on plugin set (hover-fix + conditional spreads); the underlying plugin packages come along as transitive deps. See [Quick start](#quick-start) for the `vite.config.ts` shape.
+`@cassida/recommended` bundles the maintainers' default-on plugin set (hover-fix + conditional spreads); the underlying plugin packages come along as transitive deps. Drop `@cassida/plugin-global-css` in for preflight / reset CSS. See [Quick start](#quick-start) for the `vite.config.ts` shape.
 
 ## Table of contents
 
@@ -232,11 +237,11 @@ For "this class or that class depending on a flag" patterns, keep the branching 
 />
 ```
 
-At build time each branch materialises its own `cas-XXXXXXXX` class (the outer `padding` / `borderRadius` are shared across both leaves), and the JSX `className` becomes `active ? "cas-AAA" : "cas-BBB"`. Branches that carry dynamic values (`c.color(theme.fg)`) emit a parallel branch-conditional `style={...}` ternary that mirrors the className shape. The runtime evaluates the test and inlines the chosen branch's ops, landing on the same hash as the matching build-time leaf.
+At build time each branch materializes its own `cas-XXXXXXXX` class (the outer `padding` / `borderRadius` are shared across both leaves), and the JSX `className` becomes `active ? "cas-AAA" : "cas-BBB"`. Branches that carry dynamic values (`c.color(theme.fg)`) emit a parallel branch-conditional `style={...}` ternary that mirrors the className shape. The runtime evaluates the test and inlines the chosen branch's ops, landing on the same hash as the matching build-time leaf.
 
 Single-arg form `cas().cond(active, c => c.bg('blue'))` is the chain-internal version of `active && cas().bg('blue').props` — falsy branch carries no extra ops.
 
-Multiple `.cond()`s in one chain materialise the Cartesian product; the cap is 32 leaves (five nested conds). `.cond()` inside a modifier scope (`.hover(c => c.cond(...))`) bails to runtime — Phase 2 lifts that restriction.
+Multiple `.cond()`s in one chain materialize the Cartesian product; the cap is 32 leaves (five nested conds). `.cond()` inside a modifier scope (`.hover(c => c.cond(...))`) bails to runtime — Phase 2 lifts that restriction.
 
 ## Feature tour
 

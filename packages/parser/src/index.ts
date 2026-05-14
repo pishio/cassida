@@ -339,7 +339,7 @@ const MAX_BRANCH_LEAVES = 32;
  *     test_0 ? (test_1 ? leaf_tt : leaf_tf) : (test_1 ? leaf_ft : leaf_ff)
  *
  * for two `.cond()`s. The shape matches the order the `.cond()` calls
- * appeared in source. `leafExpr` materialises whatever the caller
+ * appeared in source. `leafExpr` materializes whatever the caller
  * wants at each leaf (a className `StringLiteral` or a style
  * `ObjectExpression`).
  */
@@ -723,7 +723,7 @@ export function transform(source: string, options: TransformOptions): TransformR
       // chain with no `.cond()` calls produces a single leaf with no
       // conditions; the existing single-class emission handles that
       // efficiently. Cond-bearing chains go through `handleBranched`
-      // which materialises every Cartesian leaf and emits nested
+      // which materializes every Cartesian leaf and emits nested
       // className / style ternaries.
       const branched = expandBranches(ext);
       if (branched.length === 1 && branched[0]!.conditions.length === 0) {
