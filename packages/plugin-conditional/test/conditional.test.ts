@@ -207,8 +207,8 @@ describe('@cassida/plugin-conditional', () => {
     });
   });
 
-  describe('bail conditions', () => {
-    it('falls through when a branch contains a dynamic slot', () => {
+  describe('dynamic-slot branches (v0.4+)', () => {
+    it('transforms `cond ? cas().X(dyn) : cas().Y(static)` with a branch-conditional style', () => {
       const r = transform(
         `
         import { cas } from '@cassida/core';
@@ -217,11 +217,112 @@ describe('@cassida/plugin-conditional', () => {
       `,
         opts,
       );
-      // The conditional plugin bails on dynamic branches — the JSX
-      // stays unchanged and the chain falls through to runtime.
-      expect(r.transformed).toBe(false);
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      // Consequent rule carries one dynamic slot; alternate is pure.
+      expect(r.rules[0]!.dynamics).toHaveLength(1);
+      expect(r.rules[1]!.dynamics).toHaveLength(0);
+      // className stays a literal ternary.
+      expect(r.code).toMatch(
+        /className=\{a \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}/,
+      );
+      // style is a parallel ternary: dynamic branch → object of var
+      // bindings, static branch → void 0 (React skips the attr).
+      expect(r.code).toMatch(
+        /style=\{a \? \{\s*"--cas-[a-z0-9-]+":\s*dyn\s*\} : void 0\}/,
+      );
     });
 
+    it('transforms when *both* branches carry dynamics', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a, fg, bg }: { a: boolean; fg: string; bg: string }) =>
+          <div {...(a ? cas().color(fg) : cas().color(bg))} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      expect(r.rules[0]!.dynamics).toHaveLength(1);
+      expect(r.rules[1]!.dynamics).toHaveLength(1);
+      // Both branches share the same className shape but different
+      // CSS-variable names; the ternary picks the right binding.
+      expect(r.code).toMatch(
+        /style=\{a \? \{\s*"--cas-[a-z0-9-]+":\s*fg\s*\} : \{\s*"--cas-[a-z0-9-]+":\s*bg\s*\}\}/,
+      );
+    });
+
+    it('merges with an existing host `style` attribute', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a, dyn }: { a: boolean; dyn: string }) =>
+          <div style={{ opacity: 0.5 }} {...(a ? cas().color(dyn) : cas().color("blue"))} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      // Spread of the branch-conditional after the host's properties.
+      // Cas wins on key collision (the spread is later), matching the
+      // default `casWins: true` behaviour.
+      expect(r.code).toMatch(
+        /style=\{\{\s*opacity:\s*0\.5,\s*\.\.\.\(a \?\s*\{\s*"--cas-[a-z0-9-]+":\s*dyn\s*\} : void 0\)\s*\}\}/,
+      );
+    });
+
+    it('short-circuit `cond && cas().X(dyn)` emits a conditional style', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ active, dyn }: { active: boolean; dyn: string }) =>
+          <div {...(active && cas().color(dyn))} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(1);
+      expect(r.rules[0]!.dynamics).toHaveLength(1);
+      expect(r.code).toMatch(
+        /className=\{active \? "cas-[0-9a-f]{8}" : void 0\}/,
+      );
+      expect(r.code).toMatch(
+        /style=\{active \?\s*\{\s*"--cas-[a-z0-9-]+":\s*dyn\s*\} : void 0\}/,
+      );
+    });
+
+    it('short-circuit dynamic branch merges with existing style', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ active, dyn }: { active: boolean; dyn: string }) =>
+          <div style={{ opacity: 0.5 }} {...(active && cas().color(dyn))} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.code).toMatch(
+        /style=\{\{\s*opacity:\s*0\.5,\s*\.\.\.\(active \?\s*\{\s*"--cas-[a-z0-9-]+":\s*dyn\s*\} : void 0\)\s*\}\}/,
+      );
+    });
+
+    it('no `style=` attribute is emitted when both branches are pure-static', () => {
+      // v1 behaviour preserved — when neither branch has a dynamic,
+      // we don't bloat the JSX with `style={cond ? {} : {}}`.
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...(a ? cas().color("red") : cas().color("blue"))} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.code).not.toContain('style=');
+    });
+  });
+
+  describe('bail conditions', () => {
     it('falls through when one branch is not a Cassida chain', () => {
       const r = transform(
         `
