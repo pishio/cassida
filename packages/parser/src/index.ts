@@ -1220,14 +1220,13 @@ function mergeStyleExpression(
   }
 
   // Both present — spread both into a fresh object. The spread that
-  // comes later wins on key collision.
-  const existingProps: (t.ObjectProperty | t.SpreadElement)[] =
-    t.isObjectExpression(existingExpr)
-      ? existingExpr.properties.filter(
-          (p): p is t.ObjectProperty | t.SpreadElement =>
-            t.isObjectProperty(p) || t.isSpreadElement(p),
-        )
-      : [t.spreadElement(existingExpr)];
+  // comes later wins on key collision. We inline the existing object's
+  // properties as-is (including any `ObjectMethod` getters/setters) to
+  // match `makeStyleAttr`'s shape and avoid silently dropping rare but
+  // valid AST node kinds.
+  const existingProps = t.isObjectExpression(existingExpr)
+    ? existingExpr.properties
+    : [t.spreadElement(existingExpr)];
 
   const merged = casWins
     ? t.objectExpression([...existingProps, t.spreadElement(pluginExpr)])
