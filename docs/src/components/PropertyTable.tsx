@@ -72,6 +72,7 @@ export function PropertyTable(): React.JSX.Element {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={labels.search}
+          aria-label={labels.search}
           {...cas()
             .padding(8)
             .borderRadius(6)
@@ -87,6 +88,7 @@ export function PropertyTable(): React.JSX.Element {
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
+          aria-label={labels.category}
           {...cas()
             .padding(8)
             .borderRadius(6)
@@ -107,6 +109,11 @@ export function PropertyTable(): React.JSX.Element {
         {labels.countTemplate.replace('%n', String(filtered.length))}
       </p>
       <table
+        // `borderCollapse` exists on the generated chain set, so a bare
+        // `.borderCollapse('collapse')` would also work. Kept on the
+        // `cas.unsafe(...)` path on purpose: the registry page is the
+        // primary place users read about the unsafe escape, and a live
+        // demo of it here doubles as the canonical worked example.
         {...cas.unsafe({ borderCollapse: 'collapse' }).fontSize(13).width('100%').props}
       >
         <thead>
