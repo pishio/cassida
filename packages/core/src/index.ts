@@ -18,9 +18,16 @@ import type * as CSS from 'csstype';
  * Each method's argument signature is extracted from the spec's typed
  * `format` function via `Parameters<...>`, so adding a property to the
  * spec automatically adds a typed method here.
+ *
+ * The format return type is widened to `string | Record<string, string>`
+ * to accommodate multi-property entries (e.g. `px` / `py`) whose
+ * formatters emit a bag of longhand declarations rather than a single
+ * string.
  */
 type ChainMethodsFromSpec<S> = {
-  [K in keyof S]: S[K] extends { format: (...args: infer A) => string }
+  [K in keyof S]: S[K] extends {
+    format: (...args: infer A) => string | Record<string, string>;
+  }
     ? (...args: A) => CassChain
     : never;
 };

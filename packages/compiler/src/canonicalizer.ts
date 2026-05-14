@@ -56,9 +56,37 @@ export class Canonicalizer {
         const dynamics = op.args.filter(isDynamic) as readonly DynamicArg[];
 
         if (dynamics.length === 0) {
-          bag[entry.property] = entry.format(...op.args);
-          delete slots[entry.property];
+          const out = entry.format(...op.args);
+          if (typeof out === 'string') {
+            bag[entry.property] = out;
+            delete slots[entry.property];
+          } else {
+            // Multi-property entry: each returned `[property, value]`
+            // becomes its own bag slot, so LIFO collapse continues to
+            // work per-longhand. A later single-property write to one
+            // of these properties cleanly overrides just that half.
+            for (const [prop, value] of Object.entries(out)) {
+              bag[prop] = value;
+              delete slots[prop];
+            }
+          }
           continue;
+        }
+
+        if (entry.properties !== undefined) {
+          // Gate on the presence of `properties`, not its length. A
+          // multi-property entry's format function writes into one or
+          // more explicit longhands; the single-property dynamic
+          // branch below keys the placeholder by `entry.property`,
+          // which is the multi-property entry's *label* and not in
+          // its `properties` set. Falling through would silently
+          // target the wrong CSS property, so block early — pass a
+          // literal, or use a single-property method (e.g.
+          // `.paddingInline(theme.spacing)`) for dynamic writes.
+          throw new Error(
+            `[cassida] dynamic args on multi-property method "${op.method}" are not yet supported. ` +
+              `Pass a literal, or use a single-property method (e.g. ".paddingInline") for the dynamic value.`,
+          );
         }
 
         if (op.args.length !== 1 || dynamics.length !== 1) {

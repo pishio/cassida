@@ -262,6 +262,161 @@ describe('Canonicalizer.collapse — shorthand policy', () => {
   });
 });
 
+describe('Canonicalizer.collapse — multi-property entries (px / py / mx / my)', () => {
+  it('px writes both inline padding longhands', () => {
+    const bag = canon.collapse([{ method: 'px', args: [8] }]).bag;
+    expect(bag).toEqual({
+      'padding-inline-start': '8px',
+      'padding-inline-end': '8px',
+    });
+  });
+
+  it('py writes both block padding longhands', () => {
+    const bag = canon.collapse([{ method: 'py', args: [12] }]).bag;
+    expect(bag).toEqual({
+      'padding-block-start': '12px',
+      'padding-block-end': '12px',
+    });
+  });
+
+  it('mx and my write the corresponding margin longhands', () => {
+    const bag = canon.collapse([
+      { method: 'mx', args: [4] },
+      { method: 'my', args: ['1rem'] },
+    ]).bag;
+    expect(bag).toEqual({
+      'margin-inline-start': '4px',
+      'margin-inline-end': '4px',
+      'margin-block-start': '1rem',
+      'margin-block-end': '1rem',
+    });
+  });
+
+  it('LIFO collapses at the property level — later single-property write wins', () => {
+    // px(8) writes both, then paddingInlineStart(4) overrides just one.
+    // Using the generated-set method name directly (kebab → camel).
+    const bag = canon.collapse([
+      { method: 'px', args: [8] },
+      { method: 'paddingInlineStart', args: ['4px'] },
+    ]).bag;
+    expect(bag).toEqual({
+      'padding-inline-start': '4px',
+      'padding-inline-end': '8px',
+    });
+  });
+
+  it('LIFO works the other way too — px after a single-property write wins on both sides', () => {
+    const bag = canon.collapse([
+      { method: 'paddingInlineStart', args: ['4px'] },
+      { method: 'px', args: [8] },
+    ]).bag;
+    expect(bag).toEqual({
+      'padding-inline-start': '8px',
+      'padding-inline-end': '8px',
+    });
+  });
+
+  it('strict policy rejects padding (shorthand) then px (longhand of padding family)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [8] },
+        { method: 'px', args: [4] },
+      ]),
+    ).toThrow(/longhand "px" cannot follow shorthand "padding"/);
+  });
+
+  it('strict policy rejects px (longhand of padding family) then padding (shorthand) symmetrically', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'px', args: [4] },
+        { method: 'padding', args: [8] },
+      ]),
+    ).toThrow(/shorthand "padding" cannot follow longhand "px"/);
+  });
+
+  it('strict policy: px and margin do not interact (different families)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'margin', args: [8] },
+        { method: 'px', args: [4] },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('lenient policy allows padding + px mix', () => {
+    const c = new Canonicalizer(defaultRegistry, 'lenient');
+    const bag = c.collapse([
+      { method: 'padding', args: [8] },
+      { method: 'px', args: [4] },
+    ]).bag;
+    // Lenient policy: both writes land; downstream cascade handles
+    // the resulting declarations. (Whether emitting both is *useful*
+    // CSS is the user's concern under lenient mode.)
+    expect(bag).toEqual({
+      padding: '8px',
+      'padding-inline-start': '4px',
+      'padding-inline-end': '4px',
+    });
+  });
+
+  it('dynamic args on multi-property methods are rejected with an actionable error', () => {
+    expect(() =>
+      canon.collapse([{ method: 'px', args: [dyn('cas-dyn-1')] }]),
+    ).toThrow(/dynamic args on multi-property method "px" are not yet supported/);
+  });
+
+  it('static unit override works on multi-property methods', () => {
+    const bag = canon.collapse([{ method: 'px', args: [2, 'rem'] }]).bag;
+    expect(bag).toEqual({
+      'padding-inline-start': '2rem',
+      'padding-inline-end': '2rem',
+    });
+  });
+
+  it('shorthand-policy resets across scope boundaries (px inside .hover is fine even after outer padding)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'padding', args: [8] },
+        {
+          scope: { kind: 'pseudo', selector: ':hover' },
+          ops: [{ method: 'px', args: [4] }],
+        },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('dynamic-arg bail keys on `properties` presence, not its length', () => {
+    // Forward-compat guard: a multi-property entry whose `properties`
+    // happens to contain a single element is *still* multi-property
+    // (its formatter writes a StyleBag, not a string). The dynamic
+    // branch below keys placeholders by `entry.property` (the label),
+    // which for such an entry is NOT in `properties` — so a
+    // length-based gate would silently target the wrong CSS property.
+    // The bail must fire regardless of element count.
+    const lengthOneEntry: import('../src/registry.js').RegistryEntry = {
+      property: 'fake-label',
+      properties: ['actual-css-prop'],
+      format: (): Record<string, string> => ({
+        'actual-css-prop': '1px',
+      }),
+    };
+    const customRegistry = {
+      ...defaultRegistry,
+      myCustom: lengthOneEntry,
+    };
+    const c = new Canonicalizer(customRegistry);
+    expect(() =>
+      c.collapse([{ method: 'myCustom', args: [dyn('cas-dyn-x')] }]),
+    ).toThrow(
+      /dynamic args on multi-property method "myCustom" are not yet supported/,
+    );
+  });
+});
+
 describe('Canonicalizer.canonicalKey', () => {
   it('is order-independent (same chain shape → same key)', () => {
     const a = canon.canonicalKey(

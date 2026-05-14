@@ -4,10 +4,43 @@ import {
   type GeneratedSpec,
 } from './generated-property-specs.js';
 
-export type Formatter = (...args: readonly unknown[]) => string;
+/**
+ * Multi-property formatters return a bag of `{ 'css-prop': 'value' }`
+ * pairs. Each entry is written into the ScopeBag as if it were a
+ * standalone declaration, so LIFO collapse works at the *property*
+ * level — `px(8).paddingInlineStart(4)` ends up with
+ * `padding-inline-start: 4px; padding-inline-end: 8px;` because the
+ * px call wrote both halves and the explicit longhand then overrode
+ * one of them.
+ */
+export type StyleBag = Readonly<Record<string, string>>;
+
+export type Formatter = (...args: readonly unknown[]) => string | StyleBag;
 
 export interface RegistryEntry {
+  /**
+   * Primary CSS property name. For single-property entries this is the
+   * key the formatter's return value is bound to in the bag. For
+   * multi-property entries (those with `properties` set), it's a label
+   * — the formatter's StyleBag carries the actual writes. The label
+   * still doubles as the lookup key for shorthand-policy family
+   * metadata and as a stable name for diagnostics.
+   */
   readonly property: string;
+  /**
+   * Longhands this entry expands to when invoked. Set on multi-property
+   * entries like `px` (expands to `padding-inline-start` + `-end`).
+   * Absent on single-property entries.
+   *
+   * Drives two behaviors in the canonicalizer:
+   *   1. LIFO collapse: each named longhand is treated as an
+   *      independent slot, so a later single-property write to one of
+   *      them overrides just that half.
+   *   2. Dynamic-arg bail: v1 does not support dynamic values on
+   *      multi-property entries (one slot id can't span N longhands
+   *      coherently). The canonicalizer throws with a hint.
+   */
+  readonly properties?: readonly string[];
   readonly format: Formatter;
   /**
    * Optional `@property` syntax descriptor. Stored as metadata only;
@@ -35,6 +68,11 @@ export interface RegistryEntry {
   /**
    * If this entry IS a longhand of a shorthand family, the family
    * identifier. Mirrors `shorthandFamily` from the other side.
+   *
+   * Multi-property entries (`px`, `py`, ...) can still set this — they
+   * behave as a longhand-of-family with respect to the policy check
+   * (`padding(...).px(...)` errors under strict policy just like
+   * `padding(...).paddingLeft(...)` does).
    */
   readonly longhandFamily?: string;
 }
@@ -76,6 +114,9 @@ function buildHandCraftedEntries(
       property: entry.property,
       format: entry.format as unknown as Formatter,
       animatable: entry.animatable,
+      ...('properties' in entry && entry.properties !== undefined
+        ? { properties: entry.properties }
+        : {}),
       ...('syntax' in entry && entry.syntax !== undefined ? { syntax: entry.syntax } : {}),
       ...('initialValue' in entry && entry.initialValue !== undefined
         ? { initialValue: entry.initialValue }

@@ -54,4 +54,15 @@ if (_execute) {
   //    csstype tightening is preserved on the curated subset.
   // @ts-expect-error -- color is hand-crafted; number must still be rejected
   cas().color(456);
+
+  // 8) Multi-property entries (`px` / `py` / `mx` / `my`) are part of
+  //    the canonical chain type. Their argument signature mirrors the
+  //    length-typed shorthands (`paddingTop`, `marginTop`, …).
+  cas().px(8);
+  cas().py(12, 'em');
+  cas().mx('auto');
+  cas().my('1rem');
+  cas().px(8).paddingInlineStart('4px');
+  // @ts-expect-error -- LenArg rejects booleans (must be number | string)
+  cas().px(true);
 }

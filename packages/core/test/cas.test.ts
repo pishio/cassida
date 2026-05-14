@@ -133,4 +133,34 @@ describe('runtime cas()', () => {
       expect(after.style).toEqual({ color: 'red', padding: '8px' });
     });
   });
+
+  describe('multi-property methods (px / py / mx / my)', () => {
+    it('px expands to both inline padding longhands in the runtime style', () => {
+      const props = cas().px(8).props;
+      expect(props.style).toEqual({
+        paddingInlineStart: '8px',
+        paddingInlineEnd: '8px',
+      });
+    });
+
+    it('a later single-property write overrides one half (LIFO at property level)', () => {
+      const chain = cas().px(8) as unknown as {
+        paddingInlineStart: (v: string | number) => typeof chain;
+        props: { style: Record<string, string> };
+      };
+      const props = chain.paddingInlineStart('4px').props;
+      expect(props.style).toEqual({
+        paddingInlineStart: '4px',
+        paddingInlineEnd: '8px',
+      });
+    });
+
+    it('produces a stable `cas-XXXXXXXX` className', () => {
+      const props = cas().px(8).py(12).props;
+      expect(props.className).toMatch(/^cas-[0-9a-f]{8}$/);
+      // Same chain twice → same hash (bijection check).
+      const again = cas().px(8).py(12).props;
+      expect(props.className).toBe(again.className);
+    });
+  });
 });
