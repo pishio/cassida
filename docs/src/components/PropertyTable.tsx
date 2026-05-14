@@ -158,7 +158,16 @@ export function PropertyTable(): React.JSX.Element {
                 <Td muted>{e.source}</Td>
                 <Td mono>{e.aliases?.join(', ') ?? ''}</Td>
                 <Td>
-                  <a href={mdnUrl(e.cssProperty, locale)} target="_blank" rel="noreferrer">
+                  <a
+                    href={mdnUrl(e.cssProperty, locale)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={
+                      locale === 'ja'
+                        ? `${e.cssProperty} の MDN ドキュメント (新しいタブで開く)`
+                        : `${e.cssProperty} MDN documentation (opens in new tab)`
+                    }
+                  >
                     ↗
                   </a>
                 </Td>
