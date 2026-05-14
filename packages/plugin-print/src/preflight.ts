@@ -31,8 +31,12 @@
  *      (CSS Fragmentation 3) — the legacy `page-break-*` names are
  *      aliased by every browser still in support and not worth
  *      shipping a second declaration for.
- *   4. Restore `thead` as a table-header-group so printed tables
- *      repeat their header row across pages.
+ *   4. Restore `thead` / `tfoot` to their semantic group `display`
+ *      values so printed tables repeat header / footer rows on every
+ *      page-break section. Browsers already default to this in their
+ *      UA stylesheet, but author CSS that flipped `thead` to `block`
+ *      (common for sticky-header layouts) is preserved unless we
+ *      reassert it here for the print scope.
  *
  * No element is hidden by default. Users hide nav / buttons / forms
  * for their specific site by adding rules on top of the preflight
@@ -78,13 +82,17 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
     max-width: 100%;
   }
 
-  p,
-  h2,
-  h3 {
+  /* orphans / widows only target block containers with multiple
+     text lines. Headings are typically single-line — applying them
+     would silently force unwanted page breaks on a long heading. */
+  p {
     orphans: 3;
     widows: 3;
   }
 
+  /* All heading levels avoid being the last line on a page (orphaned
+     from the body that follows). */
+  h1,
   h2,
   h3 {
     break-after: avoid;
@@ -92,6 +100,9 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
 
   thead {
     display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
   }
 }
 `;

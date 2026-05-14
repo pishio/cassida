@@ -67,15 +67,26 @@ describe('printPreflight()', () => {
       expect(css).toMatch(/img\s*\{[^}]*max-width:\s*100%/);
     });
 
-    it('avoids orphaned headings and sets widow / orphan thresholds for body text', () => {
-      expect(css).toMatch(/orphans:\s*3/);
-      expect(css).toMatch(/widows:\s*3/);
-      expect(css).toMatch(/h2,\s*h3\s*\{[^}]*break-after:\s*avoid/);
+    it('sets widow / orphan thresholds for paragraph text only', () => {
+      // Headings are typically single-line; applying `orphans` /
+      // `widows` to them would silently force unwanted page breaks on
+      // a long heading. The constraints belong on multi-line block
+      // containers.
+      expect(css).toMatch(/\bp\s*\{[^}]*orphans:\s*3[^}]*widows:\s*3/);
+    });
+
+    it('avoids breaking immediately after any heading level', () => {
+      // h1 included alongside h2 / h3 — a top-level heading orphaned
+      // at page-end from its body is just as bad as a subsection one.
+      expect(css).toMatch(/h1,\s*h2,\s*h3\s*\{[^}]*break-after:\s*avoid/);
       expect(css).not.toMatch(/page-break-after/);
     });
 
-    it('restores `thead` as a table-header-group so tables repeat headers across pages', () => {
+    it('repeats table header AND footer rows across pages', () => {
       expect(css).toMatch(/thead\s*\{[^}]*display:\s*table-header-group/);
+      // tfoot must be table-footer-group — table-header-group would
+      // flip the footer to the top of each page-break section.
+      expect(css).toMatch(/tfoot\s*\{[^}]*display:\s*table-footer-group/);
     });
 
     it('rewraps `pre` blocks so long lines do not run off the page', () => {

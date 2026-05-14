@@ -111,7 +111,32 @@ cassidaGlobalCss({
 });
 ```
 
-Or replace the bundled defaults entirely:
+### Preserving icons / logos in print
+
+The universal selector clears `background` and forces `color: #000`
+so prose pages don't burn ink on every gradient and shadow. That
+zeroes out `background-image` too, which can erase essential
+elements like icon spritesheets or brand logos rendered as
+background images. Because the preflight is `!important`-free, you
+can override per-element from your Cassida chain:
+
+```tsx
+<span
+  {...cas.unsafe({ 'print-color-adjust': 'exact' })
+    .backgroundImage('url(/logo.svg)')
+    .props}
+/>
+```
+
+Two parts to the override: `backgroundImage(...)` beats the
+universal-selector `background: transparent` via class specificity
+(later layer in `@layer cas, base`-aware terms — see "Why no
+`!important`" above), and `print-color-adjust: exact` tells the
+browser to actually paint that background even in print mode.
+Routed through `cas.unsafe` because `print-color-adjust` lives
+outside Cassida's curated safe surface.
+
+### Replace the bundled defaults entirely
 
 ```ts
 printPreflight({ css: myOwnPrintCss })  // returns myOwnPrintCss as-is
