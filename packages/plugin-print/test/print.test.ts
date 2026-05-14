@@ -67,11 +67,16 @@ describe('printPreflight()', () => {
       expect(css).not.toMatch(/page-break-inside/);
     });
 
-    it('caps `img` and inline `svg` width at the page area to prevent margin clipping', () => {
-      // The shared `img, svg { ... max-width: 100% }` rule covers
-      // both raster images and inline SVGs — both can overflow the
-      // printable area otherwise.
-      expect(css).toMatch(/img,\s*svg\s*\{[^}]*max-width:\s*100%/);
+    it('caps `img` and inline `svg` width and preserves aspect ratio', () => {
+      // The shared `img, svg { ... max-width: 100%; height: auto }`
+      // rule covers both raster images and inline SVGs. `height: auto`
+      // is paired with the width clamp so that a locked-in HTML
+      // `height` attribute (or fixed CSS height) doesn't leave the
+      // box distorted when the width shrinks.
+      const block = css.match(/img,\s*svg\s*\{[^}]*\}/);
+      expect(block).not.toBeNull();
+      expect(block![0]).toMatch(/max-width:\s*100%/);
+      expect(block![0]).toMatch(/height:\s*auto/);
     });
 
     it('sets widow / orphan thresholds for paragraph text only', () => {

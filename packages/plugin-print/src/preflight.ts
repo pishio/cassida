@@ -83,8 +83,12 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
   svg {
     break-inside: avoid;
     /* Prevent oversized images and inline SVGs from being clipped by
-       the page margins; the wider dimension scales down to fit. */
+       the page margins; the wider dimension scales down to fit.
+       height: auto keeps the aspect ratio intact when an explicit
+       height attribute / CSS height would otherwise lock the box
+       into a distorted shape after the width clamp kicks in. */
     max-width: 100%;
+    height: auto;
   }
 
   /* orphans / widows only target block containers with multiple
