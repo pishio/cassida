@@ -1,6 +1,6 @@
 {
   "name": "@cassida/recommended",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Curated bundle of Cassida plugins. `recommended()` returns the CSS- and parser-plugin sets that the maintainers ship as the default-on choice — today: `hoverFix` and `conditionalSpread`. Drop it into `cassida(recommended())` to opt in with one line; pass options to disable individual plugins or supply custom configuration.",
   "license": "MIT",
   "sideEffects": false,

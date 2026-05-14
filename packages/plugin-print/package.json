@@ -1,6 +1,6 @@
 {
   "name": "@cassida/plugin-print",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Cassida companion plugin: ships a `printPreflight()` factory returning a CSS string of conservative @media print defaults (black-on-white, expand external link URLs, page-break hygiene, image width clamp). Designed to be served through @cassida/plugin-global-css so the print rules live alongside Cassida's `@layer cas` output.",
   "license": "MIT",
   "sideEffects": false,

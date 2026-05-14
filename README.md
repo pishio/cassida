@@ -48,6 +48,8 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
+**v0.5.0** — `@cassida/plugin-print` joins the workspace: a `printPreflight()` factory returning a CSS string of conservative `@media print` defaults (ink-saving black-on-white, external link URL expansion with break-word wrapping, abbreviation expansion, media width clamp covering `img`/`svg`/`video`/`canvas`, page-break hygiene for `pre`/`blockquote`/`tr`/headings, `thead`/`tfoot` repetition across page boundaries). Designed to be served through `@cassida/plugin-global-css` (added in v0.4) so the print rules live alongside Cassida's `@layer cas` output with cascade-layer-aware overrides — no `!important` anywhere.
+
 **v0.4.0** — production-readiness sprint. Four substantive additions:
 
 - **Conditional branching in two shapes.** `@cassida/plugin-conditional` lifts `{...(cond ? cas().X() : cas().Y())}` and short-circuit `{...(cond && cas().X())}` JSX spreads from the runtime path into the build-time class table; dynamic-slot branches like `cond ? cas().color(theme.fg) : cas().color(theme.muted)` now compile too (each branch becomes its own class with a parallel `style={...}` ternary). The new `.cond(test, truthy, falsy?)` chain method keeps the branching inline: `cas().padding(8).cond(active, c => c.bg('blue'), c => c.bg('gray')).color('red')` materializes a Cartesian product of leaves with one nested `className` ternary, no JSX-level duplication of outer methods.
@@ -55,7 +57,7 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 - **`@cassida/plugin-global-css`.** First-party Vite plugin for serving preflight / `body { ... }` / `*, ::before, ::after { ... }` rules through a virtual module, wrapped in a configurable `@layer` so it composes with Cassida's single-class output.
 - **`@cassida/recommended`** stays as the one-line opt-in for the maintainers' default-on plugin bundle (hover-fix + conditional spreads).
 
-Earlier surface stays: `.props` terminator from v0.3 (separates chain methods from JSX prop typings — strict `tsc --noEmit` passes), cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 298 unit tests across 8 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — including `tsc --noEmit` against the consumer for every Vite leg.
+Earlier surface stays: `.props` terminator from v0.3 (separates chain methods from JSX prop typings — strict `tsc --noEmit` passes), cross-file static evaluation from v0.2 (design tokens defined in a separate module or `.json` file fold into static class hashes at build time), packaging hardening from v0.1.1 (`sideEffects: false`, pure-JS hasher, `exports` map). The feature set is covered by 312 unit tests across 9 packages, plus an end-to-end CI smoke test that builds a real consumer against the tarballs on Vite 5 / 6 / 7 and Bun — including `tsc --noEmit` against the consumer for every Vite leg.
 
 The API is stable across the documented surface but versions are 0.x; expect breaking changes between minor versions until 1.0.
 
