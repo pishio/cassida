@@ -29,31 +29,43 @@ describe('printPreflight()', () => {
   describe('bundled defaults', () => {
     const css = printPreflight();
 
-    it('zeroes backgrounds, shadows, and force-blacks text for ink savings', () => {
-      expect(css).toMatch(/background:\s*transparent\s*!important/);
-      expect(css).toMatch(/color:\s*#000\s*!important/);
-      expect(css).toMatch(/box-shadow:\s*none\s*!important/);
-      expect(css).toMatch(/text-shadow:\s*none\s*!important/);
+    it('zeroes backgrounds, shadows, and defaults text to black for ink savings', () => {
+      // No !important — cascade-layer semantics flip the precedence
+      // for important declarations, which would lock users out of
+      // explicitly choosing a brand-color print page from @layer cas.
+      expect(css).toMatch(/background:\s*transparent;/);
+      expect(css).toMatch(/color:\s*#000;/);
+      expect(css).toMatch(/box-shadow:\s*none;/);
+      expect(css).toMatch(/text-shadow:\s*none;/);
+      // Explicit assertion: !important is absent from the universal
+      // selector. A regression here would silently break override
+      // semantics for cascade-layer consumers.
+      expect(css).not.toMatch(/!important/);
     });
 
     it('appends the `href` URL after external links only', () => {
       // The `::after` rule must be scoped to anchors that are NOT
-      // in-page (`#`), `mailto:`, or `tel:` — those would clutter the
-      // print output with redundant text.
+      // in-page (`#`), `mailto:`, `tel:`, or `javascript:` — those
+      // would clutter print output with redundant or non-functional
+      // strings.
       expect(css).toMatch(
-        /a\[href\]:not\(\[href\^="#"\]\):not\(\[href\^="mailto:"\]\):not\(\[href\^="tel:"\]\)::after \{[^}]*content:\s*" \(" attr\(href\) "\)"/,
+        /a\[href\]:not\(\[href\^="#"\]\):not\(\[href\^="mailto:"\]\):not\(\[href\^="tel:"\]\):not\(\[href\^="javascript:"\]\)::after \{[^}]*content:\s*" \(" attr\(href\) "\)"/,
       );
     });
 
-    it('keeps `pre` / `blockquote` / `tr` / `img` from breaking across pages', () => {
-      expect(css).toMatch(/pre,\s*blockquote\s*\{[^}]*page-break-inside:\s*avoid/);
-      expect(css).toMatch(/tr,\s*img\s*\{[^}]*page-break-inside:\s*avoid/);
+    it('keeps `pre` / `blockquote` / `tr` / `img` from breaking across pages (modern `break-inside`)', () => {
+      expect(css).toMatch(/pre,\s*blockquote\s*\{[^}]*break-inside:\s*avoid/);
+      expect(css).toMatch(/tr,\s*img\s*\{[^}]*break-inside:\s*avoid/);
+      // Sanity: the legacy alias should NOT also appear — having both
+      // double-emits the same constraint and signals stale CSS.
+      expect(css).not.toMatch(/page-break-inside/);
     });
 
     it('avoids orphaned headings and sets widow / orphan thresholds for body text', () => {
       expect(css).toMatch(/orphans:\s*3/);
       expect(css).toMatch(/widows:\s*3/);
-      expect(css).toMatch(/h2,\s*h3\s*\{[^}]*page-break-after:\s*avoid/);
+      expect(css).toMatch(/h2,\s*h3\s*\{[^}]*break-after:\s*avoid/);
+      expect(css).not.toMatch(/page-break-after/);
     });
 
     it('restores `thead` as a table-header-group so tables repeat headers across pages', () => {
@@ -61,7 +73,7 @@ describe('printPreflight()', () => {
     });
 
     it('rewraps `pre` blocks so long lines do not run off the page', () => {
-      expect(css).toMatch(/pre\s*\{[^}]*white-space:\s*pre-wrap\s*!important/);
+      expect(css).toMatch(/pre\s*\{[^}]*white-space:\s*pre-wrap/);
     });
   });
 

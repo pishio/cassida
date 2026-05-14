@@ -22,13 +22,22 @@ concern out of the box.
 - **Table header repetition.** `thead` is restored to
   `display: table-header-group` so printed tables repeat their header
   row across page boundaries.
-- **Pre wrapping.** `pre { white-space: pre-wrap !important }` so
-  long source lines don't fall off the page edge.
+- **Pre wrapping.** `pre { white-space: pre-wrap }` so long source
+  lines don't fall off the page edge.
 
 The rules are adapted from the well-known HTML5 Boilerplate print
 stylesheet subset (MIT-licensed). They are deliberately conservative;
 opinionated decisions like "hide `nav` / `footer` / `button`" stay
 out of the library default because they're site-specific.
+
+The preflight intentionally ships **without `!important`**. CSS
+Cascade Layers flip the precedence on important declarations —
+`!important` in earlier layers wins over `!important` in later ones,
+which would lock users out of overriding the defaults from their own
+`@layer cas` rules. Without `!important`, the canonical `@layer base,
+cas;` declaration order plus class-vs-universal specificity does the
+right thing: explicit Cassida-driven colors print as written, while
+elements without an explicit color fall back to ink-saving black.
 
 ## Install
 

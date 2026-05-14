@@ -9,16 +9,25 @@
  * What this covers:
  *
  *   1. Reset every element to black-on-white with no shadows /
- *      backgrounds. Modern print drivers honor `print-color-adjust`
- *      (and its WebKit-prefixed counterpart) when a stylesheet wants
- *      backgrounds preserved — but Cassida's preflight defaults are
- *      "save ink, prefer legibility" and the user opts back in when
- *      they actually need a brand-color page.
+ *      backgrounds. NOTE: no `!important` here. CSS Cascade Layers
+ *      flip the precedence on important declarations — `!important`
+ *      in earlier layers (e.g. `base`) wins over `!important` in
+ *      later ones (`cas`), which would lock users out of overriding
+ *      a brand-color print page even when they wrote `!important`
+ *      themselves. Without it, the layer declaration `@layer base,
+ *      cas;` plus class-vs-universal specificity lets explicit cas
+ *      colors flow through to print, while elements without an
+ *      explicit color still default to ink-saving black.
  *   2. Append the `href` URL after every external link (`a[href]`).
- *      Skip in-page anchors (`href="#..."`) and `mailto:` / `tel:`
- *      links — the visible text already describes those.
+ *      Skip in-page anchors (`href="#..."`), `mailto:` / `tel:` (the
+ *      visible text already describes those), and `javascript:` (the
+ *      string is non-functional in print and would be visual noise).
  *   3. Help printers keep blocks together: avoid breaking inside
  *      `pre`, `blockquote`, `tr`, `img`. Don't orphan headings.
+ *      Uses the modern `break-inside` / `break-after` properties
+ *      (CSS Fragmentation 3) — the legacy `page-break-*` names are
+ *      aliased by every browser still in support and not worth
+ *      shipping a second declaration for.
  *   4. Restore `thead` as a table-header-group so printed tables
  *      repeat their header row across pages.
  *
@@ -30,10 +39,10 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
   *,
   *::before,
   *::after {
-    background: transparent !important;
-    color: #000 !important;
-    box-shadow: none !important;
-    text-shadow: none !important;
+    background: transparent;
+    color: #000;
+    box-shadow: none;
+    text-shadow: none;
   }
 
   a,
@@ -41,22 +50,22 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
     text-decoration: underline;
   }
 
-  a[href]:not([href^="#"]):not([href^="mailto:"]):not([href^="tel:"])::after {
+  a[href]:not([href^="#"]):not([href^="mailto:"]):not([href^="tel:"]):not([href^="javascript:"])::after {
     content: " (" attr(href) ")";
   }
 
   pre {
-    white-space: pre-wrap !important;
+    white-space: pre-wrap;
   }
   pre,
   blockquote {
     border: 1px solid #999;
-    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   tr,
   img {
-    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   p,
@@ -68,7 +77,7 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
 
   h2,
   h3 {
-    page-break-after: avoid;
+    break-after: avoid;
   }
 
   thead {
