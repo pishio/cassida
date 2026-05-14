@@ -45,47 +45,64 @@ describe('printPreflight()', () => {
       expect(css).not.toMatch(/!important/);
     });
 
-    it('appends the `href` URL after absolute external links only', () => {
+    it('appends the `href` URL after absolute external links only, with break-word wrapping', () => {
       // Strict-prefix selectors (the trailing `://` matters): a bare
       // `[href^="http"]` would also match a relative `http-server.pdf`,
       // a real false-positive. Explicit `http://` / `https://` plus
       // protocol-relative `//host/...` is the correct shape.
       // Relative paths (`/about`) and non-web schemes (`mailto:`,
       // `tel:`, `javascript:`) stay out — their expanded form is
-      // uninformative noise on a printed page.
+      // uninformative noise on a printed page. `overflow-wrap:
+      // break-word` keeps long URLs from running off the page.
+      const block = css.match(
+        /a\[href\^="http:\/\/"\]::after,\s*a\[href\^="https:\/\/"\]::after,\s*a\[href\^="\/\/"\]::after\s*\{[^}]*\}/,
+      );
+      expect(block).not.toBeNull();
+      expect(block![0]).toMatch(/content:\s*" \(" attr\(href\) "\)"/);
+      expect(block![0]).toMatch(/overflow-wrap:\s*break-word/);
+    });
+
+    it('expands `abbr[title]` so abbreviations carry their long form in print', () => {
+      // Classic H5BP idiom — single source of truth for the long
+      // form is the `title` attribute, so screen readers and print
+      // readers see the same expansion.
       expect(css).toMatch(
-        /a\[href\^="http:\/\/"\]::after,\s*a\[href\^="https:\/\/"\]::after,\s*a\[href\^="\/\/"\]::after\s*\{[^}]*content:\s*" \(" attr\(href\) "\)"/,
+        /abbr\[title\]::after\s*\{[^}]*content:\s*" \(" attr\(title\) "\)"/,
       );
     });
 
-    it('keeps `pre` / `blockquote` / `tr` / `img` / `svg` from breaking across pages (modern `break-inside`)', () => {
+    it('keeps `pre` / `blockquote` / `tr` / media from breaking across pages', () => {
       expect(css).toMatch(/pre,\s*blockquote\s*\{[^}]*break-inside:\s*avoid/);
       expect(css).toMatch(/tr\s*\{[^}]*break-inside:\s*avoid/);
-      expect(css).toMatch(/img,\s*svg\s*\{[^}]*break-inside:\s*avoid/);
+      expect(css).toMatch(
+        /img,\s*svg,\s*video,\s*canvas\s*\{[^}]*break-inside:\s*avoid/,
+      );
       // Sanity: the legacy alias should NOT also appear — having both
       // double-emits the same constraint and signals stale CSS.
       expect(css).not.toMatch(/page-break-inside/);
     });
 
-    it('caps `img` and inline `svg` width and preserves aspect ratio', () => {
-      // The shared `img, svg { ... max-width: 100%; height: auto }`
-      // rule covers both raster images and inline SVGs. `height: auto`
-      // is paired with the width clamp so that a locked-in HTML
-      // `height` attribute (or fixed CSS height) doesn't leave the
-      // box distorted when the width shrinks.
-      const block = css.match(/img,\s*svg\s*\{[^}]*\}/);
+    it('caps media width and preserves aspect ratio across img / svg / video / canvas', () => {
+      // The shared media rule covers raster images, inline SVGs,
+      // <video> (prints its poster) and <canvas> (charts /
+      // visualisations) — all overflow the printable area otherwise.
+      // `height: auto` paired with the width clamp prevents a fixed
+      // CSS or HTML-attribute height from leaving the box distorted.
+      const block = css.match(/img,\s*svg,\s*video,\s*canvas\s*\{[^}]*\}/);
       expect(block).not.toBeNull();
       expect(block![0]).toMatch(/max-width:\s*100%/);
       expect(block![0]).toMatch(/height:\s*auto/);
     });
 
-    it('sets widow / orphan thresholds for paragraph text only', () => {
+    it('sets widow / orphan thresholds for paragraph and list-item text', () => {
       // Headings are typically single-line; applying `orphans` /
       // `widows` to them would silently force unwanted page breaks on
       // a long heading. The constraints belong on multi-line block
       // containers. Threshold of 2 catches true singletons without
       // making 3-5 line paragraphs ineligible for page-end placement.
-      expect(css).toMatch(/\bp\s*\{[^}]*orphans:\s*2[^}]*widows:\s*2/);
+      // `li` joins `p` because list items in technical / academic
+      // docs frequently carry multi-line prose.
+      expect(css).toMatch(/p,\s*li\s*\{[^}]*orphans:\s*2[^}]*widows:\s*2/);
     });
 
     it('avoids breaking immediately after any heading level (h1-h6)', () => {

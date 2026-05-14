@@ -27,7 +27,12 @@
  *      `javascript:`) are also excluded — the visible text already
  *      describes them. Strict-prefix selectors (with the trailing
  *      `://`) avoid the false-positive where `href="http-server.pdf"`
- *      matches a bare `[href^="http"]`.
+ *      matches a bare `[href^="http"]`. `overflow-wrap: break-word`
+ *      ensures the generated URL string wraps inside the column
+ *      width instead of running off the page.
+ *   2a. Expand `<abbr title="...">` the same way — show the long
+ *      form once next to the visible abbreviation. Classic H5BP idiom
+ *      and a real legibility win for technical prose.
  *   3. Help printers keep blocks together: avoid breaking inside
  *      `pre`, `blockquote`, `tr`, `img`. Don't orphan headings.
  *      Uses the modern `break-inside` / `break-after` properties
@@ -64,6 +69,16 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
   a[href^="https://"]::after,
   a[href^="//"]::after {
     content: " (" attr(href) ")";
+    /* Long URLs would otherwise extend past the page edge — wrap on
+       any character so the generated string flows like prose. */
+    overflow-wrap: break-word;
+  }
+
+  /* Expand abbreviations the same way URLs are expanded: show the
+     long form once next to the visible text. Classic H5BP idiom and
+     a meaningful legibility win for technical / academic prose. */
+  abbr[title]::after {
+    content: " (" attr(title) ")";
   }
 
   pre {
@@ -80,13 +95,17 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
   }
 
   img,
-  svg {
+  svg,
+  video,
+  canvas {
     break-inside: avoid;
-    /* Prevent oversized images and inline SVGs from being clipped by
-       the page margins; the wider dimension scales down to fit.
-       height: auto keeps the aspect ratio intact when an explicit
-       height attribute / CSS height would otherwise lock the box
-       into a distorted shape after the width clamp kicks in. */
+    /* Prevent oversized media from being clipped by the page margins;
+       the wider dimension scales down to fit. video prints its poster
+       (or first frame) and canvas is commonly used for charts — both
+       overflow the printable area the same way images do. height:
+       auto keeps the aspect ratio intact when an explicit height
+       attribute / CSS height would otherwise lock the box into a
+       distorted shape after the width clamp kicks in. */
     max-width: 100%;
     height: auto;
   }
@@ -98,8 +117,10 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
      the top / bottom of a page) without forcing 3-5 line paragraphs
      onto the next page and creating large empty trailing space —
      the trade-off that motivated the conservative default over the
-     more aggressive 3. */
-  p {
+     more aggressive 3. li joins p because list items in technical /
+     academic docs frequently carry multi-line prose. */
+  p,
+  li {
     orphans: 2;
     widows: 2;
   }

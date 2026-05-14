@@ -13,19 +13,30 @@ concern out of the box.
 - **Black-on-white, no shadows / backgrounds.** Saves ink and makes
   copy legible. The user opts back in when they actually need a
   brand-color page.
-- **External link URLs appended.** Anchors with an absolute `http` /
-  `https` / `//` href get ` (https://example.com/...)` glued after
-  their visible text. Relative paths and non-web schemes (`mailto:`,
-  `tel:`, `javascript:`) are skipped — their expanded form would be
-  uninformative noise on a printed page.
-- **Page-break hygiene.** `pre`, `blockquote`, `tr`, `img` don't
-  break across pages. All heading levels (`h1`-`h6`) avoid being
-  orphaned at page end from their body content. Body text uses
+- **External link URLs appended.** Anchors with an absolute `http://` /
+  `https://` / `//` href get ` (https://example.com/...)` glued
+  after their visible text, with `overflow-wrap: break-word` so a
+  long URL wraps inside the column instead of bleeding off the page.
+  Relative paths and non-web schemes (`mailto:`, `tel:`,
+  `javascript:`) are skipped — their expanded form would be
+  uninformative noise. Strict-prefix selectors (the trailing `://`)
+  avoid the false positive where a relative filename like
+  `http-server.pdf` would have matched a bare `[href^="http"]`.
+- **Abbreviation expansion.** `<abbr title="...">FYI</abbr>` prints
+  as `FYI (For Your Information)` — H5BP-classic idiom that uses the
+  same `title` attribute screen readers already announce.
+- **Page-break hygiene.** `pre`, `blockquote`, `tr`, and the media
+  group (`img`, `svg`, `video`, `canvas`) don't break across pages.
+  All heading levels (`h1`-`h6`) avoid being orphaned at page end
+  from their body content. Body text and list items (`p`, `li`) use
   `orphans: 2` / `widows: 2` — enough to prevent true singletons
   without forcing 3-5 line paragraphs onto the next page.
-- **Image width clamp.** `img { max-width: 100% }` keeps oversized
-  pictures inside the printable area instead of being clipped by the
-  page margins.
+- **Media width clamp.** `img, svg, video, canvas { max-width: 100%;
+  height: auto }` keeps oversized media inside the printable area
+  without distorting the aspect ratio (`height: auto` undoes any
+  HTML / CSS height that would otherwise lock the box shape after
+  the width shrinks). `<video>` prints its poster image and
+  `<canvas>` is commonly used for charts — same treatment.
 - **Table header / footer repetition.** `thead` is restored to
   `display: table-header-group` and `tfoot` to `display: table-footer-group`
   so printed tables repeat their header and footer rows across page
