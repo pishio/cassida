@@ -1,0 +1,58 @@
+/* Minimal preflight — most styling lives on Cassida classes in @layer cas. */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    "Inter",
+    "Hiragino Sans",
+    "Yu Gothic UI",
+    "Meiryo",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  color: #1c1f24;
+  background: #fafafb;
+}
+
+code, kbd, pre, samp {
+  font-family:
+    "JetBrains Mono",
+    "Source Han Code JP",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  font-size: 0.92em;
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}

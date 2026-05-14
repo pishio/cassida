@@ -1,0 +1,35 @@
+{
+  "name": "@cassida/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsx scripts/build-property-manifest.ts && vite-react-ssg build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cassida/core": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0"
+  },
+  "devDependencies": {
+    "@cassida/compiler": "workspace:*",
+    "@cassida/plugin-conditional": "workspace:*",
+    "@cassida/plugin-global-css": "workspace:*",
+    "@cassida/plugin-hover-fix": "workspace:*",
+    "@cassida/plugin-print": "workspace:*",
+    "@cassida/recommended": "workspace:*",
+    "@cassida/vite-plugin": "workspace:*",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3",
+    "vite": "^7.1.13",
+    "vite-react-ssg": "^0.9.0"
+  }
+}
