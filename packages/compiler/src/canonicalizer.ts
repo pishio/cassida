@@ -73,11 +73,16 @@ export class Canonicalizer {
           continue;
         }
 
-        if (entry.properties !== undefined && entry.properties.length > 1) {
-          // v1: a single dynamic slot can't coherently fan out to N
-          // longhands. The user can either pass a literal here or
-          // route through the single-property method (e.g.
-          // `.paddingInline(theme.spacing)`).
+        if (entry.properties !== undefined) {
+          // Gate on the presence of `properties`, not its length. A
+          // multi-property entry's format function writes into one or
+          // more explicit longhands; the single-property dynamic
+          // branch below keys the placeholder by `entry.property`,
+          // which is the multi-property entry's *label* and not in
+          // its `properties` set. Falling through would silently
+          // target the wrong CSS property, so block early — pass a
+          // literal, or use a single-property method (e.g.
+          // `.paddingInline(theme.spacing)`) for dynamic writes.
           throw new Error(
             `[cassida] dynamic args on multi-property method "${op.method}" are not yet supported. ` +
               `Pass a literal, or use a single-property method (e.g. ".paddingInline") for the dynamic value.`,

@@ -388,6 +388,33 @@ describe('Canonicalizer.collapse — multi-property entries (px / py / mx / my)'
       ]),
     ).not.toThrow();
   });
+
+  it('dynamic-arg bail keys on `properties` presence, not its length', () => {
+    // Forward-compat guard: a multi-property entry whose `properties`
+    // happens to contain a single element is *still* multi-property
+    // (its formatter writes a StyleBag, not a string). The dynamic
+    // branch below keys placeholders by `entry.property` (the label),
+    // which for such an entry is NOT in `properties` — so a
+    // length-based gate would silently target the wrong CSS property.
+    // The bail must fire regardless of element count.
+    const lengthOneEntry: import('../src/registry.js').RegistryEntry = {
+      property: 'fake-label',
+      properties: ['actual-css-prop'],
+      format: (): Record<string, string> => ({
+        'actual-css-prop': '1px',
+      }),
+    };
+    const customRegistry = {
+      ...defaultRegistry,
+      myCustom: lengthOneEntry,
+    };
+    const c = new Canonicalizer(customRegistry);
+    expect(() =>
+      c.collapse([{ method: 'myCustom', args: [dyn('cas-dyn-x')] }]),
+    ).toThrow(
+      /dynamic args on multi-property method "myCustom" are not yet supported/,
+    );
+  });
 });
 
 describe('Canonicalizer.canonicalKey', () => {
