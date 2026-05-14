@@ -96,10 +96,15 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
   }
 
   /* All heading levels avoid being the last line on a page (orphaned
-     from the body that follows). */
+     from the body that follows). Including h4-h6 costs nothing —
+     they're rarer in practice, but if present they deserve the same
+     treatment as h1-h3. */
   h1,
   h2,
-  h3 {
+  h3,
+  h4,
+  h5,
+  h6 {
     break-after: avoid;
   }
 

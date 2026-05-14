@@ -78,10 +78,13 @@ describe('printPreflight()', () => {
       expect(css).toMatch(/\bp\s*\{[^}]*orphans:\s*2[^}]*widows:\s*2/);
     });
 
-    it('avoids breaking immediately after any heading level', () => {
-      // h1 included alongside h2 / h3 — a top-level heading orphaned
-      // at page-end from its body is just as bad as a subsection one.
-      expect(css).toMatch(/h1,\s*h2,\s*h3\s*\{[^}]*break-after:\s*avoid/);
+    it('avoids breaking immediately after any heading level (h1-h6)', () => {
+      // All heading levels — a subsection (h4 / h5 / h6) orphaned at
+      // page-end from its body is just as bad as a top-level h1.
+      // Including the deeper levels costs nothing.
+      expect(css).toMatch(
+        /h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\{[^}]*break-after:\s*avoid/,
+      );
       expect(css).not.toMatch(/page-break-after/);
     });
 

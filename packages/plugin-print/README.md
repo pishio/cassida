@@ -19,14 +19,17 @@ concern out of the box.
   `tel:`, `javascript:`) are skipped — their expanded form would be
   uninformative noise on a printed page.
 - **Page-break hygiene.** `pre`, `blockquote`, `tr`, `img` don't
-  break across pages. Headings (`h2`, `h3`) don't orphan onto a new
-  page from their bodies. Body text uses `orphans: 3` / `widows: 3`.
+  break across pages. All heading levels (`h1`-`h6`) avoid being
+  orphaned at page end from their body content. Body text uses
+  `orphans: 2` / `widows: 2` — enough to prevent true singletons
+  without forcing 3-5 line paragraphs onto the next page.
 - **Image width clamp.** `img { max-width: 100% }` keeps oversized
   pictures inside the printable area instead of being clipped by the
   page margins.
-- **Table header repetition.** `thead` is restored to
-  `display: table-header-group` so printed tables repeat their header
-  row across page boundaries.
+- **Table header / footer repetition.** `thead` is restored to
+  `display: table-header-group` and `tfoot` to `display: table-footer-group`
+  so printed tables repeat their header and footer rows across page
+  boundaries.
 - **Pre wrapping.** `pre { white-space: pre-wrap }` so long source
   lines don't fall off the page edge.
 
