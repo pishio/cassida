@@ -108,7 +108,7 @@ export interface ChainModifiers extends ZeroArgModifiers {
  *   />
  *   ```
  *
- * At build time, the parser materialises the Cartesian product of all
+ * At build time, the parser materializes the Cartesian product of all
  * `.cond()` decisions into N classes — each leaf carries the full
  * pre/post-cond ops plus the branch's inner ops — and emits a nested
  * ternary `className=` (and `style=`, when any branch is dynamic).
