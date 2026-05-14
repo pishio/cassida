@@ -10,6 +10,7 @@
 [![@cassida/plugin-hover-fix](https://img.shields.io/npm/v/%40cassida%2Fplugin-hover-fix?label=%40cassida%2Fplugin-hover-fix&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-hover-fix)
 [![@cassida/plugin-conditional](https://img.shields.io/npm/v/%40cassida%2Fplugin-conditional?label=%40cassida%2Fplugin-conditional&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-conditional)
 [![@cassida/plugin-global-css](https://img.shields.io/npm/v/%40cassida%2Fplugin-global-css?label=%40cassida%2Fplugin-global-css&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-global-css)
+[![@cassida/plugin-print](https://img.shields.io/npm/v/%40cassida%2Fplugin-print?label=%40cassida%2Fplugin-print&color=2ea44f)](https://www.npmjs.com/package/@cassida/plugin-print)
 [![license MIT](https://img.shields.io/npm/l/%40cassida%2Fcore?color=blue)](./LICENSE)
 
 > **One element, one class — compiled, not cascaded.**
@@ -447,6 +448,25 @@ import 'virtual:cassida-global.css';
 
 Defaults to `@layer base` so Cassida's classes in `@layer cas` win the cascade declaration `@layer base, cas;` without specificity bumps. Pass `layer: null` to skip the wrap, or `virtualId` to mount multiple instances (e.g. one for preflight, one for print).
 
+#### `@cassida/plugin-print`
+
+Conservative `@media print` defaults for any printable page. `printPreflight()` returns a CSS string with page-break hygiene for `pre` / `blockquote` / `tr` / `img`, black-on-white text (no shadows, no backgrounds), `widows`/`orphans` thresholds for body text, `display: table-header-group` on `thead` so printed tables repeat their header row, and external link URLs appended after the anchor text (`a[href]::after`). Adapted from HTML5 Boilerplate's print subset; rules are deliberately conservative so site-specific decisions (hiding `nav` / `footer`, brand fonts) stay in user code.
+
+The factory returns a string and ships no delivery of its own — pair with `@cassida/plugin-global-css`:
+
+```ts
+import { cassidaGlobalCss } from '@cassida/plugin-global-css';
+import { printPreflight } from '@cassida/plugin-print';
+
+cassidaGlobalCss({
+  css: printPreflight(),
+  layer: 'base',
+  virtualId: 'virtual:cassida-print.css',
+});
+// then in main.tsx:
+import 'virtual:cassida-print.css';
+```
+
 #### Custom composition
 
 For projects that want a subset, skip `recommended` and import the factories directly — they're re-exported from `@cassida/recommended` for convenience:
@@ -587,6 +607,7 @@ Babel's `path.evaluate()` returns `confident: false` for `Math.random()`, so the
 | [`@cassida/plugin-hover-fix`](./packages/plugin-hover-fix) | First-party CSS plugin: gates `:hover` in `@media (hover: hover)` for iOS sticky-hover. |
 | [`@cassida/plugin-conditional`](./packages/plugin-conditional) | First-party parser plugin: lifts conditional / short-circuit JSX spreads to build-time classes. |
 | [`@cassida/plugin-global-css`](./packages/plugin-global-css) | First-party Vite plugin: serves preflight / reset / tag-selector CSS through a virtual module, wrapped in a configurable cascade `@layer`. |
+| [`@cassida/plugin-print`](./packages/plugin-print) | Companion factory: `printPreflight()` returns a CSS string of conservative `@media print` defaults (page-break hygiene, black-on-white, link-href expansion). Pair with `@cassida/plugin-global-css` for delivery. |
 
 Most consumers install three packages: `@cassida/core` (runtime), `@cassida/vite-plugin` (build-time integration), and `@cassida/recommended` (which brings the default plugin set as transitive deps). The other packages are workspace internals plus opt-in factories for bespoke composition.
 

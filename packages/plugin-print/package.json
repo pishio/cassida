@@ -1,0 +1,53 @@
+{
+  "name": "@cassida/plugin-print",
+  "version": "0.4.0",
+  "description": "Cassida companion plugin: ships a `printPreflight()` factory returning a CSS string of sensible @media print defaults (hide nav / buttons, black-on-white, expand link hrefs, page-break hygiene). Designed to be served through @cassida/plugin-global-css so the print rules live alongside Cassida's `@layer cas` output.",
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "prepublishOnly": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pishio/cassida.git",
+    "directory": "packages/plugin-print"
+  },
+  "homepage": "https://github.com/pishio/cassida/tree/main/packages/plugin-print#readme",
+  "bugs": {
+    "url": "https://github.com/pishio/cassida/issues"
+  },
+  "author": "pishio",
+  "keywords": [
+    "cassida",
+    "css-in-js",
+    "print",
+    "preflight",
+    "media-print"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
