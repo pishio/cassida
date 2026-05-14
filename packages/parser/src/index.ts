@@ -176,6 +176,37 @@ export interface ParserPluginHelpers {
     additions: t.ObjectExpression,
     casWins: boolean,
   ) => t.JSXAttribute | null;
+  /**
+   * Look up the AST expression that backs a dynamic-slot `sourceId`
+   * (the value carried inside the user's chain, e.g. `theme.fg` in
+   * `cas().color(theme.fg)`). Plugins that compile their own branches
+   * via `compileOps` use this to wire each compiled `DynamicSlot` back
+   * to its source for `style={...}` emission.
+   *
+   * Returns the *same* AST reference the parser holds. Don't mutate or
+   * re-parent the result if you intend to leave the original chain
+   * sub-tree in place. Plugins that fully replace the spread (the
+   * common case) can move the reference into the new style attribute
+   * without cloning — the original sub-tree is being removed anyway.
+   */
+  readonly getDynamicSource: (sourceId: string) => t.Expression;
+  /**
+   * Build a `style=` JSX attribute whose plugin contribution is an
+   * arbitrary expression (e.g. a `ConditionalExpression` whose
+   * branches carry per-branch CSS-variable bindings). Mirrors
+   * `makeStyleAttr` but accepts any expression instead of being
+   * limited to an `ObjectExpression` of property literals.
+   *
+   * When `existing` is null, the result is `style={pluginExpr}`. When
+   * an existing style is present, the result spreads both: cas-side
+   * vs user-side ordering is picked by `casWins` (true → cas keys
+   * win on collision, matching the spread-comes-later default).
+   */
+  readonly mergeStyleExpression: (
+    existing: t.JSXAttribute | null,
+    pluginExpr: t.Expression,
+    casWins: boolean,
+  ) => t.JSXAttribute;
 }
 
 /**
@@ -201,10 +232,22 @@ export interface SpreadPlan {
  * The host JSX element's `className` and `style` attributes at the
  * moment the spread is being rewritten. `null` for either field
  * means the host doesn't carry that attribute today.
+ *
+ * `casWins` reflects the JSX source-order precedence between the
+ * Cassida spread and any pre-existing `style=` / `className=`
+ * attribute. JSX evaluates spread props left-to-right and a later
+ * write overrides an earlier one — so:
+ *   `<div style={x} {...cas(...)} />`  →  casWins: true
+ *   `<div {...cas(...)} style={x} />`  →  casWins: false
+ * Plugins that emit a merged `style=` must thread this through to
+ * `helpers.mergeStyleExpression` (or otherwise pick the right order)
+ * so user-written declarations override or are overridden by
+ * Cassida's based on the same rule the bare-chain path uses.
  */
 export interface ExistingHostAttrs {
   readonly className: t.JSXAttribute | null;
   readonly style: t.JSXAttribute | null;
+  readonly casWins: boolean;
 }
 
 export interface TransformResult {
@@ -310,9 +353,14 @@ export function transform(source: string, options: TransformOptions): TransformR
       existingClassNameAttr,
     } = findAttributeIndices(opening, path.node);
 
+    // Cas spread comes AFTER the host style attr → cas keys override
+    // user-written ones on collision (the later spread / attr wins).
+    // Matches the single-chain handler's `casWins` semantics below.
+    const casWins = spreadIdx > styleIdx;
     const newSpreadAttrs = plan.buildAttrs({
       className: existingClassNameAttr,
       style: existingStyleAttr,
+      casWins,
     });
 
     // The plan's attrs determine the final shape. If the plan
@@ -358,6 +406,17 @@ export function transform(source: string, options: TransformOptions): TransformR
     },
     makeClassNameAttr,
     makeStyleAttr,
+    getDynamicSource: (sourceId) => {
+      const node = ctx.dynamicSources.get(sourceId);
+      if (!node) {
+        throw new Error(
+          `[cassida] parser plugin requested an unknown dynamic source id "${sourceId}". ` +
+            `Did the plugin compile the chain via helpers.compileOps?`,
+        );
+      }
+      return node;
+    },
+    mergeStyleExpression,
   };
 
   /**
@@ -411,6 +470,16 @@ export function transform(source: string, options: TransformOptions): TransformR
       },
       makeClassNameAttr,
       makeStyleAttr,
+      getDynamicSource: (sourceId) => {
+        const node = probeCtx.dynamicSources.get(sourceId);
+        if (!node) {
+          throw new Error(
+            `[cassida] parser plugin requested an unknown dynamic source id "${sourceId}" during probe.`,
+          );
+        }
+        return node;
+      },
+      mergeStyleExpression,
     };
     for (const plugin of parserPlugins) {
       if (!plugin.trySpread) continue;
@@ -1129,6 +1198,57 @@ function makeStyleAttr(
           ? existingExpr.properties
           : [t.spreadElement(existingExpr)]),
       ]);
+  return t.jsxAttribute(
+    t.jsxIdentifier('style'),
+    t.jsxExpressionContainer(merged),
+  );
+}
+
+/**
+ * Generalized `style=` merge. Accepts an arbitrary plugin-side
+ * expression (e.g. a `ConditionalExpression` whose branches carry
+ * different per-branch CSS-variable bindings) rather than the literal
+ * object form `makeStyleAttr` requires. Used by parser plugins that
+ * emit branch-conditional style — most prominently the
+ * `@cassida/plugin-conditional` v2 path that lifts
+ * `cond ? cas().X(dyn) : cas().Y(dyn2)` spreads.
+ *
+ * Merge shape (`casWins=true`):
+ *
+ *   no existing     → `style={pluginExpr}`
+ *   existing object → `style={{...existingProps, ...pluginExpr}}`
+ *   existing other  → `style={{...existingExpr, ...pluginExpr}}`
+ *
+ * `{...undefined}` is a no-op at runtime per spec, so a conditional
+ * pluginExpr whose branches may be `void 0` composes cleanly with an
+ * existing host `style`.
+ */
+function mergeStyleExpression(
+  existing: t.JSXAttribute | null,
+  pluginExpr: t.Expression,
+  casWins: boolean,
+): t.JSXAttribute {
+  const existingExpr = getExistingStyleExpr(existing);
+  if (existingExpr === null) {
+    return t.jsxAttribute(
+      t.jsxIdentifier('style'),
+      t.jsxExpressionContainer(pluginExpr),
+    );
+  }
+
+  // Both present — spread both into a fresh object. The spread that
+  // comes later wins on key collision. We inline the existing object's
+  // properties as-is (including any `ObjectMethod` getters/setters) to
+  // match `makeStyleAttr`'s shape and avoid silently dropping rare but
+  // valid AST node kinds.
+  const existingProps = t.isObjectExpression(existingExpr)
+    ? existingExpr.properties
+    : [t.spreadElement(existingExpr)];
+
+  const merged = casWins
+    ? t.objectExpression([...existingProps, t.spreadElement(pluginExpr)])
+    : t.objectExpression([t.spreadElement(pluginExpr), ...existingProps]);
+
   return t.jsxAttribute(
     t.jsxIdentifier('style'),
     t.jsxExpressionContainer(merged),

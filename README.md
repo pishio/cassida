@@ -401,7 +401,7 @@ Lifts `{...(cond ? cas().X() : cas().Y())}` and `{...(cond && cas().X())}` JSX s
 <button className={highlight ? "cas-XXXXXXXX" : "cas-YYYYYYYY"} />
 ```
 
-Both branches register independent CSS rules, so they participate in the standard dedup pipeline (a branch that matches a sibling bare-chain elsewhere shares the same hash). v0.4 covers pure-static branches; dynamic-slot branches remain on the runtime path.
+Both branches register independent CSS rules, so they participate in the standard dedup pipeline (a branch that matches a sibling bare-chain elsewhere shares the same hash). Dynamic-slot branches are supported too: `cond ? cas().color(theme.fg) : cas().color(theme.muted)` compiles each branch to its own class (with CSS-variable bindings) and emits a parallel `style={cond ? {...} : void 0}` ternary alongside the className one — the entire chain stays on the build-time path.
 
 #### `@cassida/plugin-global-css`
 
