@@ -1,13 +1,13 @@
 import type React from 'react';
 import { Outlet, NavLink, useParams } from 'react-router-dom';
 import { cas, type CassChain } from '@cassida/core';
-import { isLocale, DEFAULT_LOCALE, type Locale, LocaleContext, t } from '../lib/locale.js';
+import { isLocale, DEFAULT_LOCALE, type Locale, LocaleContext, useT } from '../lib/locale.js';
 import { LangSwitch } from './LangSwitch.js';
 
 /**
  * Outer shell that wraps every locale-routed page. Reads the
  * `:locale` segment, falls back to `'ja'` if absent, and exposes the
- * value via `LocaleContext` so deeply-nested components can `t({en,
+ * value via `LocaleContext` so deeply-nested components can `useT({en,
  * ja})` without prop-drilling.
  */
 export default function Layout(): React.JSX.Element {
@@ -49,7 +49,7 @@ export default function Layout(): React.JSX.Element {
 }
 
 function SidebarNav({ locale }: { locale: Locale }): React.JSX.Element {
-  const labels = t({
+  const labels = useT({
     en: {
       home: 'Home',
       install: 'Install',

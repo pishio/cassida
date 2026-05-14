@@ -1,9 +1,9 @@
 import type React from 'react';
 import { cas } from '@cassida/core';
-import { t } from '../lib/locale.js';
+import { useT } from '../lib/locale.js';
 
 export default function Landing(): React.JSX.Element {
-  const copy = t({
+  const copy = useT({
     en: {
       title: 'Cassida',
       tagline: 'One element, one class — compiled, not cascaded.',

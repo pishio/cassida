@@ -23,18 +23,17 @@ export function useLocale(): Locale {
 }
 
 /**
- * Translation helper. Pass a record `{ en, ja }` and get the value
- * for the active locale. Keeps strings co-located with their use site
- * — no separate JSON file per locale.
+ * Translation hook. Pass a record `{ en, ja }` and get the value for
+ * the active locale. Keeps strings co-located with their use site —
+ * no separate JSON file per locale.
  *
- *   <h1>{t({ en: 'One class', ja: '1 つのクラス' })}</h1>
+ *   <h1>{useT({ en: 'One class', ja: '1 つのクラス' })}</h1>
+ *
+ * The leading `use` prefix marks this as a custom hook so the
+ * underlying `useLocale()` call satisfies the Rules of Hooks
+ * unambiguously.
  */
-export function t<T>(record: Record<Locale, T>): T {
-  // Component-context resolution: the surrounding `useLocale()` call
-  // is what decides which key wins. This helper is intentionally
-  // tiny — exports as a plain function so it can sit next to JSX
-  // without ceremony.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+export function useT<T>(record: Record<Locale, T>): T {
   const locale = useLocale();
   return record[locale];
 }

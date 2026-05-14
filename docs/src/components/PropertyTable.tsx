@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { cas, type CassChain } from '@cassida/core';
 import manifest from '../lib/property-manifest.json' with { type: 'json' };
 import { mdnUrl } from '../lib/mdn.js';
-import { useLocale, t } from '../lib/locale.js';
+import { useLocale, useT } from '../lib/locale.js';
 
 interface ManifestEntry {
   readonly method: string;
@@ -37,7 +37,7 @@ export function PropertyTable(): React.JSX.Element {
     });
   }, [query, categoryFilter]);
 
-  const labels = t({
+  const labels = useT({
     en: {
       search: 'Filter by method or property name…',
       category: 'Category',

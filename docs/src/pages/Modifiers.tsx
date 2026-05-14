@@ -1,6 +1,6 @@
 import type React from 'react';
 import { cas } from '@cassida/core';
-import { t } from '../lib/locale.js';
+import { useT } from '../lib/locale.js';
 import { Code, InlineCode } from '../components/Code.js';
 
 const ZERO_ARG_MODIFIERS = [
@@ -26,7 +26,7 @@ const ZERO_ARG_MODIFIERS = [
 ];
 
 export default function Modifiers(): React.JSX.Element {
-  const copy = t({
+  const copy = useT({
     en: {
       title: 'Modifiers',
       intro:

@@ -1,10 +1,10 @@
 import type React from 'react';
 import { cas } from '@cassida/core';
-import { t } from '../lib/locale.js';
+import { useT } from '../lib/locale.js';
 import { Code } from '../components/Code.js';
 
 export default function Config(): React.JSX.Element {
-  const copy = t({
+  const copy = useT({
     en: {
       title: 'Configuration',
       intro:
