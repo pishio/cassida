@@ -8,28 +8,28 @@ export default function HoverFix(): React.JSX.Element {
     en: {
       title: '@cassida/plugin-hover-fix',
       intro:
-        'CSS-level plugin that wraps every :hover scope in @media (hover: hover) — gates hover styling to pointing devices that can actually hover. Fixes the iOS Safari sticky-hover bug where tapping an element leaves :hover styles applied until the next tap elsewhere.',
-      effectHeading: 'Effect on output',
+        'A CSS-level plugin that wraps every :hover scope in @media (hover: hover) — hover styling applies only to pointing devices that actually hover. The fix targets a long-standing iOS Safari bug where tapping an element leaves :hover styles applied until the user taps somewhere else.',
+      effectHeading: 'Before / after',
       withoutHeading: 'Without the plugin',
       withHeading: 'With the plugin',
       optionsHeading: 'Options',
       optionsQuery:
-        'query: override the media query. Default "(hover: hover)". Use "(hover: hover) and (pointer: fine)" to also require precise pointing (mouse, trackpad — not coarse stylus).',
+        'query: override the media query. Defaults to "(hover: hover)". Use "(hover: hover) and (pointer: fine)" if you want to require precise pointing too (mouse, trackpad — coarse stylus excluded).',
       optionsSelectors:
-        'selectors: an array of pseudo-class names to apply the wrap to. Default ["hover"]. Add "any-hover" if you want to gate :any-hover too.',
+        'selectors: pseudo-class names the wrap applies to. Defaults to ["hover"]. Add "any-hover" to gate :any-hover identically.',
     },
     ja: {
       title: '@cassida/plugin-hover-fix',
       intro:
-        'CSS レイヤーのプラグイン。すべての :hover スコープを @media (hover: hover) で包み、実際に hover できるポインティングデバイスにのみ hover スタイリングを適用します。iOS Safari のタップで :hover が残留するバグ (要素をタップした後、別の場所をタップするまで :hover スタイルが残る現象) を解消します。',
-      effectHeading: '出力への影響',
+        ':hover スコープをすべて @media (hover: hover) で包む CSS レイヤーのプラグイン。実際に hover できるポインティングデバイスにだけ hover スタイルが適用される。iOS Safari の長年のバグ — 要素をタップした後、別の場所をタップするまで :hover が残り続ける挙動 — をこれで塞ぐ。',
+      effectHeading: 'Before / After',
       withoutHeading: 'プラグインなし',
       withHeading: 'プラグインあり',
       optionsHeading: 'オプション',
       optionsQuery:
-        'query: メディアクエリを上書きします。デフォルト "(hover: hover)"。精密なポインティング (マウス / トラックパッド — coarse なスタイラスを除外) も要求する場合は "(hover: hover) and (pointer: fine)" を指定します。',
+        'query: メディアクエリを上書きする。デフォルト "(hover: hover)"。精密なポインティング (マウス・トラックパッド — coarse なスタイラスは除外) も要求するなら "(hover: hover) and (pointer: fine)" を渡す。',
       optionsSelectors:
-        'selectors: ラッピング対象の擬似クラス名配列。デフォルト ["hover"]。:any-hover にもゲートをかけたい場合は "any-hover" を追加します。',
+        'selectors: ラップ対象となる擬似クラス名の配列。デフォルト ["hover"]。:any-hover にも同じゲートをかけたければ "any-hover" を加える。',
     },
   });
 

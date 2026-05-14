@@ -9,36 +9,36 @@ export default function Registry(): React.JSX.Element {
     en: {
       title: 'Property registry',
       intro:
-        'Every standard CSS property is callable as a chain method. The curated subset is hand-typed via csstype for IDE autocomplete on real CSS values; the rest is auto-generated from mdn-data with a permissive (string | number) signature.',
+        'Every standard CSS property is callable as a chain method. The curated subset is hand-typed via csstype so IDE autocomplete surfaces real CSS values; the long tail is auto-generated from mdn-data with a permissive (string | number) signature. The line between them is invisible at the call site — you get the same chain shape either way.',
       canonicalHeading: 'Canonical entries',
       canonicalCopy:
-        'Hand-crafted, csstype-typed. Includes box-model shorthand families (margin, padding, inset) with their longhands plus the Tailwind-style multi-property utilities px / py / mx / my that write two physical longhands per call. Shorthand-policy enforces that you don’t mix a shorthand with its longhand in the same scope — the cascade-vs-LIFO ambiguity is rejected at build time.',
+        'Hand-crafted, csstype-typed. Covers the box-model shorthand families (margin, padding, inset) along with their longhands, and ships Tailwind-shaped multi-property utilities — px / py / mx / my — that write two physical longhands per call. The shorthand-policy guard rejects shorthand ↔ longhand co-occurrence inside a single scope at build time, so the cascade-vs-LIFO ambiguity that bites silently elsewhere has no place to hide.',
       generatedHeading: 'Generated entries',
       generatedCopy:
-        '~230 methods auto-generated from mdn-data, covering every standard CSS property the curated set doesn’t. Accept (string | number) as a single permissive argument. Hand-crafted methods of the same name override these via TypeScript intersection, so the curated typing wins where it exists.',
+        'Roughly 230 methods auto-generated from mdn-data fill the gaps the curated set leaves open. Each takes a permissive (string | number) argument. When a name collides with a canonical entry, TypeScript’s intersection keeps the curated typing — generated methods exist for breadth, not to loosen what the curated set already constrains.',
       multiHeading: 'Multi-property utilities (v0.4+)',
       multiCopy:
-        'px(n) writes both padding-inline-start AND padding-inline-end. Per-longhand LIFO collapse: cas().px(8).paddingInlineStart(4) ends up with start: 4px, end: 8px. Treated as a longhand of the padding / margin family for shorthand-policy.',
+        'px(n) writes both padding-inline-start and padding-inline-end. LIFO collapses per-longhand: cas().px(8).paddingInlineStart(4) settles on start: 4px, end: 8px. For shorthand-policy purposes they’re longhands of the padding / margin family — mixing px with padding in the same scope errors at build time, just like paddingTop would.',
       mdnHeading: 'MDN cross-reference',
       mdnCopy:
-        'Every row links to its CSS property page on MDN in the active locale. Search and filter the table below by method name, CSS property, or alias.',
+        'Every row links to its MDN documentation page in the active locale (en-US or ja). Search by method name, CSS property, or alias; filter by category. The table is generated from the same registry the runtime consumes, so it never drifts.',
     },
     ja: {
       title: 'プロパティレジストリ',
       intro:
-        '標準 CSS プロパティはすべてチェーンメソッドとして呼び出せます。curated なサブセットは csstype で IDE autocomplete を効かせるため手書き型付きで、その他は mdn-data から自動生成され (string | number) の permissive シグネチャを持ちます。',
-      canonicalHeading: 'Canonical entries',
+        '標準 CSS プロパティはすべてチェーンメソッドとして呼べる。curated なサブセットは csstype で hand-typed され、IDE 補完が実在の CSS 値を提案する。残りの「長い裾」は mdn-data から自動生成されており、引数は permissive な (string | number) だ。呼び出し側からはその境界は見えない — どちらにせよ同じ形のチェーンが手に入る。',
+      canonicalHeading: 'Canonical エントリ',
       canonicalCopy:
-        'csstype 型付きの手書きエントリー。box-model の shorthand ファミリー (margin / padding / inset) と各 longhand に加え、1 回の呼び出しで 2 つの物理 longhand に書き込む Tailwind 風の multi-property utility (px / py / mx / my) を含みます。shorthand-policy により、同一スコープ内での shorthand と longhand の混在 — cascade vs LIFO の曖昧さ — はビルド時に拒否されます。',
-      generatedHeading: 'Generated entries',
+        '手書き、csstype 型付き。box-model の shorthand ファミリー (margin / padding / inset) と各 longhand に加え、Tailwind 流の multi-property utility — px / py / mx / my — を備える。これらは 1 回の呼び出しで 2 つの物理 longhand を書き込む。shorthand-policy ガードは、同一スコープ内での shorthand と longhand の併存をビルド時に拒否する。LIFO とカスケードの曖昧さに足元を救われる余地は、ここに残されていない。',
+      generatedHeading: 'Generated エントリ',
       generatedCopy:
-        'mdn-data から約 230 個のメソッドを自動生成し、curated なセットがカバーしない標準 CSS プロパティをすべて埋めています。引数は (string | number) の permissive な単一引数。同名の手書きメソッドは TypeScript の intersection で優先され、curated な型付けが効くところでは効きます。',
+        'curated なセットが埋めない穴は、mdn-data から自動生成された約 230 個のメソッドが受け持つ。引数は permissive な (string | number) を 1 つ。同名のメソッドが canonical 側にある場合、TypeScript の intersection が curated な型付けを優先する — generated は幅をもたらすために存在しており、curated が課す制約を緩めるためではない。',
       multiHeading: 'Multi-property utility (v0.4+)',
       multiCopy:
-        'px(n) は padding-inline-start と padding-inline-end の両方に書き込みます。プロパティ単位の LIFO 畳み込み: cas().px(8).paddingInlineStart(4) の結果は start: 4px, end: 8px。shorthand-policy では padding / margin ファミリーの longhand として扱われます。',
+        'px(n) は padding-inline-start と padding-inline-end の双方を書き込む。LIFO 畳み込みは longhand 単位で効くため、cas().px(8).paddingInlineStart(4) の結果は start: 4px, end: 8px に落ち着く。shorthand-policy の世界では padding / margin ファミリーの longhand として扱われ、px と padding を同一スコープで混在させればビルド時にエラーになる — paddingTop の場合とまったく同じ挙動だ。',
       mdnHeading: 'MDN クロスリファレンス',
       mdnCopy:
-        'すべての行は現在のロケールの MDN CSS プロパティページにリンクします。下の表はメソッド名、CSS プロパティ、エイリアスで検索・絞り込みできます。',
+        '全行が現在のロケール (en-US または ja) の MDN ドキュメントページへリンクしている。メソッド名・CSS プロパティ名・エイリアスで検索でき、カテゴリで絞り込める。表はランタイムと同じレジストリから生成されているので、両者が乖離することはない。',
     },
   });
 

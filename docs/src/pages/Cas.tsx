@@ -8,44 +8,44 @@ export default function Cas(): React.JSX.Element {
     en: {
       title: 'cas() chain',
       intro:
-        'cas() returns a chain builder. Every method call records a CSS write; the chain terminates at .props (or another terminator like .cond / .set) to yield JSX-spreadable { className, style }.',
+        'cas() returns a chain. Each method records a single CSS write; the chain terminates at .props (or one of the other terminators) to yield a JSX-spreadable { className, style } pair. No template literals, no string assembly — just typed method calls that the build pipeline collapses into a single hashed class.',
       propsHeading: '.props — the JSX terminator',
       propsCopy:
-        'Every chain ends with .props. The shape is exactly { className: string; style: Readonly<CSSProperties> } — the two attributes JSX needs, with the chain method surface stripped so React typings accept the spread.',
+        'Every chain ends with .props. The shape is exactly { className: string; style: Readonly<CSSProperties> } — the two attributes JSX consumes, with the chain’s method surface stripped so React’s type system accepts the spread without complaint.',
       propsWhy:
-        'Why a terminator instead of spreading the chain object directly? The chain carries ~460 method handles named after CSS properties, and a handful of those names collide with HTML attributes (translate, disabled, hidden, etc). React rejects the resulting union; .props fixes it without dropping autocomplete.',
-      condHeading: '.cond(test, truthy, falsy?) — chain-internal branching',
+        'Why a terminator at all? The chain object exposes roughly 460 method handles named after CSS properties, and a handful collide with HTML attributes (translate, disabled, hidden, slot, dir, lang, is). React’s JSX types refuse the resulting union. .props pares the spread down to the two keys React actually wants — autocomplete on the chain stays intact, the spread typechecks under strict settings.',
+      condHeading: '.cond(test, truthy, falsy?) — branching inside the chain',
       condCopy:
-        'Keep conditional styling inside the chain instead of duplicating the outer methods across both branches of a JSX ternary. At build time each branch materializes its own class hash; the JSX className becomes a nested ternary that picks the right one.',
+        'JSX-level ternaries duplicate the outer chain methods across both branches. .cond keeps the branching inline: write the shared methods once, branch the variants. At build time each branch materialises its own class hash; the JSX className becomes a nested ternary that picks among them at runtime.',
       condRuntime:
-        'At runtime, test is evaluated immediately and the picked branch is inlined into the linear ops list. The runtime hash matches the corresponding build-time leaf exactly.',
-      setHeading: '.set(key, value) — direct property write',
+        'At runtime, test is evaluated eagerly and the picked branch’s ops are spliced into the linear list. The runtime hash matches the corresponding build-time leaf byte-for-byte — the same bag yields the same class regardless of which path produced it.',
+      setHeading: '.set(key, value) — bypass the registry for one property',
       setCopy:
-        'Bypass the registry for a single property write. Useful for vendor prefixes, CSS custom properties (--brand-*), or any property outside the curated safe surface. Numbers are NOT auto-unitized — pass full CSS values like "10px".',
+        'Use .set when you need a single property that lives outside Cassida’s curated surface: vendor prefixes, CSS custom properties (--brand-*), or anything experimental. No auto-unitisation, no shorthand-policy enforcement; you pass full CSS values ("10px", "1.5rem") and you own the correctness.',
       aliasesHeading: 'Aliases',
       aliasesCopy:
-        'Short runtime sugar that resolves to the same registry entry as the long form. Aliases are intentionally absent from the TypeScript-typed CassChain — they exist for ergonomics in untyped contexts and during refactor. Recommended to use the canonical names in code you ship.',
+        'Short runtime shortcuts resolve to the same registry entries as their canonical forms — bg → backgroundColor, mt → marginTop, and so on. The typed CassChain deliberately omits them: aliases exist for muscle memory and the untyped escape paths, not for production code where the long form makes intent legible.',
     },
     ja: {
       title: 'cas() チェーン',
       intro:
-        'cas() はチェーンビルダーを返します。各メソッド呼び出しが 1 つの CSS 書き込みを記録します。チェーンは .props（または .cond / .set など別の終端子）で終わり、JSX に spread できる { className, style } を返します。',
+        'cas() はチェーンを返す。メソッド 1 回ごとに CSS 書き込みが 1 つ記録され、最後に .props (あるいは別の終端子) を呼ぶと JSX に spread できる { className, style } が返る。テンプレートリテラルも文字列連結も登場しない — 型付きメソッド呼び出しの並びを、ビルド側がハッシュ化されたクラスへ畳み込む。',
       propsHeading: '.props — JSX 終端子',
       propsCopy:
-        'すべてのチェーンは .props で終わります。返値の形は { className: string; style: Readonly<CSSProperties> } — JSX が必要とする 2 つの属性だけで、チェーンのメソッド面は剥がされており React の型が spread を受け入れます。',
+        'すべてのチェーンは .props で終わる。返るのは { className: string; style: Readonly<CSSProperties> } — JSX が必要とする 2 属性だけだ。チェーンが持つメソッド面は剥がされ、React の型システムが spread を素直に受け入れる。',
       propsWhy:
-        'なぜチェーンオブジェクトを直接 spread せず終端子経由なのか？ チェーンは CSS プロパティ名にちなんだ約 460 個のメソッドハンドルを持ち、その中に HTML 属性と衝突するもの (translate / disabled / hidden 等) が含まれます。React の型はその union を拒否しますが、.props は autocomplete を犠牲にせずに型を成立させます。',
+        'なぜ終端子が要るのか。チェーンオブジェクトは CSS プロパティに対応する約 460 個のメソッドハンドルを持ち、その中に HTML 属性と衝突する名前 (translate / disabled / hidden / slot / dir / lang / is) がいくつかある。React の JSX 型はその union を拒否する。.props はその union を 2 キーへ刈り込む — チェーンの autocomplete は失われず、strict 設定下でも spread が型を通る。',
       condHeading: '.cond(test, truthy, falsy?) — チェーン内分岐',
       condCopy:
-        '条件付きスタイリングをチェーン内に閉じ込めます。JSX 三項式で外側のメソッドを両分岐に複製する必要がありません。ビルド時に各分岐は独自のクラスハッシュにマテリアライズされ、JSX の className は適切な 1 つを選ぶネスト三項式になります。',
+        'JSX レベルの三項演算子は、外側のチェーンメソッドを両分岐に複製させる。.cond ならその重複を取り除ける — 共通のメソッドは 1 度だけ書き、差分だけを分岐に閉じ込める。ビルド時に各分岐がそれぞれ独自のクラスハッシュを得て、JSX の className はそれを選ぶ入れ子の三項式に書き換わる。',
       condRuntime:
-        'ランタイムでは test が即時評価され、選ばれた分岐が線形 ops リストに inline されます。ランタイムのハッシュは対応するビルド時の leaf と完全に一致します。',
-      setHeading: '.set(key, value) — レジストリを経由しないプロパティ書き込み',
+        'ランタイムでは test が即座に評価され、選ばれた分岐の ops が線形リストに合流する。生まれるハッシュはビルド時の対応する leaf とバイト単位で一致する — 同じバッグからは、経路を問わず同じクラスが出る。',
+      setHeading: '.set(key, value) — 1 プロパティだけレジストリを迂回する',
       setCopy:
-        '単一プロパティの書き込みでレジストリをバイパスします。ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、または curated な safe surface 外のプロパティに有用です。数値は自動で単位付与されません — "10px" のように完全な CSS 値を渡します。',
+        'curated な面の外側に出たいとき (ベンダープレフィックス、CSS カスタムプロパティ --brand-*、実験的な仕様) は .set を使う。単位の自動付与もなければ shorthand-policy のチェックもない。"10px" や "1.5rem" のように完全な CSS 値を渡し、正しさは呼び出し側が引き受ける。',
       aliasesHeading: 'エイリアス',
       aliasesCopy:
-        'ランタイムでのみ機能する短縮形で、long form と同じレジストリエントリーを指します。エイリアスは TypeScript 型付き CassChain には意図的に含まれていません — 型なしの文脈やリファクタ中のエルゴノミクスのために存在します。リリースするコードでは canonical な名前を推奨します。',
+        'bg → backgroundColor、mt → marginTop のような短縮形は、canonical なエントリと同じ実体を指すランタイム上のショートカットだ。型付き CassChain にはあえて載せていない — エイリアスは指の動きを軽くするためと、型なしのエスケープ経路のためのもので、意図を読み取らせる必要があるプロダクションコードでは long form の方が雄弁だ。',
     },
   });
 
@@ -91,7 +91,7 @@ export default function Cas(): React.JSX.Element {
 //   pb → paddingBottom
 //   pl → paddingLeft
 
-cas().bg('white').mt(8);   // = cas().backgroundColor('white').marginTop(8)`} />
+cas().bg('white').mt(8);   // === cas().backgroundColor('white').marginTop(8)`} />
     </article>
   );
 }

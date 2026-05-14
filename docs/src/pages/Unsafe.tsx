@@ -30,37 +30,37 @@ export default function Unsafe(): React.JSX.Element {
     en: {
       title: 'Unsafe surface',
       intro:
-        'Cassida’s typed surface refuses certain CSS shorthands and any property outside the standard set. When you genuinely need them — for vendor prefixes, CSS custom properties (--brand-*), or shorthand-with-implicit-reset semantics — explicit opt-out paths exist. The naming follows Rust: cas.unsafe (and .set) acknowledges that you take responsibility for the CSS correctness the registry would otherwise check.',
+        'The typed cas() surface deliberately rejects a handful of CSS shorthands and refuses anything outside the standard property set. When you genuinely need them — vendor prefixes, CSS custom properties (--brand-*), or a shorthand whose implicit-reset semantics you accept — Cassida exposes named escape paths. The naming follows Rust: cas.unsafe (and .set) makes the cost of bypassing the registry visible at the call site.',
       whyHeading: 'Why these are unsafe',
       whyCopy:
-        'CSS shorthands like background and font have implicit-reset semantics: writing one of them resets every sub-property the shorthand covers, including the ones you didn’t mention. Cascade output for "padding: 8px" then "padding-top: 16px" is order-dependent in arbitrary cascade contexts; Cassida’s strict-by-default shorthand-policy refuses the co-occurrence to prevent the LIFO-vs-cascade ambiguity from biting silently. The unsafe escape bypasses every one of these checks.',
+        'CSS shorthands like background and font carry implicit-reset semantics — writing one resets every sub-property the shorthand covers, including the ones you didn’t mention. In an arbitrary cascade, writing "padding: 8px" and then "padding-top: 16px" is order-dependent: the source order decides which declaration wins. Cassida’s strict-by-default shorthand-policy refuses that co-occurrence to keep LIFO and cascade in sync. cas.unsafe and .set step around every one of those checks — that’s the whole point, and that’s why they’re named.',
       casUnsafeHeading: 'cas.unsafe(preset)',
       casUnsafeCopy:
-        'Start a chain from an object preset that can include any string key. Bypasses: registry lookup, shorthand-policy guard, family tracking. The preset object’s entries are inlined as raw CSS declarations.',
+        'Open a chain from an object whose keys can be anything. The preset’s entries are inlined as raw CSS declarations — registry lookup, shorthand-policy enforcement, and family tracking are all bypassed.',
       setHeading: '.set(key, value)',
       setCopy:
-        'Method form of the same escape. Use mid-chain to drop in a single property write that bypasses the registry. No auto-unitization: pass full CSS values ("10px", "1.5rem"), not bare numbers.',
+        'The method equivalent of cas.unsafe — drop a single property write into the middle of a chain. No auto-unitisation: pass full CSS values like "10px" or "1.5rem" rather than bare numbers.',
       blacklistHeading: 'Blacklisted shorthands',
       blacklistCopy:
-        'These shorthand names are absent from the typed cas() surface. The TypeScript-typed preset type SafePreset filters them out; the chain methods don’t exist either. To write them, use cas.unsafe({ ... }) or cas().set(\'background\', \'...\'):',
-      blacklistTable: 'The names removed from the safe surface:',
+        'These shorthand names are absent from the typed cas() chain. The TypeScript-typed SafePreset filters them out at the boundary; the chain methods don’t exist either. To reach them, use cas.unsafe({ ... }) or cas().set(\'background\', \'...\'):',
+      blacklistTable: 'The names excluded from the safe surface:',
     },
     ja: {
       title: 'unsafe な面',
       intro:
-        'Cassida の型付き面は特定の CSS shorthand と標準セット外のプロパティを拒否します。本当に必要な場合 — ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、暗黙リセットを伴う shorthand 意味論 — のために明示的な opt-out 経路が用意されています。命名は Rust に倣い、cas.unsafe (および .set) は「レジストリが検査するはずの CSS 正しさをあなたが引き受ける」ことを示します。',
-      whyHeading: 'なぜ unsafe か',
+        '型付き cas() の面は、特定の CSS shorthand と標準セット外のプロパティを意図的に拒否する。だが、本当にそれが必要な場面 — ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、暗黙リセットを伴う shorthand を受け入れた上での記述 — のためには、名前付きの脱出経路が用意してある。命名は Rust に倣い、cas.unsafe (および .set) はレジストリを迂回するコストを呼び出し側に明示する。',
+      whyHeading: 'なぜ unsafe なのか',
       whyCopy:
-        'background や font などの CSS shorthand には暗黙リセット意味論があります — それらを書き込むと shorthand が覆うすべてのサブプロパティが (明示していないものも含めて) リセットされます。任意の cascade コンテキストで "padding: 8px" の後に "padding-top: 16px" を書いた場合の cascade 出力は順序依存となり、Cassida のデフォルト strict な shorthand-policy は LIFO vs cascade の曖昧さが silently 噛むのを防ぐためこの co-occurrence を拒否します。unsafe な escape はこれらの検査すべてをバイパスします。',
+        'background や font などの shorthand には暗黙リセット意味論がある — 1 つ書き込むと、その shorthand が覆うすべてのサブプロパティが (明示していないものも含めて) リセットされる。任意のカスケード文脈で "padding: 8px" の後に "padding-top: 16px" を書けば、勝つのはソース順に依存する宣言になる。Cassida のデフォルト strict な shorthand-policy はこの共起を拒否し、LIFO とカスケードの結果を一致させ続ける。cas.unsafe や .set はそれらのチェックを意図的に迂回するためのものだ — そう設計されており、そう命名されている。',
       casUnsafeHeading: 'cas.unsafe(preset)',
       casUnsafeCopy:
-        '任意の string キーを含む preset オブジェクトからチェーンを開始します。バイパスするもの: レジストリ検索、shorthand-policy ガード、family tracking。preset のエントリーは生の CSS 宣言として inline されます。',
+        '任意の string キーを含むオブジェクトからチェーンを開始する。preset の各エントリは生の CSS 宣言として inline され、レジストリ検索・shorthand-policy ガード・family tracking はすべてバイパスされる。',
       setHeading: '.set(key, value)',
       setCopy:
-        '同じ escape のメソッド形式。チェーン途中で 1 つのプロパティ書き込みを差し込んでレジストリをバイパスします。自動の単位付与なし: "10px", "1.5rem" のように完全な CSS 値を渡してください。',
-      blacklistHeading: 'ブラックリスト shorthand',
+        'cas.unsafe のメソッド形式 — チェーンの途中に 1 プロパティ書き込みを差し込む。単位の自動付与はない。"10px" や "1.5rem" のように完全な CSS 値を渡す。',
+      blacklistHeading: 'ブラックリストの shorthand',
       blacklistCopy:
-        '以下の shorthand 名は型付き cas() 面から欠落しています。TypeScript の型付き preset 型 SafePreset でフィルタされ、チェーンメソッドとしても存在しません。これらを書きたい場合は cas.unsafe({ ... }) または cas().set(\'background\', \'...\') を使ってください:',
+        '以下の shorthand 名は型付き cas() 面から欠落している。型付き preset の SafePreset が境界でこれらを除外し、チェーンメソッドとしても存在しない。これらを書きたい場合は cas.unsafe({ ... }) もしくは cas().set(\'background\', \'...\') を経由する:',
       blacklistTable: 'safe surface から除外されている名前:',
     },
   });

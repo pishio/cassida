@@ -8,44 +8,44 @@ export default function Config(): React.JSX.Element {
     en: {
       title: 'Configuration',
       intro:
-        'Place cassida.config.json at the project root. The vite plugin auto-discovers it; values not specified fall back to documented defaults.',
+        'Drop a cassida.config.json at the project root. The Vite plugin auto-discovers it and merges your values over the documented defaults. Every field is optional — leave a key out and you get the default.',
       fields: 'Fields',
       shorthandTitle: 'shorthand.policy',
       shorthandCopy:
-        '"strict" (default) bans shorthand ↔ longhand co-occurrence in either direction within a single scope. "shorthand-first" allows longhand → shorthand but still bans the reverse (the bug-prone direction). "lenient" disables the check entirely; downstream cascade decides on its own.',
+        '"strict" (default) refuses shorthand ↔ longhand co-occurrence in either direction within the same scope. "shorthand-first" allows longhand → shorthand but still refuses the reverse (the direction that bites silently). "lenient" disables the check entirely; you’re telling Cassida to trust the downstream cascade with the conflict resolution.',
       mediaSortTitle: 'media.sort',
       mediaSortCopy:
-        '"mobile-first" (default) sorts min-width queries low → high. "desktop-first" sorts max-width queries high → low. em/rem are normalized at 16px so they sort correctly relative to px. Non-width queries (print, prefers-color-scheme, …) follow width-based ones alphabetically.',
+        '"mobile-first" (default) sorts min-width queries low → high. "desktop-first" sorts max-width queries high → low. em / rem are normalised at 16px so they interleave with px in the right order. Non-width queries (print, prefers-color-scheme, …) trail the width block alphabetically.',
       layerTitle: 'layer',
       layerCopy:
-        'Cascade layer name to wrap every Cassida-emitted rule in. Defaults to "cas". Set to null to disable layer wrapping (rarely a good idea; cascade-layer composition is what lets Cassida classes win over preflight without specificity tricks).',
+        'The cascade layer Cassida wraps every emitted rule in. Defaults to "cas". Setting it to null disables the wrap — almost always the wrong choice, because the layer is what lets a Cassida class beat a preflight rule without specificity tricks.',
       hashTitle: 'hash',
       hashCopy:
-        'Class hash format. Defaults: { prefix: "cas-", length: 8 }. Increase length if you expect hash collisions in extremely large projects (vanishingly unlikely under 8-char MurmurHash3).',
+        'Class-hash format. Defaults: { prefix: "cas-", length: 8 }. An 8-character MurmurHash3 collides with vanishing probability in real projects; raise length if you operate at "every chain in npm" scale.',
       cssTitle: 'css',
       cssCopy:
-        'Output mode and post-processing. mode: "rule-per-class" (default — one rule per class hash) or "shared-by-declaration" (group declarations by value across classes for tiny CSS savings). lightningcss.enabled = true pipes the emitted CSS through lightningcss for autoprefixing and minification.',
+        'Emission mode and post-processing. mode: "rule-per-class" (one rule per class hash, default) or "shared-by-declaration" (group declarations across classes for a tiny size win). lightningcss.enabled pipes the emitted CSS through lightningcss for autoprefixing and minification.',
     },
     ja: {
       title: '設定',
       intro:
-        'プロジェクトルートに cassida.config.json を置きます。Vite プラグインが自動検出し、指定されないフィールドは documented なデフォルトにフォールバックします。',
+        'プロジェクトルートに cassida.config.json を置く。Vite プラグインが自動で見つけ、指定された値を documented デフォルトの上にマージする。すべてのフィールドは optional — キーを書かなければデフォルトが採用される。',
       fields: 'フィールド',
       shorthandTitle: 'shorthand.policy',
       shorthandCopy:
-        '"strict" (デフォルト) は単一スコープ内での shorthand と longhand の共起をどちらの方向でも拒否します。"shorthand-first" は longhand → shorthand を許可しますが逆方向 (バグを誘発しやすい方向) は依然禁止。"lenient" はチェックを完全に無効化し、下流の cascade に判断を委ねます。',
+        '"strict" (デフォルト) は同一スコープ内での shorthand と longhand の共起をどちらの方向でも拒否する。"shorthand-first" は longhand → shorthand を許すが、逆方向 (静かにバグる方向) は依然として拒否する。"lenient" はチェックを完全に無効化する — 下流のカスケードに衝突解決を委ねる宣言だと理解した上で選ぶ。',
       mediaSortTitle: 'media.sort',
       mediaSortCopy:
-        '"mobile-first" (デフォルト) は min-width クエリを小 → 大にソート。"desktop-first" は max-width クエリを大 → 小にソート。em/rem は 16px で正規化されるので px との相対順序が正しく決まります。幅基準でないクエリ (print、prefers-color-scheme 等) は幅基準クエリの後にアルファベット順で並びます。',
+        '"mobile-first" (デフォルト) は min-width クエリを小 → 大にソートする。"desktop-first" は max-width クエリを大 → 小にソートする。em / rem は 16px で正規化されるため、px と適切な順で交互に並ぶ。幅基準でないクエリ (print、prefers-color-scheme など) は幅ブロックの後ろにアルファベット順で続く。',
       layerTitle: 'layer',
       layerCopy:
-        'Cassida が emit するすべてのルールを包む cascade layer 名。デフォルト "cas"。null にすると layer wrapping を無効化 (preflight に対して詳細度トリックなしで Cassida クラスが勝つのは cascade-layer の構成によるものなので、無効化は推奨されません)。',
+        'Cassida が emit するすべてのルールを包む cascade layer 名。デフォルトは "cas"。null にすると wrap を無効化できるが、ほぼ常に誤った選択だ — Cassida のクラスがプリフライトを詳細度トリックなしで凌ぐのは、このレイヤーの存在のおかげだ。',
       hashTitle: 'hash',
       hashCopy:
-        'クラスハッシュのフォーマット。デフォルト: { prefix: "cas-", length: 8 }。極端に大規模なプロジェクトでハッシュ衝突を懸念する場合は length を増やします (8 文字 MurmurHash3 で衝突する確率は実質ゼロ)。',
+        'クラスハッシュのフォーマット。デフォルトは { prefix: "cas-", length: 8 }。8 文字の MurmurHash3 は実用上は無視できる確率でしか衝突しない。npm 上の全チェーン規模で動かす場合のみ length を引き上げる。',
       cssTitle: 'css',
       cssCopy:
-        '出力モードと後処理。mode: "rule-per-class" (デフォルト — クラスハッシュごとに 1 ルール) または "shared-by-declaration" (値ごとに宣言をグルーピング、CSS サイズが微減)。lightningcss.enabled = true で emit された CSS を lightningcss に通して autoprefix・minify します。',
+        '出力モードと後処理。mode: "rule-per-class" (クラスハッシュごとに 1 ルール、デフォルト) または "shared-by-declaration" (値ごとに宣言をグルーピングして CSS サイズを微減)。lightningcss.enabled を true にすると、emit された CSS が lightningcss を通って autoprefix と minify を受ける。',
     },
   });
 

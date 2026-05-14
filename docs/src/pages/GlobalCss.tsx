@@ -8,28 +8,30 @@ export default function GlobalCss(): React.JSX.Element {
     en: {
       title: '@cassida/plugin-global-css',
       intro:
-        'Vite plugin that serves arbitrary global CSS — preflight, resets, body / tag-selector rules — through a virtual module, wrapped in a configurable @layer so it composes cleanly with Cassida’s single-class output. Cassida’s chains always emit exactly one class per element; this plugin fills the gap for rules like body { ... } or *, ::before, ::after { ... } without introducing a second styling system.',
+        'A Vite plugin that serves arbitrary global CSS — preflight, resets, body / tag-selector rules — through a virtual module, wrapped in a configurable @layer so it composes cleanly with Cassida’s single-class output. Cassida’s chains always emit exactly one class per element; this plugin fills the gap for everything that can’t be expressed that way, without introducing a second styling system.',
       install: 'Install',
       use: 'Use',
       optionsHeading: 'Options',
-      optionsCss: 'css: the raw CSS string. The plugin does not parse or transform it — passed through to Vite as-is, then wrapped in @layer if `layer` is non-null.',
+      optionsCss:
+        'css: the raw CSS string. The plugin doesn’t parse or transform it — passed through to Vite as-is, then wrapped in @layer when `layer` is non-null.',
       optionsLayer:
-        'layer: cascade layer name to wrap the CSS in. Defaults to "base" so the canonical @layer base, cas; declaration lets Cassida classes in @layer cas win without specificity tricks. Pass null to skip the wrap.',
+        'layer: the cascade layer to wrap the CSS in. Defaults to "base", so the canonical @layer base, cas; declaration lets Cassida classes in @layer cas win without specificity tricks. Pass null to skip the wrap.',
       optionsVirtualId:
-        'virtualId: virtual module id. Defaults to "virtual:cassida-global.css". Override to mount multiple instances (e.g. one for preflight, one for print).',
+        'virtualId: the virtual module id. Defaults to "virtual:cassida-global.css". Override to mount multiple instances (one for preflight, one for print, …).',
     },
     ja: {
       title: '@cassida/plugin-global-css',
       intro:
-        'グローバル CSS (preflight、reset、body / タグセレクタルール) を virtual module 経由で提供する Vite プラグイン。configurable な @layer で包み、Cassida の単一クラス出力と綺麗に共存できます。Cassida のチェーンは常に 1 要素 1 クラスを emit するので、body { ... } や *, ::before, ::after { ... } のようなルールを書く穴をこのプラグインが埋めます — 二重の styling system を持ち込むことなく。',
+        'グローバル CSS (プリフライト、リセット、body / タグセレクタルール) を virtual module 経由で配信する Vite プラグイン。configurable な @layer で包むため、Cassida の単一クラス出力と素直に共存できる。Cassida のチェーンは 1 要素につき必ず 1 クラスを emit する — その形では表現できないルールをこのプラグインが担う。二重のスタイリングシステムは導入しない。',
       install: 'インストール',
       use: '使い方',
       optionsHeading: 'オプション',
-      optionsCss: 'css: 生の CSS 文字列。プラグインは解析・変換せず Vite にそのまま渡し、`layer` が null でない場合は @layer で包みます。',
+      optionsCss:
+        'css: 生の CSS 文字列。プラグインは解析も変換も行わず、Vite にそのまま渡す。`layer` が null でないときは @layer で包む。',
       optionsLayer:
-        'layer: CSS を包む cascade layer 名。デフォルト "base"。canonical な @layer base, cas; 宣言と組み合わせれば、@layer cas にある Cassida クラスが詳細度トリックなしで勝ちます。null で wrap をスキップ。',
+        'layer: CSS を包む cascade layer 名。デフォルト "base"。canonical な @layer base, cas; 宣言と組み合わせれば、@layer cas にある Cassida クラスが詳細度トリックなしで勝つ。null を渡せば wrap を省略できる。',
       optionsVirtualId:
-        'virtualId: virtual module の id。デフォルト "virtual:cassida-global.css"。複数インスタンスを mount する場合 (preflight 用 + print 用 など) は別の id を指定します。',
+        'virtualId: virtual module の id。デフォルト "virtual:cassida-global.css"。複数インスタンスをマウントする場合 (プリフライト用と print 用、…) は別の id を指定する。',
     },
   });
 

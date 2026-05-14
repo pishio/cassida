@@ -8,32 +8,34 @@ export default function Install(): React.JSX.Element {
     en: {
       title: 'Install',
       intro:
-        'Cassida is published on npm under the @cassida scope. Most consumers install three packages: the runtime, the Vite plugin, and the recommended bundle.',
+        'Three packages cover the typical setup: the runtime (@cassida/core), the Vite plugin that does the compile work, and the recommended bundle that flips on the maintainers’ default plugins. Yarn and npm work the same way; pnpm is what we test against.',
       pnpmHeading: 'pnpm',
       npmHeading: 'npm',
       yarnHeading: 'yarn',
       viteHeading: 'vite.config.ts',
       viteIntro:
-        'Wire Cassida and the recommended plugin bundle into Vite. Add cassidaGlobalCss for preflight / reset CSS.',
+        'Mount cassida() with the recommended bundle, then drop cassidaGlobalCss() in if you want preflight / reset CSS served through the same Vite pipeline.',
       appHeading: 'First chain',
       appIntro:
-        'Once the Vite plugin is active, any cas() chain in your JSX gets compiled at build time. The classnames are stable hashes of the chain shape.',
-      verify: 'Open DevTools — every styled element has exactly one cas-XXXXXXXX class, and every rule lives inside @layer cas.',
+        'Author chains as JSX spread; the Vite plugin walks them at build time and rewrites every cas().X().props into a stable cas-XXXXXXXX className. The runtime carries no styling logic — it only exists for dynamic / dev-mode chains the parser deliberately defers.',
+      verify:
+        'Open DevTools and look: every styled element carries exactly one cas- class, every rule lives under @layer cas, and the JS bundle ships zero cas() calls for any chain the parser could resolve statically.',
     },
     ja: {
       title: 'インストール',
       intro:
-        'Cassida は npm の @cassida スコープで配布しています。多くのユーザーは「ランタイム + Vite プラグイン + recommended バンドル」の 3 つを入れます。',
+        '基本構成はパッケージ 3 つだ。ランタイムの @cassida/core、ビルド時の変換を担う Vite プラグイン、そしてメンテナー推奨プラグインを 1 行で有効化する @cassida/recommended。yarn・npm でも同じ手順で導入できるが、CI で検証しているのは pnpm だ。',
       pnpmHeading: 'pnpm',
       npmHeading: 'npm',
       yarnHeading: 'yarn',
       viteHeading: 'vite.config.ts',
       viteIntro:
-        'Cassida と recommended プラグインバンドルを Vite に組み込みます。プリフライト / リセット CSS には cassidaGlobalCss を追加してください。',
+        'cassida() に recommended() を渡すだけで動く。プリフライトやリセット CSS を同じ Vite パイプラインに乗せたければ cassidaGlobalCss() を追加する。',
       appHeading: '最初のチェーン',
       appIntro:
-        'Vite プラグインが有効になれば、JSX 内の cas() チェーンはビルド時にコンパイルされます。クラス名はチェーン形状から導出される安定ハッシュです。',
-      verify: 'DevTools を開いてください — スタイル付き要素には cas-XXXXXXXX クラスが 1 つだけ付き、ルールはすべて @layer cas 内に収まっています。',
+        'チェーンは JSX spread として書く。Vite プラグインがビルド時にそれを走査し、cas().X().props を安定した cas-XXXXXXXX クラス名へと書き換える。ランタイムはスタイリングの判断を持たない — パーサが意図的にビルド時解決を見送った動的チェーンや dev モードのためだけに存在する。',
+      verify:
+        'DevTools を開いて確かめると良い: スタイル付き要素には cas- クラスがちょうど 1 つだけ、ルールはすべて @layer cas の内側、JS バンドルにはパーサが静的解決できたチェーンの cas() 呼び出しは残らない。',
     },
   });
 
