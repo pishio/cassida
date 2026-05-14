@@ -214,6 +214,30 @@ Each writes *two* CSS declarations under a single chain call. They participate i
 
 The canonical surface stays minimal: four entries, two axes × two box-model properties. Tailwind-equivalent presets (`text-sm`, `gap-4`, …) belong in a future `@cassida/preset-utilities` package.
 
+### Conditional branches — `.cond(test, truthy, falsy?)`
+
+For "this class or that class depending on a flag" patterns, keep the branching inside the chain:
+
+```tsx
+<button
+  {...cas()
+    .padding(8)
+    .cond(
+      active,
+      c => c.bg('blue').color('white'),
+      c => c.bg('gray').color('#333'),
+    )
+    .borderRadius(6)
+    .props}
+/>
+```
+
+At build time each branch materialises its own `cas-XXXXXXXX` class (the outer `padding` / `borderRadius` are shared across both leaves), and the JSX `className` becomes `active ? "cas-AAA" : "cas-BBB"`. Branches that carry dynamic values (`c.color(theme.fg)`) emit a parallel branch-conditional `style={...}` ternary that mirrors the className shape. The runtime evaluates the test and inlines the chosen branch's ops, landing on the same hash as the matching build-time leaf.
+
+Single-arg form `cas().cond(active, c => c.bg('blue'))` is the chain-internal version of `active && cas().bg('blue').props` — falsy branch carries no extra ops.
+
+Multiple `.cond()`s in one chain materialise the Cartesian product; the cap is 32 leaves (five nested conds). `.cond()` inside a modifier scope (`.hover(c => c.cond(...))`) bails to runtime — Phase 2 lifts that restriction.
+
 ## Feature tour
 
 ### Modifiers — `:hover`, `:focus`, `@media`, ...

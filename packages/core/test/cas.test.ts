@@ -134,6 +134,72 @@ describe('runtime cas()', () => {
     });
   });
 
+  describe('.cond(test, truthy, falsy?)', () => {
+    it('picks the truthy branch and inlines its ops', () => {
+      const chain = cas()
+        .padding(8)
+        .cond(
+          true,
+          (c) => (c as { color: (v: string) => unknown }).color('red'),
+          (c) => (c as { color: (v: string) => unknown }).color('blue'),
+        ) as unknown as { props: { className: string; style: object } };
+      expect(chain.props.style).toEqual({ padding: '8px', color: 'red' });
+    });
+
+    it('picks the falsy branch when test is falsy', () => {
+      const chain = cas()
+        .padding(8)
+        .cond(
+          false,
+          (c) => (c as { color: (v: string) => unknown }).color('red'),
+          (c) => (c as { color: (v: string) => unknown }).color('blue'),
+        ) as unknown as { props: { className: string; style: object } };
+      expect(chain.props.style).toEqual({ padding: '8px', color: 'blue' });
+    });
+
+    it('single-arg form: no falsy callback means "no ops on the false side"', () => {
+      const truthy = cas()
+        .padding(8)
+        .cond(true, (c) => (c as { color: (v: string) => unknown }).color('red')) as unknown as {
+        props: { style: object };
+      };
+      expect(truthy.props.style).toEqual({ padding: '8px', color: 'red' });
+
+      const falsy = cas()
+        .padding(8)
+        .cond(false, (c) => (c as { color: (v: string) => unknown }).color('red')) as unknown as {
+        props: { style: object };
+      };
+      // Falsy + no callback → outer ops only.
+      expect(falsy.props.style).toEqual({ padding: '8px' });
+    });
+
+    it('produces the same className shape regardless of branch (deterministic hashing)', () => {
+      // Each branch should produce its own stable hash; flipping the
+      // test value picks between the two but doesn't re-hash.
+      const a = cas()
+        .padding(8)
+        .cond(true, (c) => (c as { color: (v: string) => unknown }).color('red'))
+        .props.className;
+      const b = cas()
+        .padding(8)
+        .cond(true, (c) => (c as { color: (v: string) => unknown }).color('red'))
+        .props.className;
+      expect(a).toBe(b);
+
+      const c1 = cas()
+        .padding(8)
+        .cond(false, (c) => (c as { color: (v: string) => unknown }).color('red'))
+        .props.className;
+      const c2 = cas()
+        .padding(8)
+        .cond(false, (c) => (c as { color: (v: string) => unknown }).color('red'))
+        .props.className;
+      expect(c1).toBe(c2);
+      expect(a).not.toBe(c1);
+    });
+  });
+
   describe('multi-property methods (px / py / mx / my)', () => {
     it('px expands to both inline padding longhands in the runtime style', () => {
       const props = cas().px(8).props;
