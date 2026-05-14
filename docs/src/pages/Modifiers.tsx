@@ -77,20 +77,31 @@ export default function Modifiers(): React.JSX.Element {
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.zeroArgHeading}</h2>
       <p>{copy.zeroArgIntro}</p>
       <table
-        {...cas().fontSize(13).props}
-        style={{ borderCollapse: 'collapse', width: '100%' }}
+        {...cas.unsafe({ borderCollapse: 'collapse' }).fontSize(13).width('100%').props}
       >
         <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
-            <th style={{ padding: '6px 4px' }}>Method</th>
-            <th style={{ padding: '6px 4px' }}>Scope</th>
+          <tr
+            {...cas()
+              .textAlign('left')
+              .borderBottomWidth("1px")
+              .borderBottomStyle('solid')
+              .borderBottomColor('#e5e7eb').props}
+          >
+            <th {...cas().py(6).px(4).props}>Method</th>
+            <th {...cas().py(6).px(4).props}>Scope</th>
           </tr>
         </thead>
         <tbody>
           {ZERO_ARG_MODIFIERS.map((m) => (
-            <tr key={m.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
-              <td style={{ padding: '4px', fontFamily: 'monospace' }}>{m.name}</td>
-              <td style={{ padding: '4px', fontFamily: 'monospace' }}>{m.scope}</td>
+            <tr
+              key={m.name}
+              {...cas()
+                .borderBottomWidth("1px")
+                .borderBottomStyle('solid')
+                .borderBottomColor('#f3f4f6').props}
+            >
+              <td {...cas().padding(4).fontFamily('monospace').props}>{m.name}</td>
+              <td {...cas().padding(4).fontFamily('monospace').props}>{m.scope}</td>
             </tr>
           ))}
         </tbody>

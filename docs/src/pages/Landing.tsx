@@ -45,7 +45,7 @@ export default function Landing(): React.JSX.Element {
         <p
           {...cas()
             .fontSize(13)
-            .textTransform('uppercase' as never)
+            .textTransform('uppercase')
             .color('#6b7280')
             .marginBottom(8).props}
         >
@@ -97,8 +97,8 @@ function CodeBlock({ source }: { source: string }): React.JSX.Element {
         .color('#e2e8f0')
         .fontSize(13)
         .lineHeight(1.6)
-        .props}
-      style={{ overflowX: 'auto', whiteSpace: 'pre' }}
+        .overflowX('auto')
+        .whiteSpace('pre').props}
     >
       <code>{source}</code>
     </pre>

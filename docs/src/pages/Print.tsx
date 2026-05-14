@@ -71,17 +71,19 @@ import 'virtual:cassida-print.css';`} />
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.siteSpecific}</h2>
       <p>{copy.siteSpecificCopy}</p>
-      <Code source={`cassidaGlobalCss({
-  css: printPreflight() + ` + '`' + `
-    @media print {
-      nav, footer, button, [aria-hidden="true"] {
-        display: none !important;
-      }
-    }
-  ` + '`' + `,
-  layer: 'base',
-  virtualId: 'virtual:cassida-print.css',
-});`} />
+      <Code source={[
+        'cassidaGlobalCss({',
+        "  css: printPreflight() + `",
+        '    @media print {',
+        '      nav, footer, button, [aria-hidden="true"] {',
+        '        display: none !important;',
+        '      }',
+        '    }',
+        '  `,',
+        "  layer: 'base',",
+        "  virtualId: 'virtual:cassida-print.css',",
+        '});',
+      ].join('\n')} />
     </article>
   );
 }

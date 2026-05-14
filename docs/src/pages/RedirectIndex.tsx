@@ -1,4 +1,5 @@
 import type React from 'react';
+import { cas } from '@cassida/core';
 
 /**
  * Root index page at `/`. The actual redirect happens inline in
@@ -8,11 +9,13 @@ import type React from 'react';
  */
 export default function RedirectIndex(): React.JSX.Element {
   return (
-    <main style={{ padding: 24, fontFamily: 'sans-serif' }}>
-      <h1>Cassida</h1>
-      <p>One element, one class — compiled, not cascaded.</p>
-      <p>1 つの要素、1 つのクラス — カスケードではなくコンパイルで。</p>
-      <ul>
+    <main {...cas().padding(24).fontFamily('system-ui, sans-serif').props}>
+      <h1 {...cas().fontSize(28).marginBottom(8).props}>Cassida</h1>
+      <p {...cas().marginBottom(4).props}>One element, one class — compiled, not cascaded.</p>
+      <p {...cas().color('#4b5563').marginBottom(16).props}>
+        1 つの要素、1 つのクラス — カスケードではなくコンパイルで。
+      </p>
+      <ul {...cas().display('flex').flexDirection('column').gap(4).props}>
         <li>
           <a href="en/">Open in English →</a>
         </li>

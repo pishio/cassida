@@ -7,13 +7,21 @@ import { useLocale, type Locale } from '../lib/locale.js';
  * Swap between `/en/...` and `/ja/...` while preserving the current
  * path under the locale segment. Active locale renders as plain text
  * (not a link) so the affordance is clear.
+ *
+ * Demonstrates `@cassida/plugin-conditional`: the active-vs-inactive
+ * choice is expressed as a JSX-spread ternary, which the parser
+ * plugin lifts into two pre-compiled `cas-XXXXXXXX` classes plus a
+ * runtime `className={active ? "cas-A" : "cas-B"}` switch.
  */
 export function LangSwitch(): React.JSX.Element {
   const current = useLocale();
   const { pathname } = useLocation();
 
   return (
-    <nav {...cas().display('flex').gap(8).fontSize(13).props} aria-label="Language switch">
+    <nav
+      {...cas().display('flex').gap(8).fontSize(13).props}
+      aria-label="Language switch"
+    >
       <LangLink target="en" current={current} pathname={pathname} label="English" />
       <span aria-hidden="true">·</span>
       <LangLink target="ja" current={current} pathname={pathname} label="日本語" />
@@ -33,6 +41,7 @@ function LangLink({
   label: string;
 }): React.JSX.Element {
   if (target === current) {
+    // The active locale isn't a link — `cas` styling for muted text.
     return <span {...cas().color('#6b7280').props}>{label}</span>;
   }
   // Pathname looks like `/en/api/cas` — swap the first segment for

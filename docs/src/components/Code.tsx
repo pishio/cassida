@@ -16,8 +16,9 @@ export function Code({ source }: { source: string }): React.JSX.Element {
         .fontSize(13)
         .lineHeight(1.6)
         .marginTop(8)
-        .marginBottom(16).props}
-      style={{ overflowX: 'auto', whiteSpace: 'pre' }}
+        .marginBottom(16)
+        .overflowX('auto')
+        .whiteSpace('pre').props}
     >
       <code>{source}</code>
     </pre>

@@ -92,17 +92,19 @@ export default function Unsafe(): React.JSX.Element {
       <p>{copy.blacklistCopy}</p>
       <p>{copy.blacklistTable}</p>
       <ul
-        {...cas()
-          .display('grid' as never)
+        {...cas
+          .unsafe({ listStyle: 'none' })
+          .display('grid')
+          .gridTemplateColumns('repeat(auto-fill, minmax(140px, 1fr))')
           .gap(4)
           .padding(12)
           .borderRadius(8)
           .backgroundColor('#f9fafb')
-          .fontSize(13).props}
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', listStyle: 'none', margin: 0 }}
+          .fontSize(13)
+          .margin(0).props}
       >
         {BLACKLISTED.map((name) => (
-          <li key={name} style={{ fontFamily: 'monospace' }}>
+          <li key={name} {...cas().fontFamily('monospace').props}>
             {name}
           </li>
         ))}

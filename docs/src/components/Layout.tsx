@@ -1,6 +1,6 @@
 import type React from 'react';
 import { Outlet, NavLink, useParams } from 'react-router-dom';
-import { cas } from '@cassida/core';
+import { cas, type CassChain } from '@cassida/core';
 import { isLocale, DEFAULT_LOCALE, type Locale, LocaleContext, t } from '../lib/locale.js';
 import { LangSwitch } from './LangSwitch.js';
 
@@ -16,11 +16,18 @@ export default function Layout(): React.JSX.Element {
 
   return (
     <LocaleContext.Provider value={locale}>
-      <div {...cas().display('grid').props} style={{ gridTemplateColumns: '240px 1fr', minHeight: '100vh' }}>
+      <div
+        {...cas()
+          .display('grid')
+          .gridTemplateColumns('240px 1fr')
+          .minHeight('100vh').props}
+      >
         <aside
           {...cas()
             .padding(24)
-            .borderRight('1px solid #e5e7eb' as never)
+            .borderRightWidth('1px')
+            .borderRightStyle('solid')
+            .borderRightColor('#e5e7eb')
             .backgroundColor('#fff').props}
         >
           <SidebarNav locale={locale} />
@@ -109,13 +116,20 @@ function NavSection({ title, children }: { title: string; children: React.ReactN
       <h3
         {...cas()
           .fontSize(12)
-          .textTransform('uppercase' as never)
+          .textTransform('uppercase')
           .color('#6b7280')
           .marginBottom(8).props}
       >
         {title}
       </h3>
-      <ul {...cas().display('flex').flexDirection('column').gap(4).props} style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+      <ul
+        {...cas.unsafe({ listStyle: 'none' })
+          .display('flex')
+          .flexDirection('column')
+          .gap(4)
+          .padding(0)
+          .margin(0).props}
+      >
         {children}
       </ul>
     </section>
@@ -123,23 +137,31 @@ function NavSection({ title, children }: { title: string; children: React.ReactN
 }
 
 function NavItem({ to, label, end }: { to: string; label: string; end?: boolean }): React.JSX.Element {
-  // `end` defaults to `false`. Inlining the boolean keeps NavLink's
-  // strict-optional typing happy under `exactOptionalPropertyTypes`.
+  // NavLink's children-as-render-prop API lets us put the cas chain
+  // in JSX-spread position. The parser walks every JSXSpreadAttribute
+  // in the source — including ones nested inside callback bodies —
+  // so both `.cond()` branches materialise into pre-compiled class
+  // hashes at build time, and the runtime just toggles between them.
   return (
     <li>
-      <NavLink
-        to={to}
-        end={end === true}
-        style={({ isActive }: { isActive: boolean }) => ({
-          display: 'block',
-          padding: '4px 8px',
-          borderRadius: 4,
-          textDecoration: 'none',
-          backgroundColor: isActive ? '#eef2ff' : 'transparent',
-          color: isActive ? '#1e3a8a' : '#1c1f24',
-        })}
-      >
-        {label}
+      <NavLink to={to} end={end === true}>
+        {({ isActive }: { isActive: boolean }) => (
+          <span
+            {...cas()
+              .display('block')
+              .py(4)
+              .px(8)
+              .borderRadius(4)
+              .textDecorationLine('none')
+              .cond(
+                isActive,
+                (c: CassChain) => c.backgroundColor('#eef2ff').color('#1e3a8a'),
+                (c: CassChain) => c.backgroundColor('transparent').color('#1c1f24'),
+              ).props}
+          >
+            {label}
+          </span>
+        )}
       </NavLink>
     </li>
   );

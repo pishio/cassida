@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useMemo, useState } from 'react';
-import { cas } from '@cassida/core';
+import { cas, type CassChain } from '@cassida/core';
 import manifest from '../lib/property-manifest.json' with { type: 'json' };
 import { mdnUrl } from '../lib/mdn.js';
 import { useLocale, t } from '../lib/locale.js';
@@ -66,7 +66,7 @@ export function PropertyTable(): React.JSX.Element {
 
   return (
     <div {...cas().display('flex').flexDirection('column').gap(12).props}>
-      <div {...cas().display('flex').gap(12).flexWrap('wrap' as never).props}>
+      <div {...cas().display('flex').gap(12).flexWrap('wrap').props}>
         <input
           type="search"
           value={query}
@@ -75,12 +75,14 @@ export function PropertyTable(): React.JSX.Element {
           {...cas()
             .padding(8)
             .borderRadius(6)
-            .fontSize(14).props}
-          style={{
-            border: '1px solid #d1d5db',
-            flex: 1,
-            minWidth: 200,
-          }}
+            .fontSize(14)
+            .borderWidth(1)
+            .borderStyle('solid')
+            .borderColor('#d1d5db')
+            .flexGrow(1)
+            .flexShrink(1)
+            .flexBasis(0)
+            .minWidth(200).props}
         />
         <select
           value={categoryFilter}
@@ -88,8 +90,10 @@ export function PropertyTable(): React.JSX.Element {
           {...cas()
             .padding(8)
             .borderRadius(6)
-            .fontSize(14).props}
-          style={{ border: '1px solid #d1d5db' }}
+            .fontSize(14)
+            .borderWidth(1)
+            .borderStyle('solid')
+            .borderColor('#d1d5db').props}
         >
           <option value="all">{labels.all}</option>
           {CATEGORIES.map((c) => (
@@ -103,46 +107,94 @@ export function PropertyTable(): React.JSX.Element {
         {labels.countTemplate.replace('%n', String(filtered.length))}
       </p>
       <table
-        {...cas().fontSize(13).props}
-        style={{ borderCollapse: 'collapse', width: '100%' }}
+        {...cas.unsafe({ borderCollapse: 'collapse' }).fontSize(13).width('100%').props}
       >
         <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
-            <th style={{ padding: '8px 4px' }}>{labels.method}</th>
-            <th style={{ padding: '8px 4px' }}>{labels.property}</th>
-            <th style={{ padding: '8px 4px' }}>{labels.source}</th>
-            <th style={{ padding: '8px 4px' }}>{labels.aliases}</th>
-            <th style={{ padding: '8px 4px' }}>{labels.mdn}</th>
+          <tr
+            {...cas()
+              .textAlign('left')
+              .borderBottomWidth("1px")
+              .borderBottomStyle('solid')
+              .borderBottomColor('#e5e7eb').props}
+          >
+            <Th>{labels.method}</Th>
+            <Th>{labels.property}</Th>
+            <Th>{labels.source}</Th>
+            <Th>{labels.aliases}</Th>
+            <Th>{labels.mdn}</Th>
           </tr>
         </thead>
         <tbody>
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ padding: 16, textAlign: 'center', color: '#6b7280' }}>
+              <td
+                colSpan={5}
+                {...cas()
+                  .padding(16)
+                  .textAlign('center')
+                  .color('#6b7280').props}
+              >
                 {labels.none}
               </td>
             </tr>
           ) : (
             filtered.map((e) => (
-              <tr key={e.method} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td style={{ padding: '6px 4px', fontFamily: 'monospace' }}>{e.method}</td>
-                <td style={{ padding: '6px 4px', fontFamily: 'monospace' }}>
-                  {e.properties ? e.properties.join(', ') : e.cssProperty}
-                </td>
-                <td style={{ padding: '6px 4px', color: '#6b7280' }}>{e.source}</td>
-                <td style={{ padding: '6px 4px', fontFamily: 'monospace' }}>
-                  {e.aliases?.join(', ') ?? ''}
-                </td>
-                <td style={{ padding: '6px 4px' }}>
+              <tr
+                key={e.method}
+                {...cas()
+                  .borderBottomWidth("1px")
+                  .borderBottomStyle('solid')
+                  .borderBottomColor('#f3f4f6').props}
+              >
+                <Td mono>{e.method}</Td>
+                <Td mono>{e.properties ? e.properties.join(', ') : e.cssProperty}</Td>
+                <Td muted>{e.source}</Td>
+                <Td mono>{e.aliases?.join(', ') ?? ''}</Td>
+                <Td>
                   <a href={mdnUrl(e.cssProperty, locale)} target="_blank" rel="noreferrer">
                     ↗
                   </a>
-                </td>
+                </Td>
               </tr>
             ))
           )}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function Th({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return <th {...cas().py(8).px(4).props}>{children}</th>;
+}
+
+function Td({
+  children,
+  mono,
+  muted,
+}: {
+  children: React.ReactNode;
+  mono?: boolean;
+  muted?: boolean;
+}): React.JSX.Element {
+  // Dynamic styling driven by component props — `.cond()` keeps the
+  // branching inside the chain so each (mono, muted) combination
+  // materialises into its own pre-compiled class hash.
+  return (
+    <td
+      {...cas()
+        .py(6)
+        .px(4)
+        .cond(
+          mono === true,
+          (c: CassChain) => c.fontFamily('monospace'),
+        )
+        .cond(
+          muted === true,
+          (c: CassChain) => c.color('#6b7280'),
+        ).props}
+    >
+      {children}
+    </td>
   );
 }
