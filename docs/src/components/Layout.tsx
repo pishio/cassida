@@ -4,6 +4,21 @@ import { cas, type CassChain } from '@cassida/core';
 import { isLocale, DEFAULT_LOCALE, type Locale, LocaleContext, useT } from '../lib/locale.js';
 import { LangSwitch } from './LangSwitch.js';
 
+interface SidebarNavProps {
+  readonly locale: Locale;
+}
+
+interface NavSectionProps {
+  readonly title: string;
+  readonly children: React.ReactNode;
+}
+
+interface NavItemProps {
+  readonly to: string;
+  readonly label: string;
+  readonly end?: boolean;
+}
+
 /**
  * Outer shell that wraps every locale-routed page. Reads the
  * `:locale` segment, falls back to `'ja'` if absent, and exposes the
@@ -48,7 +63,7 @@ export default function Layout(): React.JSX.Element {
   );
 }
 
-function SidebarNav({ locale }: { locale: Locale }): React.JSX.Element {
+function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
   const labels = useT({
     en: {
       home: 'Home',
@@ -110,7 +125,7 @@ function SidebarNav({ locale }: { locale: Locale }): React.JSX.Element {
   );
 }
 
-function NavSection({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+function NavSection({ title, children }: NavSectionProps): React.JSX.Element {
   return (
     <section {...cas().marginBottom(24).props}>
       <h3
@@ -136,7 +151,7 @@ function NavSection({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function NavItem({ to, label, end }: { to: string; label: string; end?: boolean }): React.JSX.Element {
+function NavItem({ to, label, end }: NavItemProps): React.JSX.Element {
   // NavLink's children-as-render-prop API lets us put the cas chain
   // in JSX-spread position. The parser walks every JSXSpreadAttribute
   // in the source — including ones nested inside callback bodies —
@@ -144,7 +159,7 @@ function NavItem({ to, label, end }: { to: string; label: string; end?: boolean 
   // hashes at build time, and the runtime just toggles between them.
   return (
     <li>
-      <NavLink to={to} end={end === true}>
+      <NavLink to={to} end={end ?? false}>
         {({ isActive }: { isActive: boolean }) => (
           <span
             {...cas()

@@ -2,7 +2,7 @@ import type React from 'react';
 import { cas } from '@cassida/core';
 import { useT } from '../lib/locale.js';
 import { PropertyTable } from '../components/PropertyTable.js';
-import { Code, InlineCode } from '../components/Code.js';
+import { Code } from '../components/Code.js';
 
 export default function Registry(): React.JSX.Element {
   const copy = useT({

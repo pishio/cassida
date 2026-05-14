@@ -164,35 +164,32 @@ export function PropertyTable(): React.JSX.Element {
   );
 }
 
-function Th({ children }: { children: React.ReactNode }): React.JSX.Element {
+interface ThProps {
+  readonly children: React.ReactNode;
+}
+
+interface TdProps {
+  readonly children: React.ReactNode;
+  readonly mono?: boolean;
+  readonly muted?: boolean;
+}
+
+function Th({ children }: ThProps): React.JSX.Element {
   return <th {...cas().py(8).px(4).props}>{children}</th>;
 }
 
-function Td({
-  children,
-  mono,
-  muted,
-}: {
-  children: React.ReactNode;
-  mono?: boolean;
-  muted?: boolean;
-}): React.JSX.Element {
+function Td({ children, mono, muted }: TdProps): React.JSX.Element {
   // Dynamic styling driven by component props — `.cond()` keeps the
   // branching inside the chain so each (mono, muted) combination
-  // materialises into its own pre-compiled class hash.
+  // materialises into its own pre-compiled class hash. `cond`'s test
+  // arg is just truthy-checked, so the bare optional booleans work.
   return (
     <td
       {...cas()
         .py(6)
         .px(4)
-        .cond(
-          mono === true,
-          (c: CassChain) => c.fontFamily('monospace'),
-        )
-        .cond(
-          muted === true,
-          (c: CassChain) => c.color('#6b7280'),
-        ).props}
+        .cond(mono, (c: CassChain) => c.fontFamily('monospace'))
+        .cond(muted, (c: CassChain) => c.color('#6b7280')).props}
     >
       {children}
     </td>

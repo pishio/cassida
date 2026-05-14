@@ -1,7 +1,7 @@
 import type React from 'react';
 import { cas } from '@cassida/core';
 import { useT } from '../lib/locale.js';
-import { Code, InlineCode } from '../components/Code.js';
+import { Code } from '../components/Code.js';
 
 const BLACKLISTED = [
   'background',

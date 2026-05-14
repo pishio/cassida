@@ -3,15 +3,17 @@ import { Link, useLocation } from 'react-router-dom';
 import { cas } from '@cassida/core';
 import { useLocale, type Locale } from '../lib/locale.js';
 
+interface LangLinkProps {
+  readonly target: Locale;
+  readonly current: Locale;
+  readonly pathname: string;
+  readonly label: string;
+}
+
 /**
  * Swap between `/en/...` and `/ja/...` while preserving the current
  * path under the locale segment. Active locale renders as plain text
  * (not a link) so the affordance is clear.
- *
- * Demonstrates `@cassida/plugin-conditional`: the active-vs-inactive
- * choice is expressed as a JSX-spread ternary, which the parser
- * plugin lifts into two pre-compiled `cas-XXXXXXXX` classes plus a
- * runtime `className={active ? "cas-A" : "cas-B"}` switch.
  */
 export function LangSwitch(): React.JSX.Element {
   const current = useLocale();
@@ -34,18 +36,14 @@ function LangLink({
   current,
   pathname,
   label,
-}: {
-  target: Locale;
-  current: Locale;
-  pathname: string;
-  label: string;
-}): React.JSX.Element {
+}: LangLinkProps): React.JSX.Element {
   if (target === current) {
     // The active locale isn't a link — `cas` styling for muted text.
     return <span {...cas().color('#6b7280').props}>{label}</span>;
   }
-  // Pathname looks like `/en/api/cas` — swap the first segment for
-  // the target locale. Trailing slash is preserved.
+  // Pathname is basename-stripped (`/en/api/cas`) because the router
+  // is configured with `basename: '/cassida'` in main.tsx. Swap the
+  // first segment for the target locale; trailing slash preserved.
   const swapped = pathname.replace(/^\/(en|ja)/, `/${target}`);
   return (
     <Link to={swapped} {...cas().color('#1e3a8a').props}>

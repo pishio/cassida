@@ -25,9 +25,9 @@
     -->
     <script>
       (function () {
-        var p = location.pathname;
+        const p = location.pathname;
         if (p === '/cassida' || p === '/cassida/') {
-          var locale = (navigator.language || 'ja').toLowerCase().startsWith('ja') ? 'ja' : 'en';
+          const locale = (navigator.language || 'ja').toLowerCase().startsWith('ja') ? 'ja' : 'en';
           location.replace('/cassida/' + locale + '/');
         }
       })();

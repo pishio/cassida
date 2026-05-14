@@ -1,11 +1,19 @@
 import type React from 'react';
 import { cas } from '@cassida/core';
 
+interface CodeProps {
+  readonly source: string;
+}
+
+interface InlineCodeProps {
+  readonly children: React.ReactNode;
+}
+
 /**
  * Code block with a quiet outline. Reused across every page that
  * carries example code. Mono font comes from the global preflight.
  */
-export function Code({ source }: { source: string }): React.JSX.Element {
+export function Code({ source }: CodeProps): React.JSX.Element {
   return (
     <pre
       {...cas()
@@ -28,7 +36,7 @@ export function Code({ source }: { source: string }): React.JSX.Element {
 /**
  * Inline `<code>` styled to match the block form.
  */
-export function InlineCode({ children }: { children: React.ReactNode }): React.JSX.Element {
+export function InlineCode({ children }: InlineCodeProps): React.JSX.Element {
   return (
     <code
       {...cas()

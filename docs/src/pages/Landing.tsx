@@ -1,6 +1,7 @@
 import type React from 'react';
 import { cas } from '@cassida/core';
 import { useT } from '../lib/locale.js';
+import { Code } from '../components/Code.js';
 
 export default function Landing(): React.JSX.Element {
   const copy = useT({
@@ -51,7 +52,7 @@ export default function Landing(): React.JSX.Element {
         >
           {copy.headlineLabel}
         </p>
-        <CodeBlock
+        <Code
           source={`<button {...cas()
   .padding(12).backgroundColor('#1a73e8').color('white')
   .hover(c => c.backgroundColor('#1557b0'))
@@ -66,7 +67,7 @@ export default function Landing(): React.JSX.Element {
         >
           ↓
         </p>
-        <CodeBlock
+        <Code
           source={`<button className="cas-3702b738" />
 
 @layer cas {
@@ -87,20 +88,3 @@ export default function Landing(): React.JSX.Element {
   );
 }
 
-function CodeBlock({ source }: { source: string }): React.JSX.Element {
-  return (
-    <pre
-      {...cas()
-        .padding(16)
-        .borderRadius(8)
-        .backgroundColor('#0f172a')
-        .color('#e2e8f0')
-        .fontSize(13)
-        .lineHeight(1.6)
-        .overflowX('auto')
-        .whiteSpace('pre').props}
-    >
-      <code>{source}</code>
-    </pre>
-  );
-}
