@@ -51,7 +51,14 @@ type RawSpec = {
   readonly shorthandFamily?: string;
   /** Family ID if this entry is a longhand (e.g. `'padding'`). */
   readonly longhandFamily?: string;
-  readonly format: (...args: never[]) => string;
+  /**
+   * Longhands this entry expands to. Present on multi-property entries
+   * like `px` / `py` / `mx` / `my` that map one chain method to several
+   * CSS declarations. When set, `format` returns a `Record<string,
+   * string>` whose keys MUST match `properties` element-for-element.
+   */
+  readonly properties?: readonly string[];
+  readonly format: (...args: never[]) => string | Record<string, string>;
 };
 
 export const canonicalSpec = {
@@ -163,6 +170,66 @@ export const canonicalSpec = {
     animatable: true,
     longhandFamily: 'padding',
     format: (n: LenArg, unit?: string): string => length(n, unit),
+  },
+
+  // Tailwind-style multi-property utilities. Each writes two physical
+  // longhands of an inline / block axis. They're treated as longhands
+  // of the parent shorthand family (padding / margin) by the
+  // shorthand-policy guard, so `padding(8).px(4)` errors under strict
+  // policy just like `padding(8).paddingLeft(4)` would.
+  //
+  // The `property` field is a label for diagnostics + propertyMeta
+  // lookup; the actual bag writes come from the formatter's StyleBag
+  // return. v1 disallows dynamic args here — pass a literal or fall
+  // back to `paddingInline` / `paddingBlock` / `marginInline` /
+  // `marginBlock` (single-property entries from the generated set).
+  px: {
+    property: 'padding-inline',
+    properties: ['padding-inline-start', 'padding-inline-end'],
+    syntax: '<length>',
+    initialValue: '0',
+    animatable: true,
+    longhandFamily: 'padding',
+    format: (n: LenArg, unit?: string): Record<string, string> => {
+      const v = length(n, unit);
+      return { 'padding-inline-start': v, 'padding-inline-end': v };
+    },
+  },
+  py: {
+    property: 'padding-block',
+    properties: ['padding-block-start', 'padding-block-end'],
+    syntax: '<length>',
+    initialValue: '0',
+    animatable: true,
+    longhandFamily: 'padding',
+    format: (n: LenArg, unit?: string): Record<string, string> => {
+      const v = length(n, unit);
+      return { 'padding-block-start': v, 'padding-block-end': v };
+    },
+  },
+  mx: {
+    property: 'margin-inline',
+    properties: ['margin-inline-start', 'margin-inline-end'],
+    syntax: '<length>',
+    initialValue: '0',
+    animatable: true,
+    longhandFamily: 'margin',
+    format: (n: LenArg, unit?: string): Record<string, string> => {
+      const v = length(n, unit);
+      return { 'margin-inline-start': v, 'margin-inline-end': v };
+    },
+  },
+  my: {
+    property: 'margin-block',
+    properties: ['margin-block-start', 'margin-block-end'],
+    syntax: '<length>',
+    initialValue: '0',
+    animatable: true,
+    longhandFamily: 'margin',
+    format: (n: LenArg, unit?: string): Record<string, string> => {
+      const v = length(n, unit);
+      return { 'margin-block-start': v, 'margin-block-end': v };
+    },
   },
 
   // size — animatable lengths

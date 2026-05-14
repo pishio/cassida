@@ -199,6 +199,21 @@ Why error and not silently emit two declarations? Because CSS source order would
 
 `shorthand.policy` is configurable: `'strict'` (both directions banned), `'shorthand-first'` (only shorthand→longhand banned), or `'lenient'` (no checking). See [Configuration](#configuration).
 
+### Multi-property utilities — `.px()`, `.py()`, `.mx()`, `.my()`
+
+For Tailwind-style ergonomics on the inline / block axes, Cassida ships four hand-crafted multi-property methods:
+
+```ts
+cas().px(8)
+// → padding-inline-start: 8px; padding-inline-end: 8px
+cas().px(8).paddingInlineStart('4px')
+// → padding-inline-start: 4px; padding-inline-end: 8px   (per-longhand LIFO)
+```
+
+Each writes *two* CSS declarations under a single chain call. They participate in the same hashing, dedup, and shorthand-policy machinery as single-property methods: `padding(8).px(4)` errors under default policy because `px` is registered as a `padding`-family longhand. v0.4 keeps dynamic args restricted to single-property entries — pass a literal here, or use `.paddingInline(...)` / `.paddingBlock(...)` (single-property, from the generated set) for dynamic values.
+
+The canonical surface stays minimal: four entries, two axes × two box-model properties. Tailwind-equivalent presets (`text-sm`, `gap-4`, …) belong in a future `@cassida/preset-utilities` package.
+
 ## Feature tour
 
 ### Modifiers — `:hover`, `:focus`, `@media`, ...
