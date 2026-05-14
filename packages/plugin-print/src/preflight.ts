@@ -84,10 +84,15 @@ export const DEFAULT_PRINT_PREFLIGHT = `@media print {
 
   /* orphans / widows only target block containers with multiple
      text lines. Headings are typically single-line — applying them
-     would silently force unwanted page breaks on a long heading. */
+     would silently force unwanted page breaks on a long heading.
+     Threshold of 2 prevents true singletons (one line stranded at
+     the top / bottom of a page) without forcing 3-5 line paragraphs
+     onto the next page and creating large empty trailing space —
+     the trade-off that motivated the conservative default over the
+     more aggressive 3. */
   p {
-    orphans: 3;
-    widows: 3;
+    orphans: 2;
+    widows: 2;
   }
 
   /* All heading levels avoid being the last line on a page (orphaned

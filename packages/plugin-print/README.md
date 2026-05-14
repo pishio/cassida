@@ -138,9 +138,21 @@ outside Cassida's curated safe surface.
 
 ### Replace the bundled defaults entirely
 
+Authoring a fully custom print stylesheet from scratch? Skip the
+factory and feed your own string straight to `cassidaGlobalCss`:
+
 ```ts
-printPreflight({ css: myOwnPrintCss })  // returns myOwnPrintCss as-is
+cassidaGlobalCss({
+  css: myOwnPrintCss,
+  layer: 'base',
+  virtualId: 'virtual:cassida-print.css',
+});
 ```
+
+`printPreflight()` is opinion-free beyond what it returns — no
+"replace defaults" knob exists because string concatenation already
+covers extension and direct assignment already covers full
+replacement.
 
 ## License
 

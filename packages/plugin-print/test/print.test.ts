@@ -21,9 +21,11 @@ describe('printPreflight()', () => {
     expect(printPreflight()).toBe(DEFAULT_PRINT_PREFLIGHT);
   });
 
-  it('passes through a custom `css` override unchanged', () => {
-    const custom = '@media print { body { font-family: Garamond, serif; } }';
-    expect(printPreflight({ css: custom })).toBe(custom);
+  it('takes no arguments — extensions compose via string concatenation', () => {
+    // Documented contract: callers wanting site-specific additions
+    // do `printPreflight() + "@media print { ... }"`. The function
+    // itself is opinion-free beyond the bundled defaults.
+    expect(printPreflight.length).toBe(0);
   });
 
   describe('bundled defaults', () => {
@@ -71,8 +73,9 @@ describe('printPreflight()', () => {
       // Headings are typically single-line; applying `orphans` /
       // `widows` to them would silently force unwanted page breaks on
       // a long heading. The constraints belong on multi-line block
-      // containers.
-      expect(css).toMatch(/\bp\s*\{[^}]*orphans:\s*3[^}]*widows:\s*3/);
+      // containers. Threshold of 2 catches true singletons without
+      // making 3-5 line paragraphs ineligible for page-end placement.
+      expect(css).toMatch(/\bp\s*\{[^}]*orphans:\s*2[^}]*widows:\s*2/);
     });
 
     it('avoids breaking immediately after any heading level', () => {
