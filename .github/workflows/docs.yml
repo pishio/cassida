@@ -1,0 +1,64 @@
+name: docs
+
+# Build the bilingual docs site (docs/) from the workspace, then
+# deploy the static `docs/dist` to GitHub Pages via the official
+# first-party Pages action pair. No gh-pages branch — deployments
+# are tracked through the Environments UI for clear history.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        # docs consumes the @cassida/* packages via `workspace:*`.
+        # Their dist/ output must exist before the docs build runs.
+        run: pnpm -r --filter='./packages/*' build
+
+      - name: Build docs site
+        run: pnpm --filter ./docs build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

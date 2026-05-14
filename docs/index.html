@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/cassida/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Cassida — one element, one class. A build-time CSS-in-JS compiler that collapses every styled element to exactly one class via LIFO resolution."
+    />
+    <title>Cassida — One element, one class</title>
+    <link rel="alternate" hreflang="en" href="https://pishio.github.io/cassida/en/" />
+    <link rel="alternate" hreflang="ja" href="https://pishio.github.io/cassida/ja/" />
+    <link rel="alternate" hreflang="x-default" href="https://pishio.github.io/cassida/" />
+  </head>
+  <body>
+    <!--
+      Root-path redirect to the locale-prefixed tree. Runs before
+      hydration so SEO crawlers / no-JS visitors still see the
+      RedirectIndex fallback (`/en/` / `/ja/` anchor links) while
+      JS-enabled visitors land directly on the right tree.
+
+      Only fires on the actual root path (with or without trailing
+      slash) so it never interferes with `/en/...` or `/ja/...`.
+    -->
+    <script>
+      (function () {
+        var p = location.pathname;
+        if (p === '/cassida' || p === '/cassida/') {
+          var locale = (navigator.language || 'ja').toLowerCase().startsWith('ja') ? 'ja' : 'en';
+          location.replace('/cassida/' + locale + '/');
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
