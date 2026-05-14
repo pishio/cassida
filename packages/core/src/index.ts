@@ -94,6 +94,38 @@ export interface ChainModifiers extends ZeroArgModifiers {
 }
 
 /**
+ * Chain-internal branching. Replaces the more verbose JSX-level
+ * ternary spread `{...(cond ? cas().X() : cas().Y())}` with a fluent
+ * shape that keeps the conditional logic inside the chain:
+ *
+ *   ```tsx
+ *   <div
+ *     {...cas()
+ *       .padding(8)
+ *       .cond(active, c => c.bg('blue'), c => c.bg('gray'))
+ *       .color('red')
+ *       .props}
+ *   />
+ *   ```
+ *
+ * At build time, the parser materialises the Cartesian product of all
+ * `.cond()` decisions into N classes — each leaf carries the full
+ * pre/post-cond ops plus the branch's inner ops — and emits a nested
+ * ternary `className=` (and `style=`, when any branch is dynamic).
+ *
+ * At runtime, `test` is evaluated immediately and the picked branch's
+ * inner ops are spliced into the linear ops list, so the runtime
+ * chain compiles to the same hash as the matching build-time leaf.
+ *
+ * The second callback is optional. When omitted, the falsy branch
+ * contributes no ops — equivalent to `cond && cas().X()` in JSX-level
+ * shorthand.
+ */
+export interface ChainCondMethod {
+  cond(test: unknown, truthy: ScopedCallback, falsy?: ScopedCallback): CassChain;
+}
+
+/**
  * Escape-hatch chain method for properties outside FSS's safe surface
  * (CSS shorthands, vendor prefixes, custom properties like `--brand-*`).
  *
@@ -182,6 +214,7 @@ export type CassChain =
   & DefaultChainMethods
   & GeneratedChainMethods
   & ChainModifiers
+  & ChainCondMethod
   & ChainSetMethod
   & CassChainExtensions
   & CassChainTerminus;
@@ -370,6 +403,36 @@ function makeChain(registry: Registry, ops: Op[], isRoot: boolean): CassChain {
         ? { kind: 'pseudo', selector }
         : { kind: 'raw', selector };
       ops.push({ scope, ops: innerOps });
+      return chain as unknown as CassChain;
+    },
+  });
+
+  // `.cond(test, truthy, falsy?)` — chain-internal branching. The
+  // runtime resolves `test` immediately and inlines the picked
+  // branch's ops into the main list, so a chain that goes through a
+  // cond compiles to the same hash as the matching build-time
+  // Cartesian leaf. The falsy callback is optional; omitting it means
+  // "no ops on the false side" — semantically `cond && cas().X()`.
+  //
+  // No CondOp is recorded: the chain shape after cond is
+  // indistinguishable from "the user called the branch's methods
+  // directly". That keeps hash bijection between runtime (single
+  // chosen branch) and build time (all branches enumerated).
+  Object.defineProperty(chain, 'cond', {
+    enumerable: false,
+    writable: false,
+    configurable: false,
+    value: (
+      test: unknown,
+      truthy: ScopedCallback,
+      falsy?: ScopedCallback,
+    ): CassChain => {
+      const branch = test ? truthy : falsy;
+      if (branch) {
+        const innerOps: Op[] = [];
+        branch(makeChain(registry, innerOps, false));
+        for (const op of innerOps) ops.push(op);
+      }
       return chain as unknown as CassChain;
     },
   });

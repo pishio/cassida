@@ -276,6 +276,151 @@ interface CrossFileConfig {
   readonly cache?: ModuleCache;
 }
 
+/**
+ * Internal-only sentinel emitted by `walkChain` when it encounters a
+ * `.cond(test, cbT, cbF?)` call. Carries the test expression and each
+ * branch's flat ops. The top-level handler in `JSXSpreadAttribute`
+ * uses `expandBranches` to multiply the surrounding chain's ops with
+ * the truthy / falsy alternatives into a Cartesian set of `ChainLeaf`s.
+ *
+ * Not exported and not a runtime `Op`: this only lives inside the
+ * parser between walk-time and Cartesian expansion.
+ */
+interface BranchPlaceholder {
+  readonly __branch: {
+    readonly test: t.Expression;
+    readonly truthyOps: readonly Op[];
+    readonly falsyOps: readonly Op[];
+  };
+}
+
+type ExtendedOp = Op | BranchPlaceholder;
+
+function isBranchPlaceholder(op: ExtendedOp): op is BranchPlaceholder {
+  return typeof op === 'object' && op !== null && '__branch' in op;
+}
+
+/**
+ * One decision (`test`, branch taken) recorded for a `ChainLeaf`. The
+ * sequence of decisions in order encodes the path through the
+ * Cartesian product of `.cond()` calls that produced this leaf.
+ */
+interface BranchDecision {
+  readonly test: t.Expression;
+  readonly isTruthy: boolean;
+}
+
+/**
+ * One leaf of a chain after `.cond()` expansion: the flat op sequence
+ * for this Cartesian branch, plus the decisions that selected it.
+ * `conditions.length === 0` denotes a chain with no `.cond()` calls
+ * (and `BranchedChain.length === 1` in that case).
+ */
+interface ChainLeaf {
+  readonly ops: Op[];
+  readonly conditions: readonly BranchDecision[];
+}
+
+type BranchedChain = readonly ChainLeaf[];
+
+/**
+ * Safety cap on Cartesian explosion. Five nested `.cond()`s = 32
+ * compiled classes. Beyond this the build cost grows fast and the
+ * JSX-output ternary depth becomes unreadable — users should refactor
+ * to a higher-level switch.
+ */
+const MAX_BRANCH_LEAVES = 32;
+
+/**
+ * Build a balanced nested ternary that picks the right per-leaf value
+ * out of a set of compiled leaves. The recursion splits on each
+ * decision in order, producing
+ *
+ *     test_0 ? (test_1 ? leaf_tt : leaf_tf) : (test_1 ? leaf_ft : leaf_ff)
+ *
+ * for two `.cond()`s. The shape matches the order the `.cond()` calls
+ * appeared in source. `leafExpr` materialises whatever the caller
+ * wants at each leaf (a className `StringLiteral` or a style
+ * `ObjectExpression`).
+ */
+function buildBranchedExpr(
+  leaves: readonly { readonly leaf: ChainLeaf; readonly rule: CompiledRule }[],
+  depth: number,
+  index: number,
+  leafExpr: (rule: CompiledRule) => t.Expression,
+): t.Expression {
+  if (index === depth) {
+    if (leaves.length !== 1) {
+      throw new Error(
+        `[cassida] internal: branched-chain expansion landed on ${leaves.length} leaves at depth ${depth}`,
+      );
+    }
+    return leafExpr(leaves[0]!.rule);
+  }
+  // All sibling leaves share the same `conditions[index].test` AST
+  // node — they all came from the same `.cond()` call. Clone for each
+  // emission so Babel's parent-pointer bookkeeping stays consistent.
+  const test = leaves[0]!.leaf.conditions[index]!.test;
+  const truthy = leaves.filter((l) => l.leaf.conditions[index]!.isTruthy);
+  const falsy = leaves.filter((l) => !l.leaf.conditions[index]!.isTruthy);
+  return t.conditionalExpression(
+    t.cloneNode(test),
+    buildBranchedExpr(truthy, depth, index + 1, leafExpr),
+    buildBranchedExpr(falsy, depth, index + 1, leafExpr),
+  );
+}
+
+function mustGetDynamicSource(
+  slot: DynamicSlot,
+  dynamicSources: ReadonlyMap<string, t.Expression>,
+): t.Expression {
+  const node = dynamicSources.get(slot.sourceId);
+  if (!node) {
+    throw new Error(`[cassida] internal: missing source AST for slot ${slot.sourceId}`);
+  }
+  return node;
+}
+
+/**
+ * Expand an `ExtendedOp[]` (walker output, possibly with branch
+ * placeholders) into the Cartesian set of leaves. Each placeholder
+ * doubles the leaf count: every existing leaf becomes two, one with
+ * the placeholder's truthy ops appended + decision (test, true), one
+ * with the falsy ops + decision (test, false). Non-branch ops are
+ * appended to every leaf unchanged.
+ */
+function expandBranches(ops: readonly ExtendedOp[]): BranchedChain {
+  type Leaf = { ops: Op[]; conditions: BranchDecision[] };
+  let leaves: Leaf[] = [{ ops: [], conditions: [] }];
+  for (const op of ops) {
+    if (isBranchPlaceholder(op)) {
+      const { test, truthyOps, falsyOps } = op.__branch;
+      const next: Leaf[] = [];
+      for (const leaf of leaves) {
+        next.push({
+          ops: [...leaf.ops, ...truthyOps],
+          conditions: [...leaf.conditions, { test, isTruthy: true }],
+        });
+        next.push({
+          ops: [...leaf.ops, ...falsyOps],
+          conditions: [...leaf.conditions, { test, isTruthy: false }],
+        });
+      }
+      leaves = next;
+      if (leaves.length > MAX_BRANCH_LEAVES) {
+        throw new Error(
+          `[cassida] .cond() Cartesian expansion exceeds ${MAX_BRANCH_LEAVES} leaves. ` +
+            `Each nested .cond() doubles the class count; refactor to a higher-level switch ` +
+            `(JSX ternary spread, or a lookup table) when the matrix gets this dense.`,
+        );
+      }
+    } else {
+      for (const leaf of leaves) leaf.ops.push(op);
+    }
+  }
+  return leaves;
+}
+
 export function transform(source: string, options: TransformOptions): TransformResult {
   const importSource = options.importSource ?? '@cassida/core';
 
@@ -389,7 +534,19 @@ export function transform(source: string, options: TransformOptions): TransformR
    * with no plugin-specific state.
    */
   const pluginHelpers: ParserPluginHelpers = {
-    walkChain: (p) => walkChain(p, casBindings, ctx),
+    // The legacy plugin helper exposes `Op[] | null`. Internally the
+    // walker now returns `ExtendedOp[]` and may include
+    // BranchPlaceholders for `.cond()`-bearing chains. The plugin
+    // helper bails (returns null) on branched chains for back-compat;
+    // plugins that want cond support can be added later via a richer
+    // helper. For now the top-level JSX handler is the only consumer
+    // that branches matter for.
+    walkChain: (p) => {
+      const ext = walkChain(p, casBindings, ctx);
+      if (ext === null) return null;
+      if (ext.some(isBranchPlaceholder)) return null;
+      return ext as Op[];
+    },
     compileOps: (chainOps) =>
       compileOps(chainOps, {
         registry: options.registry,
@@ -451,7 +608,12 @@ export function transform(source: string, options: TransformOptions): TransformR
     // ctx so any dynamic-slot registrations the plugin triggers
     // during detection don't leak into the real state.
     const probeHelpers: ParserPluginHelpers = {
-      walkChain: (q) => walkChain(q, casBindings, probeCtx),
+      walkChain: (q) => {
+        const ext = walkChain(q, casBindings, probeCtx);
+        if (ext === null) return null;
+        if (ext.some(isBranchPlaceholder)) return null;
+        return ext as Op[];
+      },
       compileOps: (chainOps) =>
         compileOps(chainOps, {
           registry: options.registry,
@@ -520,8 +682,8 @@ export function transform(source: string, options: TransformOptions): TransformR
       // returns NodePath<Expression>; no cast needed.
       const argPath = peelPropsAccess(path.get('argument'));
 
-      const ops = walkChain(argPath, casBindings, ctx);
-      if (ops === null) {
+      const ext = walkChain(argPath, casBindings, ctx);
+      if (ext === null) {
         // Bare chain didn't match. Give registered parser plugins a
         // turn before we leave the JSX untouched. First-match wins;
         // each plugin is responsible for its own conservative-bail
@@ -557,48 +719,141 @@ export function transform(source: string, options: TransformOptions): TransformR
 
       assertNoOtherCassidaSpreads(opening, path);
 
-      const compiled = compileOps(ops, {
-        registry: options.registry,
-        ...(options.shorthandPolicy !== undefined ? { shorthandPolicy: options.shorthandPolicy } : {}),
-        ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
-      });
-      rules.push(compiled);
-
-      const {
-        spreadIdx,
-        styleIdx,
-        classNameIdx,
-        existingStyleAttr,
-        existingClassNameAttr,
-      } = findAttributeIndices(opening, path.node);
-
-      const casWins = spreadIdx > styleIdx;
-      const casBaseCssProps = Object.keys(compiled.tree.bag);
-
-      const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, compiled.className);
-      const styleResult = decideStyleAttr(
-        existingStyleAttr,
-        compiled.dynamics,
-        casBaseCssProps,
-        dynamicSources,
-        casWins,
-      );
-
-      const replacement: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [
-        newClassNameAttr,
-      ];
-      if (styleResult.attr !== null) replacement.push(styleResult.attr);
-      opening.attributes = rebuildAttributes(
-        opening,
-        spreadIdx,
-        replacement,
-        classNameIdx >= 0 ? classNameIdx : null,
-        styleIdx >= 0 && styleResult.replacesExisting ? styleIdx : null,
-      );
-
+      // Split the static-chain path from the branched-chain path. A
+      // chain with no `.cond()` calls produces a single leaf with no
+      // conditions; the existing single-class emission handles that
+      // efficiently. Cond-bearing chains go through `handleBranched`
+      // which materialises every Cartesian leaf and emits nested
+      // className / style ternaries.
+      const branched = expandBranches(ext);
+      if (branched.length === 1 && branched[0]!.conditions.length === 0) {
+        handleSingleChain(path, opening, branched[0]!.ops);
+      } else {
+        handleBranchedChain(path, opening, branched);
+      }
       transformed = true;
     },
   });
+
+  function handleSingleChain(
+    path: NodePath<t.JSXSpreadAttribute>,
+    opening: t.JSXOpeningElement,
+    ops: Op[],
+  ): void {
+    const compiled = compileOps(ops, {
+      registry: options.registry,
+      ...(options.shorthandPolicy !== undefined ? { shorthandPolicy: options.shorthandPolicy } : {}),
+      ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+    });
+    rules.push(compiled);
+
+    const {
+      spreadIdx,
+      styleIdx,
+      classNameIdx,
+      existingStyleAttr,
+      existingClassNameAttr,
+    } = findAttributeIndices(opening, path.node);
+
+    const casWins = spreadIdx > styleIdx;
+    const casBaseCssProps = Object.keys(compiled.tree.bag);
+
+    const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, compiled.className);
+    const styleResult = decideStyleAttr(
+      existingStyleAttr,
+      compiled.dynamics,
+      casBaseCssProps,
+      dynamicSources,
+      casWins,
+    );
+
+    const replacement: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [
+      newClassNameAttr,
+    ];
+    if (styleResult.attr !== null) replacement.push(styleResult.attr);
+    opening.attributes = rebuildAttributes(
+      opening,
+      spreadIdx,
+      replacement,
+      classNameIdx >= 0 ? classNameIdx : null,
+      styleIdx >= 0 && styleResult.replacesExisting ? styleIdx : null,
+    );
+  }
+
+  /**
+   * Emit the JSX shape for a `.cond()`-expanded chain. Each leaf
+   * compiles to its own `cas-XXXXXXXX` class, and the className
+   * attribute becomes a balanced nested ternary that picks the right
+   * class for the runtime test outcomes. Branches that carry dynamic
+   * slots also produce a parallel `style={...}` nested ternary; the
+   * empty-style side is `void 0` so React skips application cleanly.
+   */
+  function handleBranchedChain(
+    path: NodePath<t.JSXSpreadAttribute>,
+    opening: t.JSXOpeningElement,
+    leaves: BranchedChain,
+  ): void {
+    const compiledLeaves = leaves.map((leaf) => ({
+      leaf,
+      rule: compileOps(leaf.ops, {
+        registry: options.registry,
+        ...(options.shorthandPolicy !== undefined
+          ? { shorthandPolicy: options.shorthandPolicy }
+          : {}),
+        ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+      }),
+    }));
+    for (const { rule } of compiledLeaves) rules.push(rule);
+
+    const condDepth = leaves[0]!.conditions.length;
+    const classNameExpr = buildBranchedExpr(compiledLeaves, condDepth, 0, (rule) =>
+      t.stringLiteral(rule.className),
+    );
+
+    const anyDynamic = compiledLeaves.some(({ rule }) => rule.dynamics.length > 0);
+    const styleExpr = anyDynamic
+      ? buildBranchedExpr(compiledLeaves, condDepth, 0, (rule) => {
+          if (rule.dynamics.length === 0) {
+            return t.unaryExpression('void', t.numericLiteral(0));
+          }
+          return t.objectExpression(
+            rule.dynamics.map((slot) =>
+              t.objectProperty(
+                t.stringLiteral(slot.varName),
+                mustGetDynamicSource(slot, dynamicSources),
+              ),
+            ),
+          );
+        })
+      : null;
+
+    const {
+      spreadIdx,
+      styleIdx,
+      classNameIdx,
+      existingStyleAttr,
+      existingClassNameAttr,
+    } = findAttributeIndices(opening, path.node);
+
+    const newClassNameAttr = makeClassNameAttr(existingClassNameAttr, classNameExpr);
+    const newStyleAttr =
+      styleExpr === null
+        ? null
+        : mergeStyleExpression(existingStyleAttr, styleExpr, true);
+
+    const replacement: (t.JSXAttribute | t.JSXSpreadAttribute)[] = [
+      newClassNameAttr,
+    ];
+    if (newStyleAttr !== null) replacement.push(newStyleAttr);
+
+    opening.attributes = rebuildAttributes(
+      opening,
+      spreadIdx,
+      replacement,
+      classNameIdx >= 0 ? classNameIdx : null,
+      styleIdx >= 0 && newStyleAttr !== null ? styleIdx : null,
+    );
+  }
 
   if (!transformed) {
     return { code: source, rules: [], map: null, transformed: false };
@@ -654,8 +909,8 @@ function walkChain(
   start: NodePath,
   chainRoots: ReadonlySet<string>,
   ctx: WalkContext,
-): Op[] | null {
-  const ops: Op[] = [];
+): ExtendedOp[] | null {
+  const ops: ExtendedOp[] = [];
   let current: NodePath = start;
 
   while (true) {
@@ -700,6 +955,38 @@ function walkChain(
         const expanded = expandUnsafePreset(value as Record<string, unknown>);
         for (let i = expanded.length - 1; i >= 0; i--) ops.push(expanded[i]!);
         break;
+      }
+
+      if (methodName === 'cond') {
+        // .cond(test, cbT, cbF?) — chain-internal branching. Recorded
+        // as a BranchPlaceholder; expandBranches multiplies the
+        // surrounding ops with each branch's inner ops into a
+        // Cartesian set of leaves. Each leaf compiles to its own
+        // `cas-XXXXXXXX` class; the JSX-side ternary picks among them
+        // at runtime using the original `test` expression.
+        //
+        // Phase 1 (this PR): cond is recognised only at the top level
+        // of a chain. Nested inside `.hover(c => c.cond(...))` etc.,
+        // `collectFromCallback` sees the BranchPlaceholder and bails,
+        // so the chain falls through to runtime. Phase 2 will support
+        // cond-inside-scope by lifting the expansion past ScopedOps.
+        if (argPaths.length < 2 || argPaths.length > 3) return null;
+        const testArg = argPaths[0]!;
+        if (!t.isExpression(testArg.node)) return null;
+        const truthyOps = collectFromCallback(argPaths[1]!, ctx);
+        if (truthyOps === null) return null;
+        const falsyOps =
+          argPaths.length === 3 ? collectFromCallback(argPaths[2]!, ctx) : [];
+        if (falsyOps === null) return null;
+        ops.push({
+          __branch: {
+            test: testArg.node,
+            truthyOps,
+            falsyOps,
+          },
+        });
+        current = memberPath.get('object');
+        continue;
       }
 
       if (methodName === 'set') {
@@ -851,7 +1138,12 @@ function tryFunctionComposition(
   const blockPath = pathAs(bodyPath, t.isBlockStatement);
   const fnBodyOps = blockPath
     ? collectFromBlock(blockPath, innerRoots, ctx)
-    : walkChain(bodyPath, innerRoots, ctx);
+    : (() => {
+        const ext = walkChain(bodyPath, innerRoots, ctx);
+        if (ext === null) return null;
+        if (ext.some(isBranchPlaceholder)) return null;
+        return ext as Op[];
+      })();
   if (fnBodyOps === null) return null;
 
   // The argument MUST be exactly 1 (the chain to feed in).
@@ -861,8 +1153,14 @@ function tryFunctionComposition(
   if (!t.isExpression(argPath.node)) return null;
   // Walk the argument with the OUTER chainRoots — typically `fss`,
   // sometimes a recursive composition's own scope.
-  const argOps = walkChain(argPath, chainRoots, ctx);
-  if (argOps === null) return null;
+  const argExt = walkChain(argPath, chainRoots, ctx);
+  if (argExt === null) return null;
+  // Phase 1: `.cond()` is not permitted on the argument side of a
+  // function composition. The mixin idiom `withCard(cas())` is meant
+  // for static layering; branched argument chains would force the
+  // composition to fan out too.
+  if (argExt.some(isBranchPlaceholder)) return null;
+  const argOps = argExt as Op[];
 
   // Compose: argument ops first (the input chain), then function body
   // ops (the mixin layered on top). LIFO inside the merged op list
@@ -883,8 +1181,16 @@ function collectFromCallback(cbPath: NodePath, ctx: WalkContext): Op[] | null {
 
   const bodyPath = arrowPath.get('body');
   const blockPath = pathAs(bodyPath, t.isBlockStatement);
-  if (blockPath) return collectFromBlock(blockPath, innerRoots, ctx);
-  return walkChain(bodyPath, innerRoots, ctx);
+  const result = blockPath
+    ? collectFromBlock(blockPath, innerRoots, ctx)
+    : walkChain(bodyPath, innerRoots, ctx);
+  if (result === null) return null;
+  // Phase 1: `.cond()` is supported only at the top level of a chain.
+  // Inside a modifier scope (or any callback) cond-bearing chains bail,
+  // so the host JSX falls through to runtime. The runtime `.cond()`
+  // works fine; only build-time Cartesian expansion is restricted.
+  if (result.some(isBranchPlaceholder)) return null;
+  return result as Op[];
 }
 
 function collectFromBlock(
@@ -897,9 +1203,12 @@ function collectFromBlock(
   for (const stmtPath of stmtPaths) {
     const exprStmtPath = pathAs(stmtPath, t.isExpressionStatement);
     if (exprStmtPath) {
-      const ops = walkChain(exprStmtPath.get('expression'), innerRoots, ctx);
-      if (ops === null) return null;
-      allOps.push(...ops);
+      const ext = walkChain(exprStmtPath.get('expression'), innerRoots, ctx);
+      if (ext === null) return null;
+      // Same Phase-1 restriction as `collectFromCallback`: cond is
+      // only allowed at the top level of a chain.
+      if (ext.some(isBranchPlaceholder)) return null;
+      allOps.push(...(ext as Op[]));
       continue;
     }
     const returnStmtPath = pathAs(stmtPath, t.isReturnStatement);
@@ -909,9 +1218,10 @@ function collectFromBlock(
       // generic and narrows to NodePath<Expression> in one step.
       const exprPath = pathAs(returnStmtPath.get('argument'), t.isExpression);
       if (!exprPath) continue;
-      const ops = walkChain(exprPath, innerRoots, ctx);
-      if (ops === null) return null;
-      allOps.push(...ops);
+      const ext = walkChain(exprPath, innerRoots, ctx);
+      if (ext === null) return null;
+      if (ext.some(isBranchPlaceholder)) return null;
+      allOps.push(...(ext as Op[]));
       continue;
     }
     return null;
