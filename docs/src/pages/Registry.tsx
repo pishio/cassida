@@ -12,7 +12,7 @@ export default function Registry(): React.JSX.Element {
         'Every standard CSS property is callable as a chain method. The curated subset is hand-typed via csstype so IDE autocomplete surfaces real CSS values; the long tail is auto-generated from mdn-data with a permissive (string | number) signature. The line between them is invisible at the call site — you get the same chain shape either way.',
       canonicalHeading: 'Canonical entries',
       canonicalCopy:
-        'Hand-crafted, csstype-typed. Covers the box-model shorthand families (margin, padding, inset) along with their longhands, and ships Tailwind-shaped multi-property utilities — px / py / mx / my — that write two physical longhands per call. The shorthand-policy guard rejects shorthand ↔ longhand co-occurrence inside a single scope at build time, so the cascade-vs-LIFO ambiguity that bites silently elsewhere has no place to hide.',
+        'Hand-crafted, csstype-typed. Covers the box-model shorthand families (margin, padding, inset) along with their longhands, and ships Tailwind-shaped multi-property utilities — px / py / mx / my — that write two logical longhands per call (padding-inline-start/end, padding-block-start/end, …). The shorthand-policy guard rejects shorthand ↔ longhand co-occurrence inside a single scope at build time, so the cascade-vs-LIFO ambiguity that bites silently elsewhere has no place to hide.',
       generatedHeading: 'Generated entries',
       generatedCopy:
         'Roughly 230 methods auto-generated from mdn-data fill the gaps the curated set leaves open. Each takes a permissive (string | number) argument. When a name collides with a canonical entry, TypeScript’s intersection keeps the curated typing — generated methods exist for breadth, not to loosen what the curated set already constrains.',
@@ -29,7 +29,7 @@ export default function Registry(): React.JSX.Element {
         '標準 CSS プロパティはすべてチェーンメソッドとして呼べる。curated なサブセットは csstype で hand-typed され、IDE 補完が実在の CSS 値を提案する。残りの「長い裾」は mdn-data から自動生成されており、引数は permissive な (string | number) だ。呼び出し側からはその境界は見えない — どちらにせよ同じ形のチェーンが手に入る。',
       canonicalHeading: 'Canonical エントリ',
       canonicalCopy:
-        '手書き、csstype 型付き。box-model の shorthand ファミリー (margin / padding / inset) と各 longhand に加え、Tailwind 流の multi-property utility — px / py / mx / my — を備える。これらは 1 回の呼び出しで 2 つの物理 longhand を書き込む。shorthand-policy ガードは、同一スコープ内での shorthand と longhand の併存をビルド時に拒否する。LIFO とカスケードの曖昧さに足元を救われる余地は、ここに残されていない。',
+        '手書き、csstype 型付き。box-model の shorthand ファミリー (margin / padding / inset) と各 longhand に加え、Tailwind 流の multi-property utility — px / py / mx / my — を備える。これらは 1 回の呼び出しで 2 つの論理 longhand (padding-inline-start/end, padding-block-start/end, …) を書き込む — 書字方向に応じて物理的な左右が決まる。shorthand-policy ガードは、同一スコープ内での shorthand と longhand の併存をビルド時に拒否する。LIFO とカスケードの曖昧さに足元を救われる余地は、ここに残されていない。',
       generatedHeading: 'Generated エントリ',
       generatedCopy:
         'curated なセットが埋めない穴は、mdn-data から自動生成された約 230 個のメソッドが受け持つ。引数は permissive な (string | number) を 1 つ。同名のメソッドが canonical 側にある場合、TypeScript の intersection が curated な型付けを優先する — generated は幅をもたらすために存在しており、curated が課す制約を緩めるためではない。',
