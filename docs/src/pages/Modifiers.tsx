@@ -65,7 +65,7 @@ export default function Modifiers(): React.JSX.Element {
         '修飾子は自由にネストできる。各コールバックは独自のスコープを開き、内側のチェーンは外側とは独立した LIFO 畳み込みを持つ。',
       sortHeading: 'デフォルトはモバイルファースト',
       sortCopy:
-        'ソース順は問われない — 幅基準のメディアクエリは昇順 (小 → 大) にソートされ、カスケードがその順番で読まれる。cassida.config.json でデスクトップファースト (max-width 降順) に切り替えられる。em / rem は 16px で正規化されるため px との相対順序が一貫し、幅基準でないクエリ (print・prefers-color-scheme など) は幅ブロックの後にアルファベット順で並ぶ。',
+        'ソース順は問われない — 幅基準のメディアクエリは昇順 (小 → 大) にソートされ、カスケードがその順番で読まれる。cassida.config.json でデスクトップファースト (max-width 降順) に切り替えられる。em / rem は 16px で正規化されるため px との相対順序が一貫し、幅基準でないクエリ (print、prefers-color-scheme など) は幅ブロックの後にアルファベット順で並ぶ。',
     },
   });
 

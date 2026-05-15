@@ -60,7 +60,7 @@ export default function Unsafe(): React.JSX.Element {
         'cas.unsafe のメソッド形式 — チェーンの途中に 1 プロパティ書き込みを差し込む。単位の自動付与はない。"10px" や "1.5rem" のように完全な CSS 値を渡す。',
       blacklistHeading: 'ブラックリストの shorthand',
       blacklistCopy:
-        '以下の shorthand 名は型付き cas() 面から欠落している。型付き preset の SafePreset が境界でこれらを除外し、チェーンメソッドとしても存在しない。これらを書きたい場合は cas.unsafe({ ... }) もしくは cas().set(\'background\', \'...\') を経由する:',
+        '以下の shorthand 名は型付き cas() チェーンから欠落している。型付き preset の SafePreset が境界でこれらを除外し、チェーンメソッドとしても存在しない。これらを書きたい場合は cas.unsafe({ ... }) もしくは cas().set(\'background\', \'...\') を経由する:',
       blacklistTable: 'safe surface から除外されている名前:',
     },
   });

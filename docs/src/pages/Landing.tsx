@@ -102,7 +102,7 @@ export default function Landing(): React.JSX.Element {
         <p>{copy.whyBody}</p>
       </section>
 
-      <section>
+      <section {...cas().marginBottom(40).props}>
         <h2 {...cas().fontSize(24).marginBottom(12).props}>{copy.pluginsTitle}</h2>
         <p>{copy.pluginsBlurb}</p>
       </section>

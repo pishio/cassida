@@ -34,7 +34,7 @@ export default function Cas(): React.JSX.Element {
       propsCopy:
         'すべてのチェーンは .props で終わる。返るのは { className: string; style: Readonly<CSSProperties> } — JSX が必要とする 2 属性だけだ。チェーンが持つメソッド面は剥がされ、React の型システムが spread を素直に受け入れる。',
       propsWhy:
-        'なぜ終端子が要るのか。チェーンオブジェクトは CSS プロパティに対応する約 460 個のメソッドハンドルを持ち、その中に HTML 属性と衝突する名前 (translate / disabled / hidden / slot / dir / lang / is) がいくつかある。React の JSX 型はその union を拒否する。.props はその union を 2 キーへ刈り込む — チェーンの autocomplete は失われず、strict 設定下でも spread が型を通る。',
+        'なぜ終端子が要るのか。チェーンオブジェクトは CSS プロパティに対応する約 460 個のメソッドハンドルを持ち、その中に HTML 属性と衝突する名前 (translate, disabled, hidden, slot, dir, lang, is) がいくつかある。React の JSX 型はその union を拒否する。.props はその union を 2 キーへ刈り込む — チェーンの autocomplete は失われず、strict 設定下でも spread が型を通る。',
       condHeading: '.cond(test, truthy, falsy?) — チェーン内分岐',
       condCopy:
         'JSX レベルの三項演算子は、外側のチェーンメソッドを両分岐に複製させる。.cond ならその重複を取り除ける — 共通のメソッドは 1 度だけ書き、差分だけを分岐に閉じ込める。ビルド時に各分岐がそれぞれ独自のクラスハッシュを得て、JSX の className はそれを選ぶ入れ子の三項式に書き換わる。',
