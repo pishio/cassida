@@ -34,6 +34,31 @@ export function Code({ source }: CodeProps): React.JSX.Element {
 }
 
 /**
+ * Render a string of prose, expanding `` `foo` `` segments to inline
+ * `<code>` elements. The useT() helper returns strings, so we keep
+ * the source readable (single string in / per locale) and let this
+ * helper turn the conventional backtick syntax into actual code
+ * formatting at render time.
+ */
+export function Prose({ children }: { readonly children: string }): React.JSX.Element {
+  const parts: React.ReactNode[] = [];
+  const regex = /`([^`]+)`/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(children)) !== null) {
+    if (match.index > last) {
+      parts.push(children.slice(last, match.index));
+    }
+    parts.push(<InlineCode key={parts.length}>{match[1]}</InlineCode>);
+    last = regex.lastIndex;
+  }
+  if (last < children.length) {
+    parts.push(children.slice(last));
+  }
+  return <>{parts}</>;
+}
+
+/**
  * Inline `<code>` styled to match the block form.
  */
 export function InlineCode({ children }: InlineCodeProps): React.JSX.Element {

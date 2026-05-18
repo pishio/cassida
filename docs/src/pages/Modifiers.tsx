@@ -30,42 +30,42 @@ export default function Modifiers(): React.JSX.Element {
     en: {
       title: 'Modifiers',
       intro:
-        'Modifiers wrap inner ops in a scope (pseudo-class, pseudo-element, or media query). Each modifier takes a callback that receives a fresh chain whose ops accumulate into the modifier’s sub-scope. The outer chain wraps those inner ops in a ScopedOp when the callback returns.',
+        'Modifiers open a scope — a pseudo-class, pseudo-element, or media query — and accept a callback that styles inside it. The callback receives a fresh chain; whatever methods it runs accumulate into the modifier’s sub-scope and the outer chain wraps the result as a single ScopedOp when control returns.',
       zeroArgHeading: 'Zero-argument modifiers',
       zeroArgIntro:
-        'The 19 entries below resolve to a fixed pseudo-class, pseudo-element, or media query. Invoke as chain.<name>(c => …).',
+        'Nineteen presets resolve to a fixed pseudo-class, pseudo-element, or media query. Call chain.<name>(c => …) and the inner chain takes over.',
       argHeading: 'Argument-taking modifiers',
       argIntro:
-        '.media(query, cb) accepts any CSS media query. .on(selector, cb) accepts a raw selector (any pseudo, attribute selector, descendant combinator). The selector’s prefix determines the scope kind:',
+        '.media(query, cb) accepts any CSS media query. .on(selector, cb) accepts a raw selector and dispatches on the prefix:',
       onPseudo: '" : " / " :: " prefix → pseudo scope',
       onMedia: 'starts with "@media" → media scope',
       onRaw: 'anything else → raw selector scope',
       nestingHeading: 'Nesting',
       nestingCopy:
-        'Modifiers nest arbitrarily. Each callback creates a new scope; the inner chain has its own LIFO collapse independent of the outer scope.',
-      sortHeading: 'Mobile-first media sort',
+        'Modifiers nest freely. Each callback opens its own scope, and the inner chain runs its own LIFO collapse independent of the outer one.',
+      sortHeading: 'Mobile-first by default',
       sortCopy:
-        'Source order doesn’t matter — width-based queries are sorted ascending. The default is mobile-first (min-width queries sorted low → high); switch to desktop-first (max-width descending) via cassida.config.json.',
+        'Source order doesn’t matter — width-based media queries are sorted ascending so the cascade reads small → large. Switch to desktop-first (max-width descending) in cassida.config.json. em / rem are normalized at 16px so they sort consistently against px; non-width queries (print, prefers-color-scheme) follow the width block alphabetically.',
     },
     ja: {
       title: '修飾子',
       intro:
-        '修飾子は内側の ops をスコープ (擬似クラス / 擬似要素 / メディアクエリ) で包みます。各修飾子はコールバックを受け取り、その中で新しいチェーンが渡されます。コールバック内の ops が修飾子のサブスコープに蓄積され、コールバックが return すると外側チェーンがそれを ScopedOp として包みます。',
+        '修飾子はスコープ (擬似クラス・擬似要素・メディアクエリ) を開き、その内側を描くためのコールバックを受け取る。コールバックには新しいチェーンが渡され、その中で呼ばれたメソッドが修飾子のサブスコープへ蓄積される。コールバックを抜けると、外側のチェーンがそれらをひとつの ScopedOp として包む。',
       zeroArgHeading: '引数なし修飾子',
       zeroArgIntro:
-        '以下の 19 個は固定の擬似クラス / 擬似要素 / メディアクエリに解決されます。chain.<name>(c => …) として呼びます。',
+        '固定の擬似クラス・擬似要素・メディアクエリへ解決される 19 個のプリセットがある。chain.<name>(c => …) と書けば、内側のチェーンに制御が渡る。',
       argHeading: '引数を取る修飾子',
       argIntro:
-        '.media(query, cb) は任意の CSS メディアクエリを受け取ります。.on(selector, cb) は生のセレクタ (任意の擬似クラス、属性セレクタ、子孫結合子) を受け取り、prefix によって scope の種類が決まります:',
+        '.media(query, cb) は任意の CSS メディアクエリを受け取る。.on(selector, cb) は生のセレクタを受け、その接頭辞でスコープの種類が決まる:',
       onPseudo: '" : " / " :: " で始まる → pseudo scope',
       onMedia: '"@media" で始まる → media scope',
       onRaw: 'それ以外 → raw selector scope',
       nestingHeading: 'ネスト',
       nestingCopy:
-        '修飾子は任意にネストできます。各コールバックは新しいスコープを作り、内側チェーンは外側スコープから独立した LIFO 畳み込みを持ちます。',
-      sortHeading: 'モバイルファーストのメディア順序',
+        '修飾子は自由にネストできる。各コールバックは独自のスコープを開き、内側のチェーンは外側とは独立した LIFO 畳み込みを持つ。',
+      sortHeading: 'デフォルトはモバイルファースト',
       sortCopy:
-        'ソース順は問いません — 幅基準のクエリは昇順にソートされます。デフォルトはモバイルファースト (min-width を小 → 大)。デスクトップファースト (max-width を大 → 小) に切り替える場合は cassida.config.json で指定します。',
+        'ソース順は問われない — 幅基準のメディアクエリは昇順 (小 → 大) にソートされ、カスケードがその順番で読まれる。cassida.config.json でデスクトップファースト (max-width 降順) に切り替えられる。em / rem は 16px で正規化されるため px との相対順序が一貫し、幅基準でないクエリ (print、prefers-color-scheme など) は幅ブロックの後にアルファベット順で並ぶ。',
     },
   });
 
