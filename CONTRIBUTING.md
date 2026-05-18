@@ -116,7 +116,7 @@ Plugins run between collapse and hash (CSS) or before walk (parser), so flipping
 ## Asking for help
 
 - Bug reports and feature requests: open an issue at https://github.com/pishio/cassida/issues.
-- Security concerns: see the maintainer's email below.
+- Security concerns: email the maintainer privately at mail@pishio.com instead of filing a public issue.
 
 ## License
 
