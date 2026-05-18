@@ -155,7 +155,7 @@ function NavItem({ to, label, end }: NavItemProps): React.JSX.Element {
   // NavLink's children-as-render-prop API lets us put the cas chain
   // in JSX-spread position. The parser walks every JSXSpreadAttribute
   // in the source — including ones nested inside callback bodies —
-  // so both `.cond()` branches materialise into pre-compiled class
+  // so both `.cond()` branches materialize into pre-compiled class
   // hashes at build time, and the runtime just toggles between them.
   return (
     <li>

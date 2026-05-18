@@ -197,7 +197,7 @@ function Th({ children }: ThProps): React.JSX.Element {
 function Td({ children, mono, muted }: TdProps): React.JSX.Element {
   // Dynamic styling driven by component props — `.cond()` keeps the
   // branching inside the chain so each (mono, muted) combination
-  // materialises into its own pre-compiled class hash. `cond`'s test
+  // materializes into its own pre-compiled class hash. `cond`'s test
   // arg is just truthy-checked, so the bare optional booleans work.
   return (
     <td

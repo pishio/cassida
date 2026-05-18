@@ -45,7 +45,7 @@ export default function Modifiers(): React.JSX.Element {
         'Modifiers nest freely. Each callback opens its own scope, and the inner chain runs its own LIFO collapse independent of the outer one.',
       sortHeading: 'Mobile-first by default',
       sortCopy:
-        'Source order doesn’t matter — width-based media queries are sorted ascending so the cascade reads small → large. Switch to desktop-first (max-width descending) in cassida.config.json. em / rem are normalised at 16px so they sort consistently against px; non-width queries (print, prefers-color-scheme) follow the width block alphabetically.',
+        'Source order doesn’t matter — width-based media queries are sorted ascending so the cascade reads small → large. Switch to desktop-first (max-width descending) in cassida.config.json. em / rem are normalized at 16px so they sort consistently against px; non-width queries (print, prefers-color-scheme) follow the width block alphabetically.',
     },
     ja: {
       title: '修飾子',

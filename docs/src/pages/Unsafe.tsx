@@ -39,7 +39,7 @@ export default function Unsafe(): React.JSX.Element {
         'Open a chain from an object whose keys can be anything. The preset’s entries are inlined as raw CSS declarations — registry lookup, shorthand-policy enforcement, and family tracking are all bypassed.',
       setHeading: '.set(key, value)',
       setCopy:
-        'The method equivalent of cas.unsafe — drop a single property write into the middle of a chain. No auto-unitisation: pass full CSS values like "10px" or "1.5rem" rather than bare numbers.',
+        'The method equivalent of cas.unsafe — drop a single property write into the middle of a chain. No auto-unitization: pass full CSS values like "10px" or "1.5rem" rather than bare numbers.',
       blacklistHeading: 'Blacklisted shorthands',
       blacklistCopy:
         'These shorthand names are absent from the typed cas() chain. The TypeScript-typed SafePreset filters them out at the boundary; the chain methods don’t exist either. To reach them, use cas.unsafe({ ... }) or cas().set(\'background\', \'...\'):',
