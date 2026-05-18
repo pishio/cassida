@@ -753,6 +753,8 @@ Reference: `packages/plugin-conditional/src/index.ts` — ~150 lines covering bo
 
 ## Contributing
 
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full development guide, conventions, and release process. The short version:
+
 This is a pnpm workspace. Node ≥ 20 required.
 
 ```bash
