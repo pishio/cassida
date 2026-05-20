@@ -487,17 +487,16 @@ for (const spec of Object.values(canonicalSpec)) {
     };
   }
   // Multi-property entries (`px` → padding-inline-start/-end, ...)
-  // also seed their longhand keys with the same metadata, so dynamic
-  // writes like `cas().px(theme.spacing)` emit `@property` descriptors
-  // for both longhand CSS variables — not just the parent label.
-  if ('properties' in spec && spec.properties !== undefined) {
+  // also seed their longhand keys, reusing the parent's metadata
+  // entry. Sharing the reference is safe because PropertyMeta is
+  // readonly and the longhands inherit identical syntax / animatable
+  // semantics from the parent. The `'properties' in spec` check is
+  // required for type narrowing — `Object.values(canonicalSpec)` has
+  // a union of spec literals, only some of which declare `properties`.
+  if ('properties' in spec) {
     for (const longhand of spec.properties) {
       if (!(longhand in propertyMetaTable)) {
-        propertyMetaTable[longhand] = {
-          syntax: 'syntax' in spec ? spec.syntax : undefined,
-          initialValue: 'initialValue' in spec ? spec.initialValue : undefined,
-          animatable: spec.animatable,
-        };
+        propertyMetaTable[longhand] = propertyMetaTable[spec.property]!;
       }
     }
   }
