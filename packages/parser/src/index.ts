@@ -913,7 +913,7 @@ export function transform(source: string, options: TransformOptions): TransformR
             rule.dynamics.map((slot) =>
               t.objectProperty(
                 t.stringLiteral(slot.varName),
-                mustGetDynamicSource(slot, dynamicSources),
+                t.cloneNode(mustGetDynamicSource(slot, dynamicSources)),
               ),
             ),
           );
@@ -1767,12 +1767,16 @@ function decideStyleAttr(
     return { attr: null, replacesExisting: false };
   }
 
+  // Multi-property dynamic args (`cas().px(theme.spacing)`) bind the
+  // same source AST to N CSS variables, so the same `sourceId` shows
+  // up in N slots. Clone for every slot so each `--…` ObjectProperty
+  // owns its own subtree and Babel's parent pointers stay consistent.
   const casVarProps: t.ObjectProperty[] = dynamics.map((slot) => {
     const value = dynamicSources.get(slot.sourceId);
     if (!value) {
       throw new Error(`[cassida] internal: missing source AST for slot ${slot.sourceId}`);
     }
-    return t.objectProperty(t.stringLiteral(slot.varName), value);
+    return t.objectProperty(t.stringLiteral(slot.varName), t.cloneNode(value));
   });
 
   const userProps: (t.ObjectProperty | t.SpreadElement)[] = [];

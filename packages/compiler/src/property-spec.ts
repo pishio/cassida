@@ -486,5 +486,19 @@ for (const spec of Object.values(canonicalSpec)) {
       animatable: spec.animatable,
     };
   }
+  // Multi-property entries (`px` → padding-inline-start/-end, ...)
+  // also seed their longhand keys, reusing the parent's metadata
+  // entry. Sharing the reference is safe because PropertyMeta is
+  // readonly and the longhands inherit identical syntax / animatable
+  // semantics from the parent. The `'properties' in spec` check is
+  // required for type narrowing — `Object.values(canonicalSpec)` has
+  // a union of spec literals, only some of which declare `properties`.
+  if ('properties' in spec) {
+    for (const longhand of spec.properties) {
+      if (!(longhand in propertyMetaTable)) {
+        propertyMetaTable[longhand] = propertyMetaTable[spec.property]!;
+      }
+    }
+  }
 }
 export const defaultPropertyMeta: Readonly<Record<string, PropertyMeta>> = Object.freeze(propertyMetaTable);

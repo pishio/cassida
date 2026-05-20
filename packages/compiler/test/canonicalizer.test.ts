@@ -362,10 +362,19 @@ describe('Canonicalizer.collapse — multi-property entries (px / py / mx / my)'
     });
   });
 
-  it('dynamic args on multi-property methods are rejected with an actionable error', () => {
-    expect(() =>
-      canon.collapse([{ method: 'px', args: [dyn('cas-dyn-1')] }]),
-    ).toThrow(/dynamic args on multi-property method "px" are not yet supported/);
+  it('dynamic args on multi-property methods seed every longhand with the same source id', () => {
+    const tree = canon.collapse([{ method: 'px', args: [dyn('cas-dyn-1')] }]);
+    // Both longhands receive the dynamic placeholder; both slots
+    // point at the same source id, so the parser can emit a single
+    // expression bound to two CSS variables in the inline style.
+    expect(tree.bag).toEqual({
+      'padding-inline-start': DYNAMIC_PLACEHOLDER,
+      'padding-inline-end': DYNAMIC_PLACEHOLDER,
+    });
+    expect(tree.slots).toEqual({
+      'padding-inline-start': 'cas-dyn-1',
+      'padding-inline-end': 'cas-dyn-1',
+    });
   });
 
   it('static unit override works on multi-property methods', () => {
@@ -389,14 +398,13 @@ describe('Canonicalizer.collapse — multi-property entries (px / py / mx / my)'
     ).not.toThrow();
   });
 
-  it('dynamic-arg bail keys on `properties` presence, not its length', () => {
-    // Forward-compat guard: a multi-property entry whose `properties`
-    // happens to contain a single element is *still* multi-property
-    // (its formatter writes a StyleBag, not a string). The dynamic
-    // branch below keys placeholders by `entry.property` (the label),
-    // which for such an entry is NOT in `properties` — so a
-    // length-based gate would silently target the wrong CSS property.
-    // The bail must fire regardless of element count.
+  it('dynamic-arg expansion keys on `properties` (the longhand list), not the parent label', () => {
+    // Multi-property dispatch is gated on the presence of `properties`,
+    // not its length. A multi-property entry whose `properties` happens
+    // to contain a single element is *still* multi-property (its
+    // formatter writes a StyleBag, not a string). The label
+    // (`entry.property`) is for diagnostics; the bag write targets the
+    // actual CSS longhand listed in `properties`.
     const lengthOneEntry: import('../src/registry.js').RegistryEntry = {
       property: 'fake-label',
       properties: ['actual-css-prop'],
@@ -409,11 +417,13 @@ describe('Canonicalizer.collapse — multi-property entries (px / py / mx / my)'
       myCustom: lengthOneEntry,
     };
     const c = new Canonicalizer(customRegistry);
-    expect(() =>
-      c.collapse([{ method: 'myCustom', args: [dyn('cas-dyn-x')] }]),
-    ).toThrow(
-      /dynamic args on multi-property method "myCustom" are not yet supported/,
-    );
+    const tree = c.collapse([{ method: 'myCustom', args: [dyn('cas-dyn-x')] }]);
+    expect(tree.bag).toEqual({ 'actual-css-prop': DYNAMIC_PLACEHOLDER });
+    expect(tree.slots).toEqual({ 'actual-css-prop': 'cas-dyn-x' });
+    // The label key is NOT in the bag — guarding against the
+    // previous-implementation bug where the dynamic branch wrote
+    // to `entry.property` (the label) for multi-property entries.
+    expect(tree.bag['fake-label']).toBeUndefined();
   });
 });
 
