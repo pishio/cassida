@@ -4,7 +4,9 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
-(No changes yet.)
+### Changed
+
+- **`.cond()` lifted inside modifier scopes** — chains like `cas().hover(c => c.cond(active, t => t.bg('red'), f => f.bg('blue')))` now expand to two build-time classes (one for each branch) instead of bailing to the runtime. The Cartesian expansion descends into scoped ops, and `buildBranchedExpr` handles leaves with variable conditions length when a `.cond()` lives inside only one branch of an outer `.cond()`. The `[Limitations]` entry from `0.4.0` is resolved; `.cond()` inside function composition (`withCard(cas())`) still bails.
 
 ## [0.5.0] — 2026-05-14
 

@@ -254,8 +254,59 @@ describe('chain `.cond(test, truthy, falsy?)`', () => {
     });
   });
 
-  describe('Phase 1 limitation — `.cond()` inside modifier callbacks', () => {
-    it('bails (falls through to runtime) when `.cond()` appears inside `.hover(...)`', () => {
+  describe('`.cond()` inside modifier scopes', () => {
+    it('lifts `cas().hover(c => c.cond(a, t, f))` into a two-leaf build-time expansion', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...cas().hover(c => c.cond(a, x => x.color('red'), y => y.color('blue'))).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      const hoverBags = r.rules.map((rule) => {
+        const hoverChild = rule.tree.children.find(
+          (c) => c.scope?.kind === 'pseudo' && c.scope.selector === ':hover',
+        );
+        return hoverChild?.bag.color;
+      });
+      expect(hoverBags.sort()).toEqual(['blue', 'red']);
+      expect(r.code).toMatch(
+        /className=\{a \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}/,
+      );
+    });
+
+    it('threads outer ops through every leaf when the cond is nested in a scope', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a }: { a: boolean }) =>
+          <div
+            {...cas()
+              .padding(8)
+              .hover(c => c.cond(a, x => x.color('red'), y => y.color('blue')))
+              .marginTop(16).props}
+          />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      for (const rule of r.rules) {
+        expect(rule.tree.bag.padding).toBe('8px');
+        expect(rule.tree.bag['margin-top']).toBe('16px');
+        // The hover-scope child carries whichever color the leaf chose.
+        const hoverChild = rule.tree.children.find(
+          (c) => c.scope?.kind === 'pseudo' && c.scope.selector === ':hover',
+        );
+        expect(hoverChild).toBeDefined();
+        expect(hoverChild!.bag.color).toMatch(/^(red|blue)$/);
+      }
+    });
+
+    it('falsy callback can be omitted — the scope materialises empty on the falsy side', () => {
       const r = transform(
         `
         import { cas } from '@cassida/core';
@@ -264,9 +315,64 @@ describe('chain `.cond(test, truthy, falsy?)`', () => {
       `,
         opts,
       );
-      // The whole chain bails — no rules, no JSX rewrite.
-      expect(r.transformed).toBe(false);
-      expect(r.rules).toHaveLength(0);
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      // One leaf has a :hover { color: red } child; the other has an
+      // empty :hover scope (collapsed away by the canonicalizer).
+      const withColor = r.rules.filter((rule) =>
+        rule.tree.children.some(
+          (c) =>
+            c.scope?.kind === 'pseudo' &&
+            c.scope.selector === ':hover' &&
+            c.bag.color === 'red',
+        ),
+      );
+      expect(withColor).toHaveLength(1);
+    });
+
+    it('supports cond inside arg-modifier (`.media`)', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...cas().media('(min-width: 640px)', c =>
+            c.cond(a, x => x.color('red'), y => y.color('blue'))).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      const mediaColors = r.rules.map((rule) => {
+        const child = rule.tree.children.find((c) => c.scope?.kind === 'media');
+        return child?.bag.color;
+      });
+      expect(mediaColors.sort()).toEqual(['blue', 'red']);
+    });
+
+    it('handles a cond whose branches contain inner conds (mixed-depth Cartesian)', () => {
+      // Outer cond's truthy branch nests an inner cond inside .hover.
+      // Falsy branch has no inner cond. Expansion produces 3 leaves
+      // with conditions of mixed length (2, 2, 1); buildBranchedExpr
+      // must emit `outer ? (inner ? cls1 : cls2) : cls3`.
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        export const App = ({ outer, inner }: { outer: boolean; inner: boolean }) =>
+          <div {...cas().cond(outer,
+            o => o.hover(c => c.cond(inner, x => x.color('red'), y => y.color('blue'))),
+            f => f.padding(8)).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(3);
+      // The JSX className should be a 2-deep ternary on the truthy side
+      // and a direct class on the falsy side. Babel's generator skips
+      // the inner parens (right-associative `?:` parses identically),
+      // so match the structure without forcing them.
+      expect(r.code).toMatch(
+        /className=\{outer \? inner \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}/,
+      );
     });
   });
 

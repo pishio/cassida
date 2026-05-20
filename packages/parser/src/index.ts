@@ -289,15 +289,44 @@ interface CrossFileConfig {
 interface BranchPlaceholder {
   readonly __branch: {
     readonly test: t.Expression;
-    readonly truthyOps: readonly Op[];
-    readonly falsyOps: readonly Op[];
+    readonly truthyOps: readonly ExtendedOp[];
+    readonly falsyOps: readonly ExtendedOp[];
   };
 }
 
-type ExtendedOp = Op | BranchPlaceholder;
+/**
+ * Parser-internal mirror of `ScopedOp` whose inner ops may carry
+ * `BranchPlaceholder`s. `expandBranches` peels the placeholders out
+ * and emits regular `ScopedOp`s (with `Op[]` inner ops) in each leaf.
+ */
+interface ExtendedScopedOp {
+  readonly scope: Scope;
+  readonly ops: readonly ExtendedOp[];
+}
+
+type ExtendedOp = MethodOp | RawOp | ExtendedScopedOp | BranchPlaceholder;
 
 function isBranchPlaceholder(op: ExtendedOp): op is BranchPlaceholder {
   return typeof op === 'object' && op !== null && '__branch' in op;
+}
+
+function isExtendedScopedOp(op: ExtendedOp): op is ExtendedScopedOp {
+  return typeof op === 'object' && op !== null && 'scope' in op && 'ops' in op;
+}
+
+/**
+ * DFS check: does any node in this ExtendedOp tree carry a
+ * `BranchPlaceholder`? Used by code paths that don't (yet) support
+ * cond-expanded chains — parser plugins, function composition — so
+ * they can bail on chains whose branches live anywhere in the tree,
+ * not just at the top level.
+ */
+function hasAnyBranchPlaceholder(ops: readonly ExtendedOp[]): boolean {
+  for (const op of ops) {
+    if (isBranchPlaceholder(op)) return true;
+    if (isExtendedScopedOp(op) && hasAnyBranchPlaceholder(op.ops)) return true;
+  }
+  return false;
 }
 
 /**
@@ -332,7 +361,7 @@ type BranchedChain = readonly ChainLeaf[];
 const MAX_BRANCH_LEAVES = 32;
 
 /**
- * Build a balanced nested ternary that picks the right per-leaf value
+ * Build a nested ternary that picks the right per-leaf value
  * out of a set of compiled leaves. The recursion splits on each
  * decision in order, producing
  *
@@ -342,31 +371,52 @@ const MAX_BRANCH_LEAVES = 32;
  * appeared in source. `leafExpr` materializes whatever the caller
  * wants at each leaf (a className `StringLiteral` or a style
  * `ObjectExpression`).
+ *
+ * Leaves can have variable `conditions.length` when a `.cond()` lives
+ * inside one branch of an outer `.cond()` (or inside a modifier scope
+ * inside such a branch). A leaf whose path didn't pass through a
+ * particular `.cond()` has a shorter `conditions` array. By the
+ * expansion invariant, at any recursion level every leaf either has
+ * empty conditions (then the level emits a single leaf) or shares
+ * `conditions[0].test` (then the level splits and recurses).
  */
 function buildBranchedExpr(
   leaves: readonly { readonly leaf: ChainLeaf; readonly rule: CompiledRule }[],
-  depth: number,
-  index: number,
   leafExpr: (rule: CompiledRule) => t.Expression,
 ): t.Expression {
-  if (index === depth) {
+  if (leaves.length === 0) {
+    throw new Error('[cassida] internal: empty leaf group in buildBranchedExpr');
+  }
+  if (leaves.every((l) => l.leaf.conditions.length === 0)) {
     if (leaves.length !== 1) {
       throw new Error(
-        `[cassida] internal: branched-chain expansion landed on ${leaves.length} leaves at depth ${depth}`,
+        `[cassida] internal: ${leaves.length} leaves landed at the empty-conditions base case`,
       );
     }
     return leafExpr(leaves[0]!.rule);
   }
-  // All sibling leaves share the same `conditions[index].test` AST
-  // node — they all came from the same `.cond()` call. Clone for each
-  // emission so Babel's parent-pointer bookkeeping stays consistent.
-  const test = leaves[0]!.leaf.conditions[index]!.test;
-  const truthy = leaves.filter((l) => l.leaf.conditions[index]!.isTruthy);
-  const falsy = leaves.filter((l) => !l.leaf.conditions[index]!.isTruthy);
+  // All sibling leaves share the same `conditions[0].test` AST node —
+  // they all came from the same `.cond()` call. Clone for each emission
+  // so Babel's parent-pointer bookkeeping stays consistent.
+  const head = leaves.find((l) => l.leaf.conditions.length > 0)!;
+  const test = head.leaf.conditions[0]!.test;
+  const truthy: (typeof leaves)[number][] = [];
+  const falsy: (typeof leaves)[number][] = [];
+  for (const l of leaves) {
+    const next = {
+      leaf: { ...l.leaf, conditions: l.leaf.conditions.slice(1) },
+      rule: l.rule,
+    };
+    if (l.leaf.conditions[0]!.isTruthy) {
+      truthy.push(next);
+    } else {
+      falsy.push(next);
+    }
+  }
   return t.conditionalExpression(
     t.cloneNode(test),
-    buildBranchedExpr(truthy, depth, index + 1, leafExpr),
-    buildBranchedExpr(falsy, depth, index + 1, leafExpr),
+    buildBranchedExpr(truthy, leafExpr),
+    buildBranchedExpr(falsy, leafExpr),
   );
 }
 
@@ -383,37 +433,81 @@ function mustGetDynamicSource(
 
 /**
  * Expand an `ExtendedOp[]` (walker output, possibly with branch
- * placeholders) into the Cartesian set of leaves. Each placeholder
- * doubles the leaf count: every existing leaf becomes two, one with
- * the placeholder's truthy ops appended + decision (test, true), one
- * with the falsy ops + decision (test, false). Non-branch ops are
- * appended to every leaf unchanged.
+ * placeholders, including ones nested inside modifier scopes) into the
+ * Cartesian set of leaves. Each placeholder doubles the leaf count:
+ * every existing leaf becomes two, one with the placeholder's truthy
+ * ops appended + decision (test, true), one with the falsy ops + decision
+ * (test, false). Scopes whose inner ops carry placeholders recurse: the
+ * scope is materialized once per inner-leaf, multiplying outer leaves
+ * accordingly.
+ *
+ * Invariant: every leaf returned has `ops: Op[]` (no placeholders, no
+ * extended scopes) — the recursion strips them out.
  */
 function expandBranches(ops: readonly ExtendedOp[]): BranchedChain {
   type Leaf = { ops: Op[]; conditions: BranchDecision[] };
   let leaves: Leaf[] = [{ ops: [], conditions: [] }];
+  const checkCap = (): void => {
+    if (leaves.length > MAX_BRANCH_LEAVES) {
+      throw new Error(
+        `[cassida] .cond() Cartesian expansion exceeds ${MAX_BRANCH_LEAVES} leaves. ` +
+          `Each nested .cond() doubles the class count; refactor to a higher-level switch ` +
+          `(JSX ternary spread, or a lookup table) when the matrix gets this dense.`,
+      );
+    }
+  };
   for (const op of ops) {
     if (isBranchPlaceholder(op)) {
       const { test, truthyOps, falsyOps } = op.__branch;
+      const truthyLeaves = expandBranches(truthyOps);
+      const falsyLeaves = expandBranches(falsyOps);
       const next: Leaf[] = [];
       for (const leaf of leaves) {
-        next.push({
-          ops: [...leaf.ops, ...truthyOps],
-          conditions: [...leaf.conditions, { test, isTruthy: true }],
-        });
-        next.push({
-          ops: [...leaf.ops, ...falsyOps],
-          conditions: [...leaf.conditions, { test, isTruthy: false }],
-        });
+        for (const t of truthyLeaves) {
+          next.push({
+            ops: [...leaf.ops, ...t.ops],
+            conditions: [
+              ...leaf.conditions,
+              { test, isTruthy: true },
+              ...t.conditions,
+            ],
+          });
+        }
+        for (const f of falsyLeaves) {
+          next.push({
+            ops: [...leaf.ops, ...f.ops],
+            conditions: [
+              ...leaf.conditions,
+              { test, isTruthy: false },
+              ...f.conditions,
+            ],
+          });
+        }
       }
       leaves = next;
-      if (leaves.length > MAX_BRANCH_LEAVES) {
-        throw new Error(
-          `[cassida] .cond() Cartesian expansion exceeds ${MAX_BRANCH_LEAVES} leaves. ` +
-            `Each nested .cond() doubles the class count; refactor to a higher-level switch ` +
-            `(JSX ternary spread, or a lookup table) when the matrix gets this dense.`,
-        );
+      checkCap();
+    } else if (isExtendedScopedOp(op)) {
+      const innerLeaves = expandBranches(op.ops);
+      // Fast path: no branches inside the scope. The inner expansion
+      // returns exactly one leaf with empty conditions; append the
+      // materialised ScopedOp to every outer leaf in place.
+      if (innerLeaves.length === 1 && innerLeaves[0]!.conditions.length === 0) {
+        const inner = innerLeaves[0]!;
+        const scopedOp: Op = { scope: op.scope, ops: inner.ops };
+        for (const leaf of leaves) leaf.ops.push(scopedOp);
+        continue;
       }
+      const next: Leaf[] = [];
+      for (const leaf of leaves) {
+        for (const inner of innerLeaves) {
+          next.push({
+            ops: [...leaf.ops, { scope: op.scope, ops: inner.ops }],
+            conditions: [...leaf.conditions, ...inner.conditions],
+          });
+        }
+      }
+      leaves = next;
+      checkCap();
     } else {
       for (const leaf of leaves) leaf.ops.push(op);
     }
@@ -544,7 +638,7 @@ export function transform(source: string, options: TransformOptions): TransformR
     walkChain: (p) => {
       const ext = walkChain(p, casBindings, ctx);
       if (ext === null) return null;
-      if (ext.some(isBranchPlaceholder)) return null;
+      if (hasAnyBranchPlaceholder(ext)) return null;
       return ext as Op[];
     },
     compileOps: (chainOps) =>
@@ -805,14 +899,13 @@ export function transform(source: string, options: TransformOptions): TransformR
     }));
     for (const { rule } of compiledLeaves) rules.push(rule);
 
-    const condDepth = leaves[0]!.conditions.length;
-    const classNameExpr = buildBranchedExpr(compiledLeaves, condDepth, 0, (rule) =>
+    const classNameExpr = buildBranchedExpr(compiledLeaves, (rule) =>
       t.stringLiteral(rule.className),
     );
 
     const anyDynamic = compiledLeaves.some(({ rule }) => rule.dynamics.length > 0);
     const styleExpr = anyDynamic
-      ? buildBranchedExpr(compiledLeaves, condDepth, 0, (rule) => {
+      ? buildBranchedExpr(compiledLeaves, (rule) => {
           if (rule.dynamics.length === 0) {
             return t.unaryExpression('void', t.numericLiteral(0));
           }
@@ -970,11 +1063,10 @@ function walkChain(
         // `cas-XXXXXXXX` class; the JSX-side ternary picks among them
         // at runtime using the original `test` expression.
         //
-        // Phase 1 (this PR): cond is recognised only at the top level
-        // of a chain. Nested inside `.hover(c => c.cond(...))` etc.,
-        // `collectFromCallback` sees the BranchPlaceholder and bails,
-        // so the chain falls through to runtime. Phase 2 will support
-        // cond-inside-scope by lifting the expansion past ScopedOps.
+        // BranchPlaceholders can appear at the top level OR nested
+        // inside a modifier scope (`.hover(c => c.cond(...))`).
+        // `expandBranches` recurses into ExtendedScopedOp.ops to find
+        // them and lifts the resulting Cartesian product to the top.
         if (argPaths.length < 2 || argPaths.length > 3) return null;
         const testArg = argPaths[0]!;
         if (!t.isExpression(testArg.node)) return null;
@@ -1103,7 +1195,7 @@ function tryFunctionComposition(
   calleeIdPath: NodePath<t.Identifier>,
   chainRoots: ReadonlySet<string>,
   ctx: WalkContext,
-): Op[] | null {
+): ExtendedOp[] | null {
   const fnName = calleeIdPath.node.name;
   const binding = calleeIdPath.scope.getBinding(fnName);
   if (!binding) return null;
@@ -1143,13 +1235,14 @@ function tryFunctionComposition(
   const blockPath = pathAs(bodyPath, t.isBlockStatement);
   const fnBodyOps = blockPath
     ? collectFromBlock(blockPath, innerRoots, ctx)
-    : (() => {
-        const ext = walkChain(bodyPath, innerRoots, ctx);
-        if (ext === null) return null;
-        if (ext.some(isBranchPlaceholder)) return null;
-        return ext as Op[];
-      })();
+    : walkChain(bodyPath, innerRoots, ctx);
   if (fnBodyOps === null) return null;
+  // `.cond()` is not yet permitted anywhere inside a function
+  // composition's body or argument. The mixin idiom `withCard(cas())`
+  // is meant for static layering; branched chains here would force
+  // the composition to fan out too. Check deep, so a cond inside a
+  // modifier scope inside the body also bails.
+  if (hasAnyBranchPlaceholder(fnBodyOps)) return null;
 
   // The argument MUST be exactly 1 (the chain to feed in).
   const argPaths = callPath.get('arguments');
@@ -1160,20 +1253,18 @@ function tryFunctionComposition(
   // sometimes a recursive composition's own scope.
   const argExt = walkChain(argPath, chainRoots, ctx);
   if (argExt === null) return null;
-  // Phase 1: `.cond()` is not permitted on the argument side of a
-  // function composition. The mixin idiom `withCard(cas())` is meant
-  // for static layering; branched argument chains would force the
-  // composition to fan out too.
-  if (argExt.some(isBranchPlaceholder)) return null;
-  const argOps = argExt as Op[];
+  if (hasAnyBranchPlaceholder(argExt)) return null;
 
   // Compose: argument ops first (the input chain), then function body
   // ops (the mixin layered on top). LIFO inside the merged op list
   // works exactly as if the user had written everything inline.
-  return [...argOps, ...fnBodyOps];
+  return [...argExt, ...fnBodyOps];
 }
 
-function collectFromCallback(cbPath: NodePath, ctx: WalkContext): Op[] | null {
+function collectFromCallback(
+  cbPath: NodePath,
+  ctx: WalkContext,
+): ExtendedOp[] | null {
   const arrowPath = pathAs(cbPath, t.isArrowFunctionExpression);
   if (!arrowPath) return null;
 
@@ -1186,34 +1277,24 @@ function collectFromCallback(cbPath: NodePath, ctx: WalkContext): Op[] | null {
 
   const bodyPath = arrowPath.get('body');
   const blockPath = pathAs(bodyPath, t.isBlockStatement);
-  const result = blockPath
+  return blockPath
     ? collectFromBlock(blockPath, innerRoots, ctx)
     : walkChain(bodyPath, innerRoots, ctx);
-  if (result === null) return null;
-  // Phase 1: `.cond()` is supported only at the top level of a chain.
-  // Inside a modifier scope (or any callback) cond-bearing chains bail,
-  // so the host JSX falls through to runtime. The runtime `.cond()`
-  // works fine; only build-time Cartesian expansion is restricted.
-  if (result.some(isBranchPlaceholder)) return null;
-  return result as Op[];
 }
 
 function collectFromBlock(
   blockPath: NodePath<t.BlockStatement>,
   innerRoots: ReadonlySet<string>,
   ctx: WalkContext,
-): Op[] | null {
-  const allOps: Op[] = [];
+): ExtendedOp[] | null {
+  const allOps: ExtendedOp[] = [];
   const stmtPaths = blockPath.get('body');
   for (const stmtPath of stmtPaths) {
     const exprStmtPath = pathAs(stmtPath, t.isExpressionStatement);
     if (exprStmtPath) {
       const ext = walkChain(exprStmtPath.get('expression'), innerRoots, ctx);
       if (ext === null) return null;
-      // Same Phase-1 restriction as `collectFromCallback`: cond is
-      // only allowed at the top level of a chain.
-      if (ext.some(isBranchPlaceholder)) return null;
-      allOps.push(...(ext as Op[]));
+      allOps.push(...ext);
       continue;
     }
     const returnStmtPath = pathAs(stmtPath, t.isReturnStatement);
@@ -1225,8 +1306,7 @@ function collectFromBlock(
       if (!exprPath) continue;
       const ext = walkChain(exprPath, innerRoots, ctx);
       if (ext === null) return null;
-      if (ext.some(isBranchPlaceholder)) return null;
-      allOps.push(...(ext as Op[]));
+      allOps.push(...ext);
       continue;
     }
     return null;
