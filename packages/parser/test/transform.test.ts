@@ -177,6 +177,48 @@ describe('transform — dynamic chains', () => {
     `;
     expect(() => transform(src, opts)).toThrow(/Multiple \{\.\.\.cas\(\)\} spreads/);
   });
+
+  it('expands a dynamic arg on a multi-property method (`.px`) into one CSS variable per longhand', () => {
+    const src = `
+      import { cas } from '@cassida/core';
+      export const App = ({ s }: { s: number }) => <div {...cas().px(s).props} />;
+    `;
+    const r = transform(src, opts);
+    expect(r.transformed).toBe(true);
+    expect(r.rules).toHaveLength(1);
+    // Two dynamic slots, one per longhand — both bound to the same
+    // source AST (`s`), each with its own var name.
+    const slots = r.rules[0]!.dynamics;
+    expect(slots).toHaveLength(2);
+    const properties = slots.map((d) => d.property).sort();
+    expect(properties).toEqual(['padding-inline-end', 'padding-inline-start']);
+    const sourceIds = new Set(slots.map((d) => d.sourceId));
+    expect(sourceIds.size).toBe(1);
+    // The compiled CSS bag references both var()s, and the inline
+    // style sets both vars to the same source.
+    const bag = r.rules[0]!.tree.bag;
+    expect(bag['padding-inline-start']).toMatch(/^var\(--cas-[0-9a-f]+-padding-inline-start\)$/);
+    expect(bag['padding-inline-end']).toMatch(/^var\(--cas-[0-9a-f]+-padding-inline-end\)$/);
+    expect(r.code).toMatch(/"--cas-[0-9a-f]+-padding-inline-start":\s*s/);
+    expect(r.code).toMatch(/"--cas-[0-9a-f]+-padding-inline-end":\s*s/);
+  });
+
+  it('multi-property dynamic args produce the same className for structurally identical chains', () => {
+    const src = `
+      import { cas } from '@cassida/core';
+      export const App = ({ a, b }: { a: number; b: number }) => (
+        <div>
+          <span {...cas().px(a).props} />
+          <span {...cas().px(b).props} />
+        </div>
+      );
+    `;
+    const r = transform(src, opts);
+    expect(r.rules).toHaveLength(2);
+    // Same canonical shape (`px` with one dynamic arg) ⇒ same hash;
+    // each spread keeps its own source binding.
+    expect(r.rules[0]!.className).toBe(r.rules[1]!.className);
+  });
 });
 
 describe('transform — modifiers (hover/focus/media/on)', () => {

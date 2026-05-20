@@ -486,5 +486,20 @@ for (const spec of Object.values(canonicalSpec)) {
       animatable: spec.animatable,
     };
   }
+  // Multi-property entries (`px` → padding-inline-start/-end, ...)
+  // also seed their longhand keys with the same metadata, so dynamic
+  // writes like `cas().px(theme.spacing)` emit `@property` descriptors
+  // for both longhand CSS variables — not just the parent label.
+  if ('properties' in spec && spec.properties !== undefined) {
+    for (const longhand of spec.properties) {
+      if (!(longhand in propertyMetaTable)) {
+        propertyMetaTable[longhand] = {
+          syntax: 'syntax' in spec ? spec.syntax : undefined,
+          initialValue: 'initialValue' in spec ? spec.initialValue : undefined,
+          animatable: spec.animatable,
+        };
+      }
+    }
+  }
 }
 export const defaultPropertyMeta: Readonly<Record<string, PropertyMeta>> = Object.freeze(propertyMetaTable);

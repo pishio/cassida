@@ -73,26 +73,27 @@ export class Canonicalizer {
           continue;
         }
 
-        if (entry.properties !== undefined) {
-          // Gate on the presence of `properties`, not its length. A
-          // multi-property entry's format function writes into one or
-          // more explicit longhands; the single-property dynamic
-          // branch below keys the placeholder by `entry.property`,
-          // which is the multi-property entry's *label* and not in
-          // its `properties` set. Falling through would silently
-          // target the wrong CSS property, so block early — pass a
-          // literal, or use a single-property method (e.g.
-          // `.paddingInline(theme.spacing)`) for dynamic writes.
-          throw new Error(
-            `[cassida] dynamic args on multi-property method "${op.method}" are not yet supported. ` +
-              `Pass a literal, or use a single-property method (e.g. ".paddingInline") for the dynamic value.`,
-          );
-        }
-
         if (op.args.length !== 1 || dynamics.length !== 1) {
           throw new Error(
             `[cassida] mixed/multi-dynamic args are not supported in this phase; method "${op.method}"`,
           );
+        }
+
+        if (entry.properties !== undefined) {
+          // Multi-property entry (`.px`, `.py`, `.mx`, `.my`): the
+          // single dynamic value seeds every longhand the entry
+          // expands to. Each longhand carries the SAME source id, so
+          // the parser will set N CSS variables to the same source
+          // AST expression — `style={{ '--…-start': v, '--…-end': v }}`.
+          // Each longhand still becomes its own dedup-friendly bag
+          // slot, so a later single-property write to one half
+          // overrides it cleanly.
+          const sourceId = dynamics[0]!.id;
+          for (const longhand of entry.properties) {
+            bag[longhand] = DYNAMIC_PLACEHOLDER;
+            slots[longhand] = sourceId;
+          }
+          continue;
         }
 
         bag[entry.property] = DYNAMIC_PLACEHOLDER;

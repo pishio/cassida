@@ -7,6 +7,7 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 ### Changed
 
 - **`.cond()` lifted inside modifier scopes** — chains like `cas().hover(c => c.cond(active, t => t.bg('red'), f => f.bg('blue')))` now expand to two build-time classes (one for each branch) instead of bailing to the runtime. The Cartesian expansion descends into scoped ops, and `buildBranchedExpr` handles leaves with variable conditions length when a `.cond()` lives inside only one branch of an outer `.cond()`. The `[Limitations]` entry from `0.4.0` is resolved; `.cond()` inside function composition (`withCard(cas())`) still bails.
+- **Dynamic args on multi-property utilities** — `cas().px(theme.spacing)` (and `.py` / `.mx` / `.my`) now compile at build time. The canonicalizer seeds every longhand the entry expands to with the same source id, so the parser emits one CSS variable per longhand bound to the same source expression — `style={{ '--cas-X-padding-inline-start': theme.spacing, '--cas-X-padding-inline-end': theme.spacing }}`. `defaultPropertyMeta` now also seeds the longhands of every multi-property canonical entry so `@property` descriptors emit for the CSS variables on both halves. The `[Limitations]` entry from `0.4.0` is resolved.
 
 ## [0.5.0] — 2026-05-14
 
