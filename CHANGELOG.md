@@ -4,6 +4,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+(No changes yet.)
+
+## [0.6.0] — 2026-05-20
+
 ### Changed
 
 - **`.cond()` lifted inside modifier scopes** — chains like `cas().hover(c => c.cond(active, t => t.bg('red'), f => f.bg('blue')))` now expand to two build-time classes (one for each branch) instead of bailing to the runtime. The Cartesian expansion descends into scoped ops, and `buildBranchedExpr` handles leaves with variable conditions length when a `.cond()` lives inside only one branch of an outer `.cond()`. The `[Limitations]` entry from `0.4.0` is resolved; `.cond()` inside function composition (`withCard(cas())`) still bails.
@@ -67,7 +71,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - Initial public release of `@cassida/core`, `@cassida/compiler`, `@cassida/parser`, `@cassida/vite-plugin`, `@cassida/recommended`, `@cassida/plugin-hover-fix`, `@cassida/plugin-conditional`. Single Class Principle, LIFO collapse, build-time class table, deterministic hashing, mobile-first media sort, `@layer cas` cascade-layer wrapping, csstype-typed canonical chain methods + mdn-data-derived generated chain methods, `cas.unsafe` / `.set` escape paths, `shorthand-policy` guard.
 
-[Unreleased]: https://github.com/pishio/cassida/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pishio/cassida/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/pishio/cassida/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pishio/cassida/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pishio/cassida/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pishio/cassida/compare/v0.2.0...v0.3.0
