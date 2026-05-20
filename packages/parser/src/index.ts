@@ -26,10 +26,11 @@ import {
   evaluateNode,
   UNRESOLVED,
   type ModuleCache,
+  type PathAliases,
 } from './static-eval.js';
 
-export { createModuleCache } from './static-eval.js';
-export type { ModuleCache } from './static-eval.js';
+export { createModuleCache, loadTsconfigPaths } from './static-eval.js';
+export type { ModuleCache, PathAliases } from './static-eval.js';
 
 // Babel's ESM packaging exposes the function under `.default` when imported
 // from a Node ESM consumer. Tolerate either shape.
@@ -80,6 +81,17 @@ export interface TransformOptions {
     | {
         readonly cache?: ModuleCache;
       };
+  /**
+   * TypeScript-style path aliases used by the cross-file evaluator
+   * when resolving bare-looking specifiers (`@/tokens`, `~components/Button`).
+   * Keys are patterns with `*` as the wildcard; values are one or more
+   * target patterns (typically absolute paths). Has no effect when
+   * `crossFileEvaluation` is disabled.
+   *
+   * For TypeScript projects, `loadTsconfigPaths(projectRoot)` resolves
+   * `compilerOptions.paths` + `baseUrl` into this shape.
+   */
+  readonly pathAliases?: PathAliases;
   /**
    * AST-level plugins that get a chance to handle `{...<expr>}` JSX
    * spreads the default bare-chain walk does not recognize. Each
@@ -274,6 +286,7 @@ interface WalkContext {
 interface CrossFileConfig {
   readonly filename: string;
   readonly cache?: ModuleCache;
+  readonly pathAliases?: PathAliases;
 }
 
 /**
@@ -1376,7 +1389,11 @@ function resolveCrossFileConfig(options: TransformOptions): CrossFileConfig | nu
   // and re-reads / re-parses the same imported modules — turning a
   // typical 10-method component into 10× the file IO and parse work.
   const cache = createModuleCacheLocal(flag);
-  return { filename, cache };
+  return {
+    filename,
+    cache,
+    ...(options.pathAliases ? { pathAliases: options.pathAliases } : {}),
+  };
 }
 
 function createModuleCacheLocal(
