@@ -400,17 +400,17 @@ function buildBranchedExpr(
   // so Babel's parent-pointer bookkeeping stays consistent.
   const head = leaves.find((l) => l.leaf.conditions.length > 0)!;
   const test = head.leaf.conditions[0]!.test;
-  const truthy: typeof leaves = [];
-  const falsy: typeof leaves = [];
+  const truthy: (typeof leaves)[number][] = [];
+  const falsy: (typeof leaves)[number][] = [];
   for (const l of leaves) {
     const next = {
       leaf: { ...l.leaf, conditions: l.leaf.conditions.slice(1) },
       rule: l.rule,
     };
     if (l.leaf.conditions[0]!.isTruthy) {
-      (truthy as typeof leaves[number][]).push(next);
+      truthy.push(next);
     } else {
-      (falsy as typeof leaves[number][]).push(next);
+      falsy.push(next);
     }
   }
   return t.conditionalExpression(
