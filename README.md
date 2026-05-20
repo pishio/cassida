@@ -244,7 +244,7 @@ At build time each branch materializes its own `cas-XXXXXXXX` class (the outer `
 
 Single-arg form `cas().cond(active, c => c.bg('blue'))` is the chain-internal version of `active && cas().bg('blue').props` — falsy branch carries no extra ops.
 
-Multiple `.cond()`s in one chain materialize the Cartesian product; the cap is 32 leaves (five nested conds). `.cond()` inside a modifier scope (`.hover(c => c.cond(...))`) bails to runtime — Phase 2 lifts that restriction.
+Multiple `.cond()`s in one chain materialize the Cartesian product; the cap is 32 leaves (five nested conds). `.cond()` inside a modifier scope (`.hover(c => c.cond(...))`) is lifted to build time too — the Cartesian expansion descends through scoped ops, so a cond nested inside `.hover` / `.focus` / `.media(...)` produces one class per branch with the same `className` ternary. Mixed-depth cases (a cond inside only one branch of an outer cond) emit a partial ternary on the side that has the inner cond, a direct class on the other side.
 
 ## Feature tour
 
@@ -745,9 +745,12 @@ Reference: `packages/plugin-conditional/src/index.ts` — ~150 lines covering bo
 | 7     | ✅ | Cross-file static evaluation — design tokens fold to static classes (`v0.2.0`) |
 | —     | ✅ | `.props` terminator — chain methods hidden from JSX prop typings (`v0.3.0`) |
 | —     | ✅ | Parser plugin extension point + `@cassida/plugin-conditional` + `@cassida/recommended` bundle (`v0.4.0`) |
+| —     | ✅ | Multi-property utilities (`.px`, `.py`, `.mx`, `.my`) — multi-longhand registry (`v0.4.0`) |
+| —     | ✅ | Dynamic-slot support in conditional spreads — `cond ? cas().color(theme.fg) : ...` (`v0.4.0`) |
+| —     | ✅ | `@cassida/plugin-print` — `@media print` defaults (`v0.5.0`) |
+| —     | ✅ | `@cassida/plugin-global-css` — virtual-module preflight (`v0.4.0`) |
+| —     | ✅ | `.cond()` inside modifier scopes — `.hover(c => c.cond(...))` lifts to build time |
 | —     | 🚧 | TypeScript path-alias resolution (`@/tokens` style imports) |
-| —     | 💭 | Multi-property registry (`px-4`, `text-sm` style utilities) |
-| —     | 💭 | Dynamic-slot support in conditional spreads (currently bails to runtime) |
 | —     | 💭 | Additional first-party plugins (dark-mode duplicator, prefers-reduced-motion fallback) |
 | —     | 💭 | SWC plugin port for Next.js native integration |
 
