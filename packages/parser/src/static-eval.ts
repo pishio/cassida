@@ -970,7 +970,7 @@ function existsAsDirectory(p: string): boolean {
  * Walk up from `cwd` looking for a `tsconfig.json` (then `jsconfig.json`)
  * and resolve its `compilerOptions.paths` against `compilerOptions.baseUrl`
  * into the `PathAliases` shape the evaluator consumes. `extends` chains
- * are followed one level (the common monorepo pattern).
+ * are followed all the way up (cycles guarded via a visited-set).
  *
  * Returns `null` when no config is found or the config has no `paths`.
  * Errors during read / parse are swallowed and logged via the optional
