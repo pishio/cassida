@@ -473,6 +473,38 @@ describe('cross-file static evaluation', () => {
       expect(r.rules[0]!.tree.bag.color).toBe('#10b981');
     });
 
+    it('rejects a specifier shorter than the pattern prefix + suffix', () => {
+      // Pattern `a*a` requires at least 2 characters; a single-char
+      // specifier `a` would have made `startsWith('a')` and
+      // `endsWith('a')` both true with an empty capture under a naive
+      // implementation, silently picking up the wrong target.
+      const filename = writeFile(
+        'src/a.ts',
+        `export const X = '#deadbe';`,
+      );
+      writeFile(
+        'src/a.ts',
+        `export const X = '#deadbe';`,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { X } from 'a';
+        export const App = () => <div {...cas().color(X)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          // Pattern needs at least one char between the two 'a's.
+          pathAliases: { 'a*a': join(dir, 'src', '*.ts') },
+        },
+      );
+      // The chain bails because `a` doesn't match `a*a` and there's
+      // no other resolver path; the import stays as-is and the chain
+      // falls through to runtime.
+      expect(r.rules[0]?.dynamics.length ?? 0).toBeGreaterThan(0);
+    });
+
     it('preserves a literal `$` in the captured wildcard segment', () => {
       // A theoretical specifier like `@/foo$bar` would corrupt the
       // substituted path if the resolver used `String.replace` (which
@@ -685,6 +717,42 @@ describe('cross-file static evaluation', () => {
       const aliases = loadTsconfigPaths(dir);
       expect(aliases).not.toBeNull();
       expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+    });
+
+    it("anchors a parent's `paths` against the parent's own baseUrl, even when the child overrides baseUrl", async () => {
+      // Parent declares baseUrl + paths together. Child overrides
+      // baseUrl to a different directory but doesn't restate the
+      // parent's paths. TypeScript treats the parent's `paths` entries
+      // as relative to the parent's own baseUrl (per its "All relative
+      // paths…relative to the configuration file they originated in"
+      // rule). Without per-config anchoring, the parent's '@/*' would
+      // wrongly resolve under the child's baseUrl.
+      writeFile(
+        'shared/tsconfig.base.json',
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@/*': ['lib/*'] },
+          },
+        }),
+      );
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({
+          extends: './shared/tsconfig.base.json',
+          compilerOptions: {
+            baseUrl: './app',
+            paths: { '#util/*': ['util/*'] },
+          },
+        }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      // Parent path anchored against parent's baseUrl (= shared/):
+      expect(aliases!['@/*']).toEqual([join(dir, 'shared', 'lib/*')]);
+      // Child path anchored against child's baseUrl (= app/):
+      expect(aliases!['#util/*']).toEqual([join(dir, 'app', 'util/*')]);
     });
 
     it("resolves a parent's `baseUrl` against the parent's own directory", async () => {

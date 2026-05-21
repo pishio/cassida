@@ -906,6 +906,13 @@ function matchAndSubstitute(
   }
   const prefix = pattern.slice(0, wildcard);
   const suffix = pattern.slice(wildcard + 1);
+  // Length check before the start/end checks. Without it, pattern
+  // `a*a` would match specifier `a` (both startsWith and endsWith pass
+  // for a single 'a') with an empty capture — the wildcard would
+  // effectively collapse to nothing. Require strictly more bytes
+  // than prefix + suffix so the wildcard always sees at least the
+  // empty string from a non-overlapping middle.
+  if (specifier.length < prefix.length + suffix.length) return null;
   if (!specifier.startsWith(prefix)) return null;
   if (!specifier.endsWith(suffix)) return null;
   const capture = specifier.slice(prefix.length, specifier.length - suffix.length);
@@ -977,7 +984,14 @@ export function loadTsconfigPaths(
   const onError = options.onError ?? (() => {});
   const tsconfig = findConfigUpwards(projectRoot, ['tsconfig.json', 'jsconfig.json']);
   if (tsconfig === null) return null;
-  let merged: TsconfigCompilerOptions = {};
+  // Each config contributes a chunk of already-absolutised `paths`
+  // entries anchored against its own `baseUrl` (or its own directory
+  // when no `baseUrl` is declared). TypeScript treats relative
+  // paths as relative to the file they originated in, so anchoring
+  // per-config — instead of resolving everything against the leaf's
+  // `baseUrl` at the end — is the only way the merge stays correct
+  // when parent and child configs live in different directories.
+  const mergedPaths: Record<string, readonly string[]> = {};
   const visited = new Set<string>();
   let currentPath: string | null = tsconfig;
   while (currentPath !== null && !visited.has(currentPath)) {
@@ -991,48 +1005,30 @@ export function loadTsconfigPaths(
     }
     if (typeof parsed !== 'object' || parsed === null) return null;
     const rawOptions = (parsed as { compilerOptions?: TsconfigCompilerOptions }).compilerOptions ?? {};
-    // Resolve `baseUrl` against the config file it was declared in,
-    // not against the leaf config's directory. TypeScript itself
-    // anchors `baseUrl` per-file; if `tsconfig.base.json` says
-    // `"baseUrl": "."`, it means "the base config's directory".
-    // Inlining this here keeps the resolved paths correct under
-    // monorepo `extends` chains where parent and child live in
-    // different directories.
-    const compilerOptions: TsconfigCompilerOptions = { ...rawOptions };
-    if (compilerOptions.baseUrl && !isAbsolute(compilerOptions.baseUrl)) {
-      compilerOptions.baseUrl = resolve(dirname(currentPath), compilerOptions.baseUrl);
+    const configDir = dirname(currentPath);
+    const effectiveBaseUrl = rawOptions.baseUrl
+      ? isAbsolute(rawOptions.baseUrl)
+        ? rawOptions.baseUrl
+        : resolve(configDir, rawOptions.baseUrl)
+      : configDir;
+    if (rawOptions.paths) {
+      for (const [pattern, targets] of Object.entries(rawOptions.paths)) {
+        // Child wins on per-key collisions: leaf is visited first, so
+        // the leaf's entry lands in `mergedPaths` first and we skip
+        // any later (parent) write for the same key.
+        if (pattern in mergedPaths) continue;
+        if (!Array.isArray(targets)) continue;
+        const absoluteTargets = targets
+          .filter((t): t is string => typeof t === 'string')
+          .map((t) => (isAbsolute(t) ? t : resolve(effectiveBaseUrl, t)));
+        if (absoluteTargets.length > 0) mergedPaths[pattern] = absoluteTargets;
+      }
     }
-    // Child wins for scalars (baseUrl) and on per-key collisions in
-    // paths; parent contributes keys the child didn't specify. The
-    // outer spread shape (`{...compilerOptions, ...merged}`) handles
-    // scalars; paths needs an explicit per-key merge so parent rows
-    // survive when the child overrides a sibling key but not all.
-    const mergedPaths = compilerOptions.paths || merged.paths
-      ? { ...(compilerOptions.paths ?? {}), ...(merged.paths ?? {}) }
-      : undefined;
-    merged = {
-      ...compilerOptions,
-      ...merged,
-      ...(mergedPaths !== undefined ? { paths: mergedPaths } : {}),
-    };
     const extendsField = (parsed as { extends?: string }).extends;
     if (typeof extendsField !== 'string') break;
     currentPath = resolveExtends(currentPath, extendsField);
   }
-  if (!merged.paths || Object.keys(merged.paths).length === 0) return null;
-  // `merged.baseUrl` is already absolute by construction in the loop
-  // above; fall back to the leaf config's directory when no `baseUrl`
-  // was declared anywhere in the chain.
-  const baseUrl = merged.baseUrl ?? dirname(tsconfig);
-  const out: Record<string, readonly string[]> = {};
-  for (const [pattern, targets] of Object.entries(merged.paths)) {
-    if (!Array.isArray(targets)) continue;
-    const absoluteTargets = targets
-      .filter((t): t is string => typeof t === 'string')
-      .map((t) => (isAbsolute(t) ? t : resolve(baseUrl, t)));
-    if (absoluteTargets.length > 0) out[pattern] = absoluteTargets;
-  }
-  return Object.keys(out).length > 0 ? out : null;
+  return Object.keys(mergedPaths).length > 0 ? mergedPaths : null;
 }
 
 interface TsconfigCompilerOptions {
