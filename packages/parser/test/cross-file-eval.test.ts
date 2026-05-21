@@ -473,6 +473,36 @@ describe('cross-file static evaluation', () => {
       expect(r.rules[0]!.tree.bag.color).toBe('#10b981');
     });
 
+    it('preserves a literal `$` in the captured wildcard segment', () => {
+      // A theoretical specifier like `@/foo$bar` would corrupt the
+      // substituted path if the resolver used `String.replace` (which
+      // treats `$` as a back-reference). We use split/join, so the
+      // capture is preserved verbatim.
+      writeFile('src/foo$bar.ts', `export const C = '#9333ea';`);
+      const filename = writeFile(
+        'src/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { C } from '@/foo$bar';
+        export const X = () => <div {...cas().color(C)} />;
+      `,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { C } from '@/foo$bar';
+        export const X = () => <div {...cas().color(C)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          pathAliases: { '@/*': join(dir, 'src', '*') },
+        },
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules[0]!.tree.bag.color).toBe('#9333ea');
+    });
+
     it('supports an exact (no-wildcard) alias', () => {
       writeFile('shared/index.ts', `export const FG = '#ff5500';`);
       const filename = writeFile(
@@ -611,6 +641,72 @@ describe('cross-file static evaluation', () => {
       const { loadTsconfigPaths } = await import('../src/index.js');
       const aliases = loadTsconfigPaths(dir);
       expect(aliases).toBeNull();
+    });
+
+    it('preserves `//` and `/*` inside JSON string values when stripping comments', async () => {
+      // String values that look like comment markers — a paths entry
+      // with `/*` in its target would otherwise get truncated. A URL
+      // string in a hypothetical field would too.
+      writeFile(
+        'tsconfig.json',
+        `{
+          "compilerOptions": {
+            "baseUrl": ".",
+            "paths": {
+              "@/*": ["src/*"]
+            }
+          },
+          "docsHomepage": "http://example.com",
+          "buildBanner": "/* generated — do not edit */"
+        }`,
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+    });
+
+    it('preserves trailing-comma-shaped substrings inside string values', async () => {
+      // A bracket-like character inside a string after a comma must
+      // not trigger trailing-comma elision.
+      writeFile(
+        'tsconfig.json',
+        `{
+          "compilerOptions": {
+            "baseUrl": ".",
+            "paths": {
+              "@/*": ["src/*"]
+            }
+          },
+          "note": ",]"
+        }`,
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+    });
+
+    it("resolves a parent's `baseUrl` against the parent's own directory", async () => {
+      writeFile(
+        'sub/tsconfig.base.json',
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@/*': ['src/*'] },
+          },
+        }),
+      );
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({ extends: './sub/tsconfig.base.json' }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      // `baseUrl: "."` on the parent must anchor on the parent's dir
+      // (`<dir>/sub`), not on the leaf config's dir (`<dir>`).
+      expect(aliases!['@/*']).toEqual([join(dir, 'sub', 'src/*')]);
     });
 
     it('follows `extends` and lets the child paths override the parent', async () => {

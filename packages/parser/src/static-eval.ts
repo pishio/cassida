@@ -909,7 +909,12 @@ function matchAndSubstitute(
   if (!specifier.startsWith(prefix)) return null;
   if (!specifier.endsWith(suffix)) return null;
   const capture = specifier.slice(prefix.length, specifier.length - suffix.length);
-  return targetList.map((t) => t.replace('*', capture));
+  // `split('*').join(capture)` instead of `replace('*', capture)` —
+  // String.replace treats `$&`, `$$`, etc. inside the replacement as
+  // back-reference patterns, so a specifier containing those sequences
+  // (theoretical, but cheap to guard against) would silently corrupt
+  // the substituted path.
+  return targetList.map((t) => t.split('*').join(capture));
 }
 
 /**
@@ -985,7 +990,18 @@ export function loadTsconfigPaths(
       return null;
     }
     if (typeof parsed !== 'object' || parsed === null) return null;
-    const compilerOptions = (parsed as { compilerOptions?: TsconfigCompilerOptions }).compilerOptions ?? {};
+    const rawOptions = (parsed as { compilerOptions?: TsconfigCompilerOptions }).compilerOptions ?? {};
+    // Resolve `baseUrl` against the config file it was declared in,
+    // not against the leaf config's directory. TypeScript itself
+    // anchors `baseUrl` per-file; if `tsconfig.base.json` says
+    // `"baseUrl": "."`, it means "the base config's directory".
+    // Inlining this here keeps the resolved paths correct under
+    // monorepo `extends` chains where parent and child live in
+    // different directories.
+    const compilerOptions: TsconfigCompilerOptions = { ...rawOptions };
+    if (compilerOptions.baseUrl && !isAbsolute(compilerOptions.baseUrl)) {
+      compilerOptions.baseUrl = resolve(dirname(currentPath), compilerOptions.baseUrl);
+    }
     // Child wins for scalars (baseUrl) and on per-key collisions in
     // paths; parent contributes keys the child didn't specify. The
     // outer spread shape (`{...compilerOptions, ...merged}`) handles
@@ -1004,10 +1020,10 @@ export function loadTsconfigPaths(
     currentPath = resolveExtends(currentPath, extendsField);
   }
   if (!merged.paths || Object.keys(merged.paths).length === 0) return null;
-  const configDir = dirname(tsconfig);
-  const baseUrl = merged.baseUrl
-    ? resolve(configDir, merged.baseUrl)
-    : configDir;
+  // `merged.baseUrl` is already absolute by construction in the loop
+  // above; fall back to the leaf config's directory when no `baseUrl`
+  // was declared anywhere in the chain.
+  const baseUrl = merged.baseUrl ?? dirname(tsconfig);
   const out: Record<string, readonly string[]> = {};
   for (const [pattern, targets] of Object.entries(merged.paths)) {
     if (!Array.isArray(targets)) continue;
@@ -1047,13 +1063,19 @@ function resolveExtends(fromConfig: string, extendsValue: string): string | null
     if (existsAsFile(direct + '.json')) return direct + '.json';
     return null;
   }
-  // Bare specifiers (`@tsconfig/strictest/tsconfig.json`) — best-effort
-  // probe via the host project's node_modules. Skip the full Node
-  // resolution algorithm; the common cases all resolve under
-  // `node_modules/<spec>`.
-  const candidate = resolve(configDir, 'node_modules', extendsValue);
-  if (existsAsFile(candidate)) return candidate;
-  if (existsAsFile(candidate + '.json')) return candidate + '.json';
+  // Bare specifiers (`@tsconfig/strictest/tsconfig.json`) — walk up
+  // from the config's directory probing each `node_modules/<spec>`.
+  // Monorepos with pnpm / yarn hoisting park shared configs at a
+  // workspace-root `node_modules`, not the package's own directory.
+  let dir = configDir;
+  for (let i = 0; i < 20; i++) {
+    const candidate = resolve(dir, 'node_modules', extendsValue);
+    if (existsAsFile(candidate)) return candidate;
+    if (existsAsFile(candidate + '.json')) return candidate + '.json';
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
   return null;
 }
 
@@ -1062,16 +1084,77 @@ function resolveExtends(fromConfig: string, extendsValue: string): string | null
  * trailing commas, then `JSON.parse`s. tsconfig files routinely carry
  * these even though strict JSON forbids them; pulling in a full JSONC
  * dependency for one read site isn't worth it.
+ *
+ * Single-pass tokenizer so we respect string boundaries — a value
+ * like `"http://example.com"` or `"/*"` inside a `paths` entry would
+ * be corrupted by a regex-only strip.
  */
 function parseJsoncLite(source: string): unknown {
-  // Strip block comments first (so line-comment markers inside them
-  // don't trip the next pass), then line comments, then trailing
-  // commas. The replacements are deliberately string-only — running
-  // them through a tokenizer would catch corner cases like `//` inside
-  // a string literal, but tsconfigs in the wild don't use that shape.
-  const stripped = source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1')
-    .replace(/,(\s*[}\]])/g, '$1');
-  return JSON.parse(stripped);
+  let out = '';
+  const len = source.length;
+  let i = 0;
+  while (i < len) {
+    const c = source[i]!;
+    if (c === '"') {
+      // String literal — copy verbatim, respecting escapes so `\"`
+      // doesn't end the string and `\\` doesn't escape the next char.
+      out += c;
+      i++;
+      while (i < len) {
+        const ch = source[i]!;
+        out += ch;
+        i++;
+        if (ch === '\\' && i < len) {
+          out += source[i]!;
+          i++;
+          continue;
+        }
+        if (ch === '"') break;
+      }
+      continue;
+    }
+    if (c === '/' && source[i + 1] === '/') {
+      i += 2;
+      while (i < len && source[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      i += 2;
+      while (i < len && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      if (i < len) i += 2;
+      continue;
+    }
+    if (c === ',') {
+      // Trailing-comma elision: look ahead through whitespace and
+      // intervening comments. If the next significant character is a
+      // closing `}` or `]`, drop this comma. Otherwise emit it.
+      let j = i + 1;
+      while (j < len) {
+        const cj = source[j]!;
+        if (cj === ' ' || cj === '\t' || cj === '\n' || cj === '\r') { j++; continue; }
+        if (cj === '/' && source[j + 1] === '/') {
+          j += 2;
+          while (j < len && source[j] !== '\n') j++;
+          continue;
+        }
+        if (cj === '/' && source[j + 1] === '*') {
+          j += 2;
+          while (j < len && !(source[j] === '*' && source[j + 1] === '/')) j++;
+          if (j < len) j += 2;
+          continue;
+        }
+        break;
+      }
+      if (j < len && (source[j] === ']' || source[j] === '}')) {
+        i++;
+        continue;
+      }
+      out += c;
+      i++;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return JSON.parse(out);
 }
