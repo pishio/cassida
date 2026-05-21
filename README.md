@@ -48,6 +48,8 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 ## Status
 
+**v0.7.0** — TypeScript path-alias resolution in cross-file static evaluation. `import { theme } from '@/tokens'` now folds at build time, with the Vite plugin auto-discovering `compilerOptions.paths` from `tsconfig.json` (including `extends` chains anchored per-config). New API surface: a `pathAliases` option on the parser's `TransformOptions`, the Vite plugin, and the standalone `loadTsconfigPaths(projectRoot)` helper. Closes the last `🚧` row on the roadmap.
+
 **v0.6.0** — clears the two `[Limitations]` rows from v0.4.0. `.cond()` inside modifier scopes (`.hover(c => c.cond(active, t, f))`) now lifts to a build-time Cartesian instead of bailing to runtime, including mixed-depth cases where the inner cond lives in only one branch of an outer cond. Dynamic args on multi-property utilities (`cas().px(theme.spacing)` + `.py` / `.mx` / `.my`) now compile too — each longhand becomes its own CSS variable bound to the same source expression, and `@property` descriptors emit on both halves. No new packages; no breaking changes — chains that worked before still work, chains that bailed now produce single static classes.
 
 **v0.5.0** — `@cassida/plugin-print` joins the workspace: a `printPreflight()` factory returning a CSS string of conservative `@media print` defaults (ink-saving black-on-white, external link URL expansion with break-word wrapping, abbreviation expansion, media width clamp covering `img`/`svg`/`video`/`canvas`, page-break hygiene for `pre`/`blockquote`/`tr`/headings, `thead`/`tfoot` repetition across page boundaries). Designed to be served through `@cassida/plugin-global-css` (added in v0.4) so the print rules live alongside Cassida's `@layer cas` output with cascade-layer-aware overrides — no `!important` anywhere.
@@ -339,13 +341,13 @@ The chain compiles to a single class — `padding:16px;background-color:#3b82f6;
 - Destructured exports (`export const { primary } = palette`, including renames and nested patterns)
 - TypeScript `as const`, `satisfies`, parenthesized expressions
 - JSON imports (`import tokens from './tokens.json'`) — top-level keys become named exports
+- TypeScript path aliases (`@/tokens`, `~components/Button`) — `tsconfig.json`'s `compilerOptions.paths` is auto-discovered by the Vite plugin (with `extends` chains anchored per-config). Override or disable with the plugin's `pathAliases` option; standalone parser consumers pass `pathAliases` to `transform()` or call `loadTsconfigPaths(projectRoot)` directly.
 
 **What stays dynamic** (chain bails to inline style or CSS variable):
 
 - Function-call results, including `Object.freeze(...)`
 - Template literals with substitutions (`` `hsl(${hue}deg ...)` ``)
 - Bare-package specifiers (`from 'some-theme-pkg'`) — design tokens are user-owned files; walking `node_modules` would be an eval-by-AST footgun. A future opt-in option will whitelist trusted theme packages.
-- TypeScript path aliases (`@/tokens`) — planned, requires tsconfig discovery
 
 `@cassida/parser` exposes `createModuleCache()` so a Vite build can amortize parsing across many files. The vite-plugin wires this in automatically; no config required for typical projects.
 
@@ -765,7 +767,7 @@ This is a pnpm workspace. Node ≥ 20 required.
 ```bash
 pnpm install
 pnpm -r --filter='./packages/*' build       # build all packages
-pnpm -r --filter='./packages/*' test        # vitest (318 tests)
+pnpm -r --filter='./packages/*' test        # vitest (334 tests)
 pnpm -r typecheck                            # tsc strict across packages
 
 # Regenerate the mdn-data-derived spec (after upgrading mdn-data)

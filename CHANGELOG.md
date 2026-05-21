@@ -4,9 +4,13 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+(No changes yet.)
+
+## [0.7.0] — 2026-05-21
+
 ### Added
 
-- **TypeScript path-alias resolution in cross-file eval** — `import { theme } from '@/tokens'` now folds at build time when the project declares `compilerOptions.paths` in `tsconfig.json`. The Vite plugin auto-discovers paths via the new `loadTsconfigPaths(projectRoot)` helper; `extends` chains are followed one level so monorepo `tsconfig.base.json` patterns work. Override or disable through the plugin's new `pathAliases` option (`PathAliases | false`). Standalone consumers of `@cassida/parser` can pass `pathAliases` directly to `transform()` or call `loadTsconfigPaths` themselves.
+- **TypeScript path-alias resolution in cross-file eval** — `import { theme } from '@/tokens'` now folds at build time when the project declares `compilerOptions.paths` in `tsconfig.json`. The Vite plugin auto-discovers paths via the new `loadTsconfigPaths(projectRoot)` helper; `extends` chains are followed the whole way up (cycles guarded), with each config's paths anchored against its own `baseUrl`. Override or disable through the plugin's new `pathAliases` option (`PathAliases | false`). Standalone consumers of `@cassida/parser` can pass `pathAliases` directly to `transform()` or call `loadTsconfigPaths` themselves.
 
 ## [0.6.0] — 2026-05-20
 
@@ -73,7 +77,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - Initial public release of `@cassida/core`, `@cassida/compiler`, `@cassida/parser`, `@cassida/vite-plugin`, `@cassida/recommended`, `@cassida/plugin-hover-fix`, `@cassida/plugin-conditional`. Single Class Principle, LIFO collapse, build-time class table, deterministic hashing, mobile-first media sort, `@layer cas` cascade-layer wrapping, csstype-typed canonical chain methods + mdn-data-derived generated chain methods, `cas.unsafe` / `.set` escape paths, `shorthand-policy` guard.
 
-[Unreleased]: https://github.com/pishio/cassida/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/pishio/cassida/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/pishio/cassida/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pishio/cassida/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pishio/cassida/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pishio/cassida/compare/v0.3.0...v0.4.0
