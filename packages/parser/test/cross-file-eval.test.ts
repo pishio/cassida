@@ -414,6 +414,398 @@ describe('cross-file static evaluation', () => {
     expect(r.rules[0]!.dynamics.length).toBeGreaterThan(0);
   });
 
+  describe('path aliases', () => {
+    it('resolves `@/*`-style specifiers against the configured target', () => {
+      writeFile('src/tokens.ts', `export const BRAND = '#1a73e8';`);
+      const filename = writeFile(
+        'src/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { BRAND } from '@/tokens';
+        export const X = () => <div {...cas().color(BRAND)} />;
+      `,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { BRAND } from '@/tokens';
+        export const X = () => <div {...cas().color(BRAND)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          pathAliases: { '@/*': join(dir, 'src', '*') },
+        },
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(1);
+      expect(r.rules[0]!.tree.bag.color).toBe('#1a73e8');
+      expect(r.rules[0]!.dynamics).toHaveLength(0);
+    });
+
+    it('tries multiple targets in declaration order and picks the first hit', () => {
+      writeFile('lib/colors.ts', `export const ACCENT = '#10b981';`);
+      const filename = writeFile(
+        'src/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { ACCENT } from '~tokens/colors';
+        export const X = () => <div {...cas().color(ACCENT)} />;
+      `,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { ACCENT } from '~tokens/colors';
+        export const X = () => <div {...cas().color(ACCENT)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          // First target won't resolve (the file isn't there); second
+          // target wins. Mirrors how `paths` arrays fall through.
+          pathAliases: {
+            '~tokens/*': [join(dir, 'missing', '*'), join(dir, 'lib', '*')],
+          },
+        },
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules[0]!.tree.bag.color).toBe('#10b981');
+    });
+
+    it('rejects a specifier shorter than the pattern prefix + suffix', () => {
+      // Pattern `a*a` requires at least 2 characters; a single-char
+      // specifier `a` would have made `startsWith('a')` and
+      // `endsWith('a')` both true with an empty capture under a naive
+      // implementation, silently picking up the wrong target.
+      const filename = writeFile(
+        'src/a.ts',
+        `export const X = '#deadbe';`,
+      );
+      writeFile(
+        'src/a.ts',
+        `export const X = '#deadbe';`,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { X } from 'a';
+        export const App = () => <div {...cas().color(X)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          // Pattern needs at least one char between the two 'a's.
+          pathAliases: { 'a*a': join(dir, 'src', '*.ts') },
+        },
+      );
+      // The chain bails because `a` doesn't match `a*a` and there's
+      // no other resolver path; the import stays as-is and the chain
+      // falls through to runtime.
+      expect(r.rules[0]?.dynamics.length ?? 0).toBeGreaterThan(0);
+    });
+
+    it('preserves a literal `$` in the captured wildcard segment', () => {
+      // A theoretical specifier like `@/foo$bar` would corrupt the
+      // substituted path if the resolver used `String.replace` (which
+      // treats `$` as a back-reference). We use split/join, so the
+      // capture is preserved verbatim.
+      writeFile('src/foo$bar.ts', `export const C = '#9333ea';`);
+      const filename = writeFile(
+        'src/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { C } from '@/foo$bar';
+        export const X = () => <div {...cas().color(C)} />;
+      `,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { C } from '@/foo$bar';
+        export const X = () => <div {...cas().color(C)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          pathAliases: { '@/*': join(dir, 'src', '*') },
+        },
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules[0]!.tree.bag.color).toBe('#9333ea');
+    });
+
+    it('supports an exact (no-wildcard) alias', () => {
+      writeFile('shared/index.ts', `export const FG = '#ff5500';`);
+      const filename = writeFile(
+        'app/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { FG } from 'shared';
+        export const X = () => <div {...cas().color(FG)} />;
+      `,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { FG } from 'shared';
+        export const X = () => <div {...cas().color(FG)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          pathAliases: { shared: join(dir, 'shared') },
+        },
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules[0]!.tree.bag.color).toBe('#ff5500');
+    });
+
+    it('falls back to dynamic when no alias matches the specifier', () => {
+      writeFile('src/tokens.ts', `export const C = '#aaa';`);
+      const filename = writeFile(
+        'src/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { C } from '@/tokens';
+        export const X = ({c}: {c: string}) => <div {...cas().color(c)} />;
+      `,
+      );
+      // Path alias provided but the user's chain doesn't use the
+      // imported binding — uses a runtime variable. The chain stays
+      // dynamic; the alias change doesn't fold what wasn't foldable.
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { C } from '@/tokens';
+        export const X = ({c}: {c: string}) => <div {...cas().color(c)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          pathAliases: { '@/*': join(dir, 'src', '*') },
+        },
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules[0]!.dynamics.length).toBeGreaterThan(0);
+    });
+
+    it('aliased imports work transitively (alias → file → re-export)', () => {
+      writeFile('src/raw.ts', `export const PRIMARY = '#7c3aed';`);
+      writeFile(
+        'src/tokens.ts',
+        `export { PRIMARY } from './raw';`,
+      );
+      const filename = writeFile(
+        'src/component.tsx',
+        `
+        import { cas } from '@cassida/core';
+        import { PRIMARY } from '@/tokens';
+        export const X = () => <div {...cas().color(PRIMARY)} />;
+      `,
+      );
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        import { PRIMARY } from '@/tokens';
+        export const X = () => <div {...cas().color(PRIMARY)} />;
+      `,
+        {
+          registry: defaultRegistry,
+          filename,
+          pathAliases: { '@/*': join(dir, 'src', '*') },
+        },
+      );
+      expect(r.rules[0]!.tree.bag.color).toBe('#7c3aed');
+      expect(r.rules[0]!.dynamics).toHaveLength(0);
+    });
+  });
+
+  describe('loadTsconfigPaths', () => {
+    it('reads compilerOptions.paths and resolves targets against baseUrl', async () => {
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@/*': ['src/*'], '#util': ['lib/util'] },
+          },
+        }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+      expect(aliases!['#util']).toEqual([join(dir, 'lib/util')]);
+    });
+
+    it('strips JSONC comments and trailing commas', async () => {
+      writeFile(
+        'tsconfig.json',
+        `{
+          // user-facing app config
+          "compilerOptions": {
+            /* monorepo root keeps baseUrl explicit */
+            "baseUrl": ".",
+            "paths": {
+              "@/*": ["src/*"],
+            },
+          },
+        }`,
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+    });
+
+    it('returns null when no tsconfig is found', async () => {
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).toBeNull();
+    });
+
+    it('returns null when tsconfig has no paths', async () => {
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({ compilerOptions: { baseUrl: '.' } }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).toBeNull();
+    });
+
+    it('preserves `//` and `/*` inside JSON string values when stripping comments', async () => {
+      // String values that look like comment markers — a paths entry
+      // with `/*` in its target would otherwise get truncated. A URL
+      // string in a hypothetical field would too.
+      writeFile(
+        'tsconfig.json',
+        `{
+          "compilerOptions": {
+            "baseUrl": ".",
+            "paths": {
+              "@/*": ["src/*"]
+            }
+          },
+          "docsHomepage": "http://example.com",
+          "buildBanner": "/* generated — do not edit */"
+        }`,
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+    });
+
+    it('preserves trailing-comma-shaped substrings inside string values', async () => {
+      // A bracket-like character inside a string after a comma must
+      // not trigger trailing-comma elision.
+      writeFile(
+        'tsconfig.json',
+        `{
+          "compilerOptions": {
+            "baseUrl": ".",
+            "paths": {
+              "@/*": ["src/*"]
+            }
+          },
+          "note": ",]"
+        }`,
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      expect(aliases!['@/*']).toEqual([join(dir, 'src/*')]);
+    });
+
+    it("anchors a parent's `paths` against the parent's own baseUrl, even when the child overrides baseUrl", async () => {
+      // Parent declares baseUrl + paths together. Child overrides
+      // baseUrl to a different directory but doesn't restate the
+      // parent's paths. TypeScript treats the parent's `paths` entries
+      // as relative to the parent's own baseUrl (per its "All relative
+      // paths…relative to the configuration file they originated in"
+      // rule). Without per-config anchoring, the parent's '@/*' would
+      // wrongly resolve under the child's baseUrl.
+      writeFile(
+        'shared/tsconfig.base.json',
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@/*': ['lib/*'] },
+          },
+        }),
+      );
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({
+          extends: './shared/tsconfig.base.json',
+          compilerOptions: {
+            baseUrl: './app',
+            paths: { '#util/*': ['util/*'] },
+          },
+        }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      // Parent path anchored against parent's baseUrl (= shared/):
+      expect(aliases!['@/*']).toEqual([join(dir, 'shared', 'lib/*')]);
+      // Child path anchored against child's baseUrl (= app/):
+      expect(aliases!['#util/*']).toEqual([join(dir, 'app', 'util/*')]);
+    });
+
+    it("resolves a parent's `baseUrl` against the parent's own directory", async () => {
+      writeFile(
+        'sub/tsconfig.base.json',
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@/*': ['src/*'] },
+          },
+        }),
+      );
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({ extends: './sub/tsconfig.base.json' }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      // `baseUrl: "."` on the parent must anchor on the parent's dir
+      // (`<dir>/sub`), not on the leaf config's dir (`<dir>`).
+      expect(aliases!['@/*']).toEqual([join(dir, 'sub', 'src/*')]);
+    });
+
+    it('follows `extends` and lets the child paths override the parent', async () => {
+      writeFile(
+        'tsconfig.base.json',
+        JSON.stringify({
+          compilerOptions: {
+            baseUrl: '.',
+            paths: { '@/*': ['src/*'], '#legacy/*': ['old/*'] },
+          },
+        }),
+      );
+      writeFile(
+        'tsconfig.json',
+        JSON.stringify({
+          extends: './tsconfig.base.json',
+          compilerOptions: {
+            paths: { '@/*': ['app/*'] },
+          },
+        }),
+      );
+      const { loadTsconfigPaths } = await import('../src/index.js');
+      const aliases = loadTsconfigPaths(dir);
+      expect(aliases).not.toBeNull();
+      // Child wins for the colliding key; parent's '#legacy/*' is
+      // visible too (extends-merge).
+      expect(aliases!['@/*']).toEqual([join(dir, 'app/*')]);
+      expect(aliases!['#legacy/*']).toEqual([join(dir, 'old/*')]);
+    });
+  });
+
   it('reuses a passed module cache across calls', async () => {
     writeFile('theme.ts', `export const PRIMARY = '#3b82f6';`);
     const { createModuleCache } = await import('../src/index.js');

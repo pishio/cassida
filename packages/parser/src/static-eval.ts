@@ -68,7 +68,32 @@ export interface StaticEvalOptions {
    * within a single build. Defaults to a fresh cache per call.
    */
   readonly cache?: ModuleCache;
+  /**
+   * TypeScript-style path aliases applied when resolving bare-looking
+   * specifiers (`@/tokens`, `~components/Button`) that the default
+   * relative-only resolver would reject. Keys are patterns with `*`
+   * as the wildcard; values are one or more target patterns. Targets
+   * are typically absolute paths (resolved against the project's
+   * `baseUrl` ahead of time) — use `loadTsconfigPaths(projectRoot)`
+   * for the common case.
+   *
+   *   { '@/*': '/abs/project/src/*',
+   *     '~components/*': ['/abs/project/src/components/*', '/abs/project/lib/components/*'] }
+   *
+   * Aliases are tried before relative resolution; the first existing
+   * target file (probing the same extensions as a relative import)
+   * wins.
+   */
+  readonly pathAliases?: PathAliases;
 }
+
+/**
+ * TypeScript-style path-alias map. Keys are patterns with `*` as the
+ * wildcard (`'@/*'`, `'#internal'`); values are one or more target
+ * patterns substituted into to produce candidate file paths. Targets
+ * should be absolute when the host project has a `baseUrl` ≠ cwd.
+ */
+export type PathAliases = Readonly<Record<string, string | readonly string[]>>;
 
 /**
  * Lazy-resolved exports of a parsed module. Each entry maps an
@@ -140,6 +165,7 @@ interface InternalContext {
   readonly cache: ModuleCache;
   /** Cycle guard: tuples of "<modulePath>::<exportName>". */
   readonly inProgress: Set<string>;
+  readonly pathAliases?: PathAliases;
 }
 
 /**
@@ -154,6 +180,7 @@ export function evaluateNode(
   const ctx: InternalContext = {
     cache: options.cache ?? createModuleCache(),
     inProgress: new Set(),
+    ...(options.pathAliases ? { pathAliases: options.pathAliases } : {}),
   };
   return evalExpression(argPath.node, argPath, options.filename, ctx);
 }
@@ -311,7 +338,7 @@ function resolveBinding(
     const importDecl = declPath.parent;
     if (!t.isImportDeclaration(importDecl)) return UNRESOLVED;
     const source = importDecl.source.value;
-    const resolved = resolveModule(hostFile, source);
+    const resolved = resolveModule(hostFile, source, ctx.pathAliases);
     if (!resolved) return UNRESOLVED;
 
     const imported =
@@ -372,7 +399,7 @@ function resolveExport(
       const starOrigin = new Map<string, string | typeof AMBIGUOUS>();
       for (const re of record.reExports) {
         if (re.kind !== 'all') continue;
-        const target = resolveModule(modulePath, re.source);
+        const target = resolveModule(modulePath, re.source, ctx.pathAliases);
         if (!target) continue;
         const v = resolveExport(target, '*', ctx);
         if (v === UNRESOLVED || v === null || typeof v !== 'object') continue;
@@ -413,7 +440,7 @@ function resolveExport(
   // Re-exports: `export { foo } from './bar'`
   for (const re of record.reExports) {
     if (re.kind === 'named' && re.localName === exportName) {
-      const target = resolveModule(modulePath, re.source);
+      const target = resolveModule(modulePath, re.source, ctx.pathAliases);
       if (!target) return UNRESOLVED;
       ctx.inProgress.add(cycleKey);
       try {
@@ -433,7 +460,7 @@ function resolveExport(
   let ambiguous = false;
   for (const re of record.reExports) {
     if (re.kind !== 'all') continue;
-    const target = resolveModule(modulePath, re.source);
+    const target = resolveModule(modulePath, re.source, ctx.pathAliases);
     if (!target) continue;
     ctx.inProgress.add(cycleKey);
     try {
@@ -818,7 +845,26 @@ function findLocalExportEntry(ast: t.File, name: string): ExportEntry | null {
  * footgun (eval-by-AST of an attacker-controlled package). A future
  * `allow` option can opt in.
  */
-function resolveModule(fromFile: string, specifier: string): string | null {
+function resolveModule(
+  fromFile: string,
+  specifier: string,
+  aliases?: PathAliases,
+): string | null {
+  // Path aliases (TypeScript-style) — applied to specifiers that
+  // don't look relative or absolute. Each matching pattern produces
+  // one or more candidate paths; the first one that resolves to an
+  // existing file wins.
+  if (
+    aliases !== undefined &&
+    !specifier.startsWith('.') &&
+    !specifier.startsWith('/') &&
+    !isAbsolute(specifier)
+  ) {
+    for (const candidate of resolveAliasCandidates(specifier, aliases)) {
+      const hit = resolveAsFile(fromFile, candidate);
+      if (hit !== null) return hit;
+    }
+  }
   if (
     !specifier.startsWith('.') &&
     !specifier.startsWith('/') &&
@@ -826,6 +872,65 @@ function resolveModule(fromFile: string, specifier: string): string | null {
   ) {
     return null;
   }
+  return resolveAsFile(fromFile, specifier);
+}
+
+/**
+ * Match a specifier against TypeScript-style alias patterns. Each
+ * matching pattern yields one or more substituted candidates in
+ * pattern-declaration order (and for multi-target patterns, in
+ * declaration order within that pattern). Non-matching patterns are
+ * skipped.
+ */
+function* resolveAliasCandidates(
+  specifier: string,
+  aliases: PathAliases,
+): IterableIterator<string> {
+  for (const [pattern, targets] of Object.entries(aliases)) {
+    const substituted = matchAndSubstitute(pattern, specifier, targets);
+    if (substituted === null) continue;
+    for (const candidate of substituted) yield candidate;
+  }
+}
+
+function matchAndSubstitute(
+  pattern: string,
+  specifier: string,
+  targets: string | readonly string[],
+): readonly string[] | null {
+  const targetList = typeof targets === 'string' ? [targets] : targets;
+  const wildcard = pattern.indexOf('*');
+  if (wildcard === -1) {
+    if (specifier !== pattern) return null;
+    return targetList.slice();
+  }
+  const prefix = pattern.slice(0, wildcard);
+  const suffix = pattern.slice(wildcard + 1);
+  // Length check before the start/end checks. Without it, pattern
+  // `a*a` would match specifier `a` (both startsWith and endsWith pass
+  // for a single 'a') with an empty capture — the wildcard would
+  // effectively collapse to nothing. Require strictly more bytes
+  // than prefix + suffix so the wildcard always sees at least the
+  // empty string from a non-overlapping middle.
+  if (specifier.length < prefix.length + suffix.length) return null;
+  if (!specifier.startsWith(prefix)) return null;
+  if (!specifier.endsWith(suffix)) return null;
+  const capture = specifier.slice(prefix.length, specifier.length - suffix.length);
+  // `split('*').join(capture)` instead of `replace('*', capture)` —
+  // String.replace treats `$&`, `$$`, etc. inside the replacement as
+  // back-reference patterns, so a specifier containing those sequences
+  // (theoretical, but cheap to guard against) would silently corrupt
+  // the substituted path.
+  return targetList.map((t) => t.split('*').join(capture));
+}
+
+/**
+ * Probe a single specifier against the filesystem: direct hit,
+ * extension probes, and `<dir>/index.<ext>`. The specifier may be
+ * absolute (an alias-substituted target) or relative (then resolved
+ * against `fromFile`'s directory).
+ */
+function resolveAsFile(fromFile: string, specifier: string): string | null {
   const baseDir = dirname(fromFile);
   const base = isAbsolute(specifier) ? specifier : resolve(baseDir, specifier);
 
@@ -859,4 +964,193 @@ function existsAsDirectory(p: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Walk up from `cwd` looking for a `tsconfig.json` (then `jsconfig.json`)
+ * and resolve its `compilerOptions.paths` against `compilerOptions.baseUrl`
+ * into the `PathAliases` shape the evaluator consumes. `extends` chains
+ * are followed all the way up (cycles guarded via a visited-set).
+ *
+ * Returns `null` when no config is found or the config has no `paths`.
+ * Errors during read / parse are swallowed and logged via the optional
+ * `onError` callback — design-token resolution should never crash the
+ * build on a malformed tsconfig.
+ */
+export function loadTsconfigPaths(
+  projectRoot: string,
+  options: { readonly onError?: (err: unknown) => void } = {},
+): PathAliases | null {
+  const onError = options.onError ?? (() => {});
+  const tsconfig = findConfigUpwards(projectRoot, ['tsconfig.json', 'jsconfig.json']);
+  if (tsconfig === null) return null;
+  // Each config contributes a chunk of already-absolutised `paths`
+  // entries anchored against its own `baseUrl` (or its own directory
+  // when no `baseUrl` is declared). TypeScript treats relative
+  // paths as relative to the file they originated in, so anchoring
+  // per-config — instead of resolving everything against the leaf's
+  // `baseUrl` at the end — is the only way the merge stays correct
+  // when parent and child configs live in different directories.
+  const mergedPaths: Record<string, readonly string[]> = {};
+  const visited = new Set<string>();
+  let currentPath: string | null = tsconfig;
+  while (currentPath !== null && !visited.has(currentPath)) {
+    visited.add(currentPath);
+    let parsed: unknown;
+    try {
+      parsed = parseJsoncLite(readFileSync(currentPath, 'utf8'));
+    } catch (err) {
+      onError(err);
+      return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const rawOptions = (parsed as { compilerOptions?: TsconfigCompilerOptions }).compilerOptions ?? {};
+    const configDir = dirname(currentPath);
+    const effectiveBaseUrl = rawOptions.baseUrl
+      ? isAbsolute(rawOptions.baseUrl)
+        ? rawOptions.baseUrl
+        : resolve(configDir, rawOptions.baseUrl)
+      : configDir;
+    if (rawOptions.paths) {
+      for (const [pattern, targets] of Object.entries(rawOptions.paths)) {
+        // Child wins on per-key collisions: leaf is visited first, so
+        // the leaf's entry lands in `mergedPaths` first and we skip
+        // any later (parent) write for the same key.
+        if (pattern in mergedPaths) continue;
+        if (!Array.isArray(targets)) continue;
+        const absoluteTargets = targets
+          .filter((t): t is string => typeof t === 'string')
+          .map((t) => (isAbsolute(t) ? t : resolve(effectiveBaseUrl, t)));
+        if (absoluteTargets.length > 0) mergedPaths[pattern] = absoluteTargets;
+      }
+    }
+    const extendsField = (parsed as { extends?: string }).extends;
+    if (typeof extendsField !== 'string') break;
+    currentPath = resolveExtends(currentPath, extendsField);
+  }
+  return Object.keys(mergedPaths).length > 0 ? mergedPaths : null;
+}
+
+interface TsconfigCompilerOptions {
+  baseUrl?: string;
+  paths?: Readonly<Record<string, readonly string[]>>;
+}
+
+function findConfigUpwards(startDir: string, filenames: readonly string[]): string | null {
+  let dir = resolve(startDir);
+  // Bound the walk so a misconfigured cwd doesn't traverse to '/'.
+  for (let i = 0; i < 20; i++) {
+    for (const name of filenames) {
+      const candidate = resolve(dir, name);
+      if (existsAsFile(candidate)) return candidate;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+function resolveExtends(fromConfig: string, extendsValue: string): string | null {
+  const configDir = dirname(fromConfig);
+  if (extendsValue.startsWith('.') || isAbsolute(extendsValue)) {
+    const direct = isAbsolute(extendsValue) ? extendsValue : resolve(configDir, extendsValue);
+    if (existsAsFile(direct)) return direct;
+    if (existsAsFile(direct + '.json')) return direct + '.json';
+    return null;
+  }
+  // Bare specifiers (`@tsconfig/strictest/tsconfig.json`) — walk up
+  // from the config's directory probing each `node_modules/<spec>`.
+  // Monorepos with pnpm / yarn hoisting park shared configs at a
+  // workspace-root `node_modules`, not the package's own directory.
+  let dir = configDir;
+  for (let i = 0; i < 20; i++) {
+    const candidate = resolve(dir, 'node_modules', extendsValue);
+    if (existsAsFile(candidate)) return candidate;
+    if (existsAsFile(candidate + '.json')) return candidate + '.json';
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * Minimal JSONC parser: strips line comments, block comments, and
+ * trailing commas, then `JSON.parse`s. tsconfig files routinely carry
+ * these even though strict JSON forbids them; pulling in a full JSONC
+ * dependency for one read site isn't worth it.
+ *
+ * Single-pass tokenizer so we respect string boundaries — a value
+ * like `"http://example.com"` or `"/*"` inside a `paths` entry would
+ * be corrupted by a regex-only strip.
+ */
+function parseJsoncLite(source: string): unknown {
+  let out = '';
+  const len = source.length;
+  let i = 0;
+  while (i < len) {
+    const c = source[i]!;
+    if (c === '"') {
+      // String literal — copy verbatim, respecting escapes so `\"`
+      // doesn't end the string and `\\` doesn't escape the next char.
+      out += c;
+      i++;
+      while (i < len) {
+        const ch = source[i]!;
+        out += ch;
+        i++;
+        if (ch === '\\' && i < len) {
+          out += source[i]!;
+          i++;
+          continue;
+        }
+        if (ch === '"') break;
+      }
+      continue;
+    }
+    if (c === '/' && source[i + 1] === '/') {
+      i += 2;
+      while (i < len && source[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      i += 2;
+      while (i < len && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      if (i < len) i += 2;
+      continue;
+    }
+    if (c === ',') {
+      // Trailing-comma elision: look ahead through whitespace and
+      // intervening comments. If the next significant character is a
+      // closing `}` or `]`, drop this comma. Otherwise emit it.
+      let j = i + 1;
+      while (j < len) {
+        const cj = source[j]!;
+        if (cj === ' ' || cj === '\t' || cj === '\n' || cj === '\r') { j++; continue; }
+        if (cj === '/' && source[j + 1] === '/') {
+          j += 2;
+          while (j < len && source[j] !== '\n') j++;
+          continue;
+        }
+        if (cj === '/' && source[j + 1] === '*') {
+          j += 2;
+          while (j < len && !(source[j] === '*' && source[j + 1] === '/')) j++;
+          if (j < len) j += 2;
+          continue;
+        }
+        break;
+      }
+      if (j < len && (source[j] === ']' || source[j] === '}')) {
+        i++;
+        continue;
+      }
+      out += c;
+      i++;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return JSON.parse(out);
 }

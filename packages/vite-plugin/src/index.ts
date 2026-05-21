@@ -16,8 +16,10 @@ import {
 } from '@cassida/compiler';
 import {
   createModuleCache,
+  loadTsconfigPaths,
   transform,
   type CassParserPlugin,
+  type PathAliases,
 } from '@cassida/parser';
 import type { Plugin, ViteDevServer } from 'vite';
 
@@ -64,6 +66,15 @@ export interface CassPluginOptions extends CassConfig {
    * not serializable to `cassida.config.json`).
    */
   readonly parserPlugins?: readonly CassParserPlugin[];
+  /**
+   * TypeScript-style path aliases for the cross-file evaluator. By
+   * default the plugin auto-discovers `compilerOptions.paths` from
+   * `tsconfig.json` at the project root (via
+   * `loadTsconfigPaths(projectRoot)`). Pass an explicit map to override,
+   * or `false` to disable auto-discovery — useful when the project
+   * uses Vite's own `resolve.alias` instead of tsconfig paths.
+   */
+  readonly pathAliases?: PathAliases | false;
 }
 
 export default function cassida(options: CassPluginOptions = {}): Plugin {
@@ -86,6 +97,10 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
   // `transform()` call would re-read and re-parse `theme.ts` etc.;
   // with it, each design-token module is parsed once per build.
   const crossFileCache = createModuleCache();
+  // Resolved in `configResolved` once `projectRoot` is known. Null
+  // when the user disabled auto-discovery or no tsconfig.json was
+  // found at the project root.
+  let resolvedAliases: PathAliases | null = null;
 
   function emitForFile(file: string): string {
     const rules = rulesByFile.get(file);
@@ -134,6 +149,15 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
       // Resolution priority: defaults < cassida.config.json < plugin options.
       resolved = mergeConfig(fileCfg, extractConfig(options));
       cachedTargets = resolveTargets(resolved.css.lightningcss.targets, projectRoot);
+      // Path aliases: explicit > auto-discovery > none. `false` opts
+      // out of both, leaving cross-file eval relative-only.
+      if (options.pathAliases === false) {
+        resolvedAliases = null;
+      } else if (options.pathAliases) {
+        resolvedAliases = options.pathAliases;
+      } else {
+        resolvedAliases = loadTsconfigPaths(projectRoot);
+      }
     },
 
     configureServer(s) {
@@ -164,6 +188,7 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
         importSource: resolved.importSource,
         shorthandPolicy: resolved.shorthand.policy,
         crossFileEvaluation: { cache: crossFileCache },
+        ...(resolvedAliases ? { pathAliases: resolvedAliases } : {}),
         ...(options.plugins ? { plugins: options.plugins } : {}),
         ...(options.parserPlugins
           ? { parserPlugins: options.parserPlugins }

@@ -752,7 +752,7 @@ Reference: `packages/plugin-conditional/src/index.ts` — ~150 lines covering bo
 | —     | ✅ | `@cassida/plugin-print` — `@media print` defaults (`v0.5.0`) |
 | —     | ✅ | `@cassida/plugin-global-css` — virtual-module preflight (`v0.4.0`) |
 | —     | ✅ | `.cond()` inside modifier scopes — `.hover(c => c.cond(...))` lifts to build time |
-| —     | 🚧 | TypeScript path-alias resolution (`@/tokens` style imports) |
+| —     | ✅ | TypeScript path-alias resolution — `@/tokens` style imports fold cross-file (auto-discovers `tsconfig.json` paths) |
 | —     | 💭 | Additional first-party plugins (dark-mode duplicator, prefers-reduced-motion fallback) |
 | —     | 💭 | SWC plugin port for Next.js native integration |
 

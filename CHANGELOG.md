@@ -4,7 +4,9 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
-(No changes yet.)
+### Added
+
+- **TypeScript path-alias resolution in cross-file eval** — `import { theme } from '@/tokens'` now folds at build time when the project declares `compilerOptions.paths` in `tsconfig.json`. The Vite plugin auto-discovers paths via the new `loadTsconfigPaths(projectRoot)` helper; `extends` chains are followed one level so monorepo `tsconfig.base.json` patterns work. Override or disable through the plugin's new `pathAliases` option (`PathAliases | false`). Standalone consumers of `@cassida/parser` can pass `pathAliases` directly to `transform()` or call `loadTsconfigPaths` themselves.
 
 ## [0.6.0] — 2026-05-20
 
