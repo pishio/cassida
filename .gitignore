@@ -8,6 +8,9 @@ coverage
 .idea
 .vscode
 
+# Rust build artefacts (Cargo workspace at repo root)
+target/
+
 # e2e fixture transient artifacts
 e2e/.tarballs/
 e2e/consumer/package-lock.json

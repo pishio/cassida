@@ -1,0 +1,54 @@
+{
+  "name": "@cassida/next-plugin",
+  "version": "0.7.0",
+  "private": true,
+  "description": "Next.js integration for Cassida. Bundles the SWC plugin registration, the IR-comment loader, the @layer cas CSS virtual module, and the optional plugin registry (hover-fix, conditional, print, global-css). Phase 1 scaffold — withCassida() API surface only. Private until the integration is filled in.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pishio/cassida.git",
+    "directory": "packages/next-plugin"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@cassida/compiler": "workspace:*",
+    "@cassida/parser": "workspace:*",
+    "@cassida/swc-plugin": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.0"
+  },
+  "peerDependencies": {
+    "next": ">=14",
+    "@cassida/core": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@cassida/plugin-conditional": "workspace:*",
+    "@cassida/plugin-global-css": "workspace:*",
+    "@cassida/plugin-hover-fix": "workspace:*",
+    "@cassida/plugin-print": "workspace:*"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}
