@@ -30,6 +30,18 @@ export default withCassida({ /* normal next config */ }, {
 
 You do not register `@cassida/swc-plugin` directly — `withCassida()` wires it into `experimental.swcPlugins` for you.
 
+If you need the WASM path from JS (custom build setup, SWC CLI usage, esbuild, etc.):
+
+```js
+// ESM
+import { wasmPath } from '@cassida/swc-plugin/loader';
+
+// CJS
+const { wasmPath } = require('@cassida/swc-plugin/loader');
+```
+
+The package's `main` field also points at the WASM directly for SWC's built-in `require.resolve()` lookup of `swcPlugins: [['@cassida/swc-plugin', ...]]` shorthand.
+
 ## Development
 
 Requires Rust 1.91+ (`rust-toolchain.toml` at the repo root pins this) and the `wasm32-wasip1` target.

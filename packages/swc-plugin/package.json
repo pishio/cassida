@@ -10,8 +10,20 @@
     "directory": "packages/swc-plugin"
   },
   "main": "./dist/cassida_swc_plugin.wasm",
+  "exports": {
+    ".": "./dist/cassida_swc_plugin.wasm",
+    "./loader": {
+      "types": "./loader.d.ts",
+      "import": "./loader.mjs",
+      "require": "./loader.cjs"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist/cassida_swc_plugin.wasm",
+    "loader.cjs",
+    "loader.mjs",
+    "loader.d.ts",
     "README.md"
   ],
   "scripts": {

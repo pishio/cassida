@@ -92,9 +92,18 @@ export function withCassida<TConfig>(
   //   1. Resolve options against CassConfig schema (reuse compiler's parser).
   //   2. Auto-discover path aliases when `pathAliases` is undefined.
   //   3. Inject `experimental.swcPlugins` with @cassida/swc-plugin's WASM.
+  //      Resolve the path via `import { wasmPath } from '@cassida/swc-plugin/loader'`
+  //      rather than `require.resolve('@cassida/swc-plugin')` so pnpm
+  //      hoisting / dual-CJS-ESM packages don't trip the resolver.
   //   4. Register the IR-comment loader for webpack + turbopack.
   //   5. Register the @layer cas virtual module.
   //   6. RSC guard: warn when cas() runtime lands in a Server Component.
+  //   7. Function-config support: Next.js permits `(phase, ctx) => NextConfig`
+  //      in `next.config.{js,mjs,ts}` in addition to the object form.
+  //      The mutation path needs to wrap the user function so options are
+  //      applied to its return value; the current generic signature accepts
+  //      both shapes structurally but does no work, so functional configs
+  //      pass through unchanged for now.
   return nextConfig;
 }
 
