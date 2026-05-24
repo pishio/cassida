@@ -9,12 +9,27 @@
  * Design reference: `.claude/plans/swc-port-phase-1.md`.
  */
 
+import type { NextConfig } from 'next';
 import type {
   CassConfig,
   CassPlugin,
   Registry,
 } from '@cassida/compiler';
 import type { CassParserPlugin, PathAliases } from '@cassida/parser';
+
+/**
+ * `next.config.{js,mjs,ts}` is allowed to export either the config
+ * object directly or a function that receives the build phase + a
+ * `defaultConfig` and returns the object. `withCassida` accepts both
+ * shapes; downstream wrapping (Phase 1) wraps the function so options
+ * are applied to its return value.
+ */
+export type NextConfigInput =
+  | NextConfig
+  | ((
+      phase: string,
+      ctx: { defaultConfig: NextConfig },
+    ) => NextConfig | Promise<NextConfig>);
 
 /**
  * Options accepted by `withCassida()`. A superset of the `CassConfig`
@@ -84,10 +99,10 @@ export interface NextCassidaOptions extends CassConfig {
  * Phase 1 returns the next config unchanged. The full integration lands
  * in subsequent commits.
  */
-export function withCassida<TConfig>(
-  nextConfig: TConfig = {} as TConfig,
+export function withCassida(
+  nextConfig: NextConfigInput = {},
   _cassidaOptions: NextCassidaOptions = {},
-): TConfig {
+): NextConfigInput {
   // TODO(phase-1):
   //   1. Resolve options against CassConfig schema (reuse compiler's parser).
   //   2. Auto-discover path aliases when `pathAliases` is undefined.
