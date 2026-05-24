@@ -85,7 +85,7 @@ export interface NextCassidaOptions extends CassConfig {
  * in subsequent commits.
  */
 export function withCassida<TConfig>(
-  nextConfig: TConfig,
+  nextConfig: TConfig = {} as TConfig,
   _cassidaOptions: NextCassidaOptions = {},
 ): TConfig {
   // TODO(phase-1):
