@@ -18,18 +18,21 @@ import type {
 import type { CassParserPlugin, PathAliases } from '@cassida/parser';
 
 /**
- * `next.config.{js,mjs,ts}` is allowed to export either the config
- * object directly or a function that receives the build phase + a
- * `defaultConfig` and returns the object. `withCassida` accepts both
- * shapes; downstream wrapping (Phase 1) wraps the function so options
- * are applied to its return value.
+ * Functional form of `next.config.{js,mjs,ts}`: receives the build
+ * phase + a `defaultConfig` and returns the object (sync or async).
  */
-export type NextConfigInput =
-  | NextConfig
-  | ((
-      phase: string,
-      ctx: { defaultConfig: NextConfig },
-    ) => NextConfig | Promise<NextConfig>);
+export type NextConfigFn = (
+  phase: string,
+  ctx: { defaultConfig: NextConfig },
+) => NextConfig | Promise<NextConfig>;
+
+/**
+ * Either form Next.js permits for a config file. `withCassida` accepts
+ * both shapes via overloads so the return type stays narrowed to the
+ * shape that was passed in — callers don't need a type guard on the
+ * returned value.
+ */
+export type NextConfigInput = NextConfig | NextConfigFn;
 
 /**
  * Options accepted by `withCassida()`. A superset of the `CassConfig`
@@ -99,6 +102,19 @@ export interface NextCassidaOptions extends CassConfig {
  * Phase 1 returns the next config unchanged. The full integration lands
  * in subsequent commits.
  */
+// Function-form overload is declared first: NextConfig has an open
+// index signature, so a `(phase, ctx) => ...` arrow is also assignable
+// to NextConfig itself. TypeScript picks the first matching overload,
+// so flipping the order would silently route function-form callers
+// into the object-form return and break narrowing at call sites.
+export function withCassida(
+  nextConfig: NextConfigFn,
+  cassidaOptions?: NextCassidaOptions,
+): NextConfigFn;
+export function withCassida(
+  nextConfig?: NextConfig,
+  cassidaOptions?: NextCassidaOptions,
+): NextConfig;
 export function withCassida(
   nextConfig: NextConfigInput = {},
   _cassidaOptions: NextCassidaOptions = {},
