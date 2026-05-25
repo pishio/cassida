@@ -57,6 +57,8 @@ jobs:
             # Skip subdirs without a package.json — future docs/ or
             # scripts/ folders shouldn't break the pack step.
             [ -f "$d/package.json" ] || continue
+            # Skip packages marked private (scaffolds not ready for publish).
+            grep -q '"private": true' "$d/package.json" && continue
             (cd "$d" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/tarballs")
           done
           ls -la tarballs/

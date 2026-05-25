@@ -1,0 +1,58 @@
+name: rust
+
+# Checks for the Rust workspace (currently just packages/swc-plugin).
+# Runs in parallel with the e2e JavaScript suite.
+#
+# Three steps: fmt (rustfmt --check), lint (clippy -D warnings),
+# test (native), build (wasm32-wasip1). The toolchain pin lives in
+# rust-toolchain.toml at the workspace root so contributors and CI
+# share the same Rust version.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: cargo fmt / clippy / test / build (wasm32-wasip1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml installs Rust 1.91 + wasm32-wasip1 + rustfmt
+      # + clippy on first cargo invocation. The dtolnay action installs
+      # the same toolchain ahead of time so the cache hits cleanly.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.91'
+          targets: 'wasm32-wasip1'
+          components: 'rustfmt,clippy'
+
+      - name: Cache cargo registry + target dir
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy (native, all targets)
+        run: cargo clippy --all-targets --workspace -- -D warnings
+
+      - name: cargo test (native)
+        run: cargo test --workspace
+
+      - name: cargo build --release --target wasm32-wasip1
+        run: cargo build --release --workspace --target wasm32-wasip1
+
+      - name: Report wasm artefact size
+        run: |
+          ls -lah target/wasm32-wasip1/release/*.wasm

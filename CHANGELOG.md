@@ -4,7 +4,9 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
-(No changes yet.)
+### Added
+
+- **`@cassida/swc-plugin` and `@cassida/next-plugin` scaffolds** — two new workspace packages laying the groundwork for Next.js (App Router included) integration via a Rust-authored SWC plugin. Phase 1 ships the no-op plugin transform and the `withCassida()` config wrapper API surface; subsequent commits fill in the chain walker, IR-comment loader, and CSS pipeline. Architecturally the plugin emits the existing `Op[]` IR as a comment annotation that the Node-side loader feeds to `@cassida/compiler`, so Babel-parsed and SWC-parsed files hash to identical class names. Both packages are marked private until Phase 1 is feature-complete.
 
 ## [0.7.0] — 2026-05-21
 

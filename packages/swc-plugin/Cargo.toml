@@ -1,0 +1,27 @@
+[package]
+name = "cassida_swc_plugin"
+version = "0.7.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cassida SWC plugin: detects cas() chains in JSX spreads and emits an Op[] IR comment for the @cassida/next-plugin loader to compile against @cassida/compiler. Mirrors @cassida/parser's Babel-based transform."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+swc_core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smol_str = { workspace = true }
+
+[dev-dependencies]
+swc_core = { workspace = true, features = [
+  "ecma_parser",
+  "ecma_codegen",
+  "testing_transform",
+] }
+
+[features]
+default = []

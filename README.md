@@ -614,6 +614,8 @@ Babel's `path.evaluate()` returns `confident: false` for `Math.random()`, so the
 | [`@cassida/plugin-conditional`](./packages/plugin-conditional) | First-party parser plugin: lifts conditional / short-circuit JSX spreads to build-time classes. |
 | [`@cassida/plugin-global-css`](./packages/plugin-global-css) | First-party Vite plugin: serves preflight / reset / tag-selector CSS through a virtual module, wrapped in a configurable cascade `@layer`. |
 | [`@cassida/plugin-print`](./packages/plugin-print) | Companion factory: `printPreflight()` returns a CSS string of conservative `@media print` defaults (page-break hygiene, black-on-white, link-href expansion). Pair with `@cassida/plugin-global-css` for delivery. |
+| [`@cassida/swc-plugin`](./packages/swc-plugin) *(scaffold)* | Rust SWC plugin (WASM). Detects `cas()` chains in JSX spreads and emits an `Op[]` IR comment that `@cassida/next-plugin` compiles via `@cassida/compiler`. Currently a no-op transform; the full transform is the in-progress Phase 1 port of `@cassida/parser`. |
+| [`@cassida/next-plugin`](./packages/next-plugin) *(scaffold)* | Next.js integration. `withCassida(nextConfig, options)` wires up the SWC plugin, the IR-comment loader, the `@layer cas` CSS virtual module, and the optional plugin registry. Currently the API surface only. |
 
 Most consumers install three packages: `@cassida/core` (runtime), `@cassida/vite-plugin` (build-time integration), and `@cassida/recommended` (which brings the default plugin set as transitive deps). The other packages are workspace internals plus opt-in factories for bespoke composition.
 
