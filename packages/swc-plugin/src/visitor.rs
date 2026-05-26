@@ -143,10 +143,17 @@ fn try_rewrite_spread<C: Comments>(
     // emits the attached comment at the right spot. SWC's comments
     // table is keyed by BytePos; DUMMY_SP (lo = 0) collides across
     // placeholders and the codegen treats it as "no real position".
-    // Mint a synthetic high BytePos per placeholder — well above any
-    // real source position so we don't collide with parser-assigned
-    // spans.
-    let synthetic_lo = BytePos(u32::MAX - counter);
+    //
+    // Position MUST increase monotonically with source-order visit:
+    // SWC's `emit_leading_comments` drains every pending comment
+    // whose BytePos is `<= current_node.lo`, so if synthetic
+    // positions DECREASED with the counter, the first placeholder
+    // would sweep up every subsequent placeholder's comment and the
+    // later placeholders would lose theirs (verified by a reproducer).
+    // Anchoring at `0x80000000` keeps the synthetic range safely
+    // above any realistic source byte position while leaving plenty
+    // of headroom for placeholder counts in any single file.
+    let synthetic_lo = BytePos(0x8000_0000u32.saturating_add(counter));
     let synthetic_span = Span::new(synthetic_lo, synthetic_lo);
     let placeholder_lit = Str {
         span: synthetic_span,
@@ -447,6 +454,41 @@ const X = () => (
             out.contains(r#""__CAS_PLACEHOLDER_0__""#)
                 && out.contains(r#""__CAS_PLACEHOLDER_1__""#),
             "output was:\n{out}"
+        );
+    }
+
+    /// Each placeholder must keep its OWN IR comment attached.
+    /// SWC's comment emitter drains all comments with BytePos <=
+    /// node.lo, so synthetic placeholder positions have to ascend
+    /// with the source-order visit. A previous revision used
+    /// `u32::MAX - counter` (descending) and lost every comment
+    /// past the first — this test guards against that regression.
+    #[test]
+    fn each_placeholder_carries_its_own_ir_comment() {
+        let out = transform(
+            r#"
+import { cas } from '@cassida/core';
+const X = () => (
+  <div>
+    <span {...cas().color('red').props} />
+    <span {...cas().color('blue').props} />
+  </div>
+);
+            "#,
+        );
+        // The red IR must appear adjacent to placeholder 0.
+        assert!(
+            out.contains(
+                r#"@cassida-ir:[{"method":"color","args":["red"]}]*/ "__CAS_PLACEHOLDER_0__""#
+            ),
+            "placeholder 0 should carry its red IR; output was:\n{out}"
+        );
+        // The blue IR must appear adjacent to placeholder 1.
+        assert!(
+            out.contains(
+                r#"@cassida-ir:[{"method":"color","args":["blue"]}]*/ "__CAS_PLACEHOLDER_1__""#
+            ),
+            "placeholder 1 should carry its blue IR; output was:\n{out}"
         );
     }
 }
