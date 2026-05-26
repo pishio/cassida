@@ -27,6 +27,7 @@ use swc_core::ecma::ast::{
     ArrowExpr, BindingIdent, BlockStmtOrExpr, CallExpr, Callee, Expr, Lit, MemberExpr, MemberProp,
     Pat, Tpl,
 };
+use swc_core::ecma::atoms::Atom;
 
 #[cfg(test)]
 use crate::ir::Scope;
@@ -36,7 +37,13 @@ use crate::modifiers::{arg_modifier, arg_modifier_scope, canonical_scope};
 /// Names of root chain identifiers — i.e. local bindings that resolve
 /// to the `cas` (or `css` / `cassida`) export of `@cassida/core`. The
 /// visitor populates this from `ImportDeclaration` scanning.
-pub type ChainRoots = HashSet<String>;
+///
+/// Keyed by `Atom` rather than `String` so insertions and lookups
+/// skip a heap allocation per identifier. SWC's interning makes
+/// `Atom` clones cheap; the AST already carries the same `Atom`
+/// instances on identifier nodes, so the lookup site (`ident.sym`)
+/// hits the table directly via reference.
+pub type ChainRoots = HashSet<Atom>;
 
 /// Walk a chain root expression. Returns `Some(Vec<Op>)` on a fully
 /// recognised chain or `None` if any node in the chain is unsupported
@@ -58,7 +65,7 @@ pub fn walk_chain(expr: &Expr, roots: &ChainRoots) -> Option<Vec<Op>> {
             // Bare-identifier root — the callback-param case: a chain
             // body like `c.color('red')` walks back to just `c`, which
             // is the callback's parameter and lives in `roots`.
-            Expr::Ident(ident) if roots.contains(ident.sym.as_str()) => break,
+            Expr::Ident(ident) if roots.contains(&ident.sym) => break,
             _ => return None,
         }
     }
@@ -92,7 +99,7 @@ fn step_call<'a>(
             // `obj.method(...args)` — the "method" branch.
             Expr::Member(member) => step_method(member, call, roots, ops),
             // `cas()` — root call without member access.
-            Expr::Ident(ident) if roots.contains(ident.sym.as_str()) => {
+            Expr::Ident(ident) if roots.contains(&ident.sym) => {
                 // `cas()` accepts an optional preset arg in TS; Phase 1
                 // only handles the zero-arg form. Preset support is a
                 // later Phase 1 follow-up.
@@ -149,7 +156,7 @@ fn step_method<'a>(
 
     // 2. Canonical zero-arg modifier (`.hover(c => ...)` etc.) — the
     // single arg is an arrow function with one param.
-    if let Some(scope) = canonical_scope(&method_name) {
+    if let Some(scope) = canonical_scope(method_name) {
         if args.len() != 1 {
             return None;
         }
@@ -159,7 +166,7 @@ fn step_method<'a>(
     }
 
     // 3. Arg modifier (`.media('q', c => ...)` / `.on('s', c => ...)`).
-    if let Some(arg_mod) = arg_modifier(&method_name) {
+    if let Some(arg_mod) = arg_modifier(method_name) {
         if args.len() != 2 {
             return None;
         }
@@ -180,7 +187,9 @@ fn step_method<'a>(
         json_args.push(v);
     }
     ops.push(Op::Method(MethodOp {
-        method: method_name,
+        // `method_name` is borrowed from the AST; allocate once at
+        // capture into the long-lived IR.
+        method: method_name.to_string(),
         args: json_args,
     }));
     Some(StepOutcome::Continue(&member.obj))
@@ -213,9 +222,13 @@ fn peel_props(expr: &Expr) -> &Expr {
 
 /// Extract the `name` of an `obj.<name>` member access. Returns `None`
 /// for computed accesses (`obj[expr]`) or non-identifier props.
-fn member_ident(prop: &MemberProp) -> Option<String> {
+///
+/// Returns a borrowed `&str` so the chain-walk hot path doesn't
+/// allocate per step — only the final `MethodOp.method` field
+/// allocates, at the moment the op is captured into the IR.
+fn member_ident(prop: &MemberProp) -> Option<&str> {
     match prop {
-        MemberProp::Ident(ident) => Some(ident.sym.as_str().to_string()),
+        MemberProp::Ident(ident) => Some(ident.sym.as_str()),
         _ => None,
     }
 }
@@ -252,13 +265,15 @@ fn walk_callback(expr: &Expr, _outer_roots: &ChainRoots) -> Option<Vec<Op>> {
 
 /// The arrow's single parameter, as the local binding name to use
 /// when matching chain roots inside the body. Phase 1 requires
-/// exactly one Ident-pattern parameter.
-fn arrow_param_root(arrow: &ArrowExpr) -> Option<String> {
+/// exactly one Ident-pattern parameter. Returns a clone of the SWC
+/// `Atom` so the new inner-root set can own it without allocating a
+/// `String`.
+fn arrow_param_root(arrow: &ArrowExpr) -> Option<Atom> {
     if arrow.params.len() != 1 {
         return None;
     }
     match &arrow.params[0] {
-        Pat::Ident(BindingIdent { id, .. }) => Some(id.sym.as_str().to_string()),
+        Pat::Ident(BindingIdent { id, .. }) => Some(id.sym.clone()),
         _ => None,
     }
 }

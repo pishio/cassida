@@ -208,24 +208,26 @@ fn collect_chain_roots_from_import(decl: &ImportDecl, roots: &mut ChainRoots) {
             ImportSpecifier::Default(default) => {
                 // `import cas from '@cassida/core'` binds the default
                 // export. The runtime's default export is the same
-                // builder as the named `cas` export.
-                roots.insert(default.local.sym.as_str().to_string());
+                // builder as the named `cas` export. Atom clone (no
+                // allocation — SWC's atoms are interned).
+                roots.insert(default.local.sym.clone());
             }
             ImportSpecifier::Named(named) => {
-                let imported_name = match &named.imported {
+                // `imported_name` is just compared to a static `&str`
+                // list, so keep it as a borrow — no per-import String
+                // allocation.
+                let imported_name: &str = match &named.imported {
                     Some(imported) => match imported {
-                        swc_core::ecma::ast::ModuleExportName::Ident(id) => {
-                            id.sym.as_str().to_string()
-                        }
+                        swc_core::ecma::ast::ModuleExportName::Ident(id) => id.sym.as_str(),
                         swc_core::ecma::ast::ModuleExportName::Str(s) => match s.value.as_str() {
-                            Some(v) => v.to_string(),
+                            Some(v) => v,
                             None => continue,
                         },
                     },
-                    None => named.local.sym.as_str().to_string(),
+                    None => named.local.sym.as_str(),
                 };
-                if ROOT_EXPORT_NAMES.contains(&imported_name.as_str()) {
-                    roots.insert(named.local.sym.as_str().to_string());
+                if ROOT_EXPORT_NAMES.contains(&imported_name) {
+                    roots.insert(named.local.sym.clone());
                 }
             }
             ImportSpecifier::Namespace(_) => {
