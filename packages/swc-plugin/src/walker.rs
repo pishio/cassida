@@ -224,18 +224,25 @@ fn member_ident(prop: &MemberProp) -> Option<String> {
 ///
 /// Phase 1 only handles expression-body arrows with a single
 /// identifier param. Block bodies and rest-param shapes return `None`.
-fn walk_callback(expr: &Expr, roots: &ChainRoots) -> Option<Vec<Op>> {
+///
+/// The inner walk uses a FRESH root set containing ONLY the callback
+/// parameter — outer roots (`cas`) are deliberately NOT inherited.
+/// This mirrors `collectFromCallback` in
+/// `packages/parser/src/index.ts:1269` (which constructs
+/// `new Set([param.name])`). Inheriting the outer roots would let
+/// nested-`cas()` shapes like `cas().hover(c => cas().color('red'))`
+/// compile under SWC while still bailing under Babel — silently
+/// producing different class hashes across the two pipelines.
+fn walk_callback(expr: &Expr, _outer_roots: &ChainRoots) -> Option<Vec<Op>> {
     let arrow = match expr {
         Expr::Arrow(a) => a,
         _ => return None,
     };
-    let inner_roots = arrow_param_root(arrow)?;
-    // Inherit + add the callback param to the chain-root set so the
-    // inner walk recognises `c.color('red')` as a chain.
-    let mut merged = roots.clone();
-    merged.insert(inner_roots);
+    let inner_root_name = arrow_param_root(arrow)?;
+    let mut inner_roots = ChainRoots::new();
+    inner_roots.insert(inner_root_name);
     match &*arrow.body {
-        BlockStmtOrExpr::Expr(body) => walk_chain(body, &merged),
+        BlockStmtOrExpr::Expr(body) => walk_chain(body, &inner_roots),
         // Block bodies (`.hover(c => { c.x(); c.y(); })`) are a
         // follow-up — they require recursing into each ExpressionStatement
         // / ReturnStatement separately. Phase 1 declines for now.
@@ -587,6 +594,27 @@ mod tests {
             ops.first(),
             Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Number(serde_json::Number::from(-8))
         ));
+    }
+
+    /// Parity guard: inside a modifier callback the outer chain root
+    /// (`cas`) must NOT be in scope. Babel's `collectFromCallback`
+    /// uses a fresh `Set([param.name])`. If the Rust walker leaked
+    /// `cas` into the inner set, the chain below would compile to
+    /// classes under SWC while Babel bails — class-hash divergence
+    /// across the two parsing paths.
+    #[test]
+    fn nested_cas_call_inside_callback_bails() {
+        let expr = parse_expr("cas().hover(c => cas().color('red'))");
+        assert!(walk_chain(&expr, &cas_roots()).is_none());
+    }
+
+    /// The companion: the legitimate form `c.color(...)` inside the
+    /// callback still works because the callback's param is its own
+    /// fresh inner root.
+    #[test]
+    fn callback_param_root_works_independently_of_outer_roots() {
+        let expr = parse_expr("cas().hover(c => c.color('red'))");
+        assert!(walk_chain(&expr, &cas_roots()).is_some());
     }
 
     #[test]
