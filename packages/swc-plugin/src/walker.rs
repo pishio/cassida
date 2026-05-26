@@ -1,0 +1,564 @@
+//! Chain walker — Rust port of `walkChain` from
+//! `packages/parser/src/index.ts`. Walks a chain expression
+//! (outermost CallExpr / MemberExpr back to the `cas()` root) and
+//! produces the `Op[]` IR.
+//!
+//! Phase 1 scope:
+//!   - Method calls with literal args (`Lit::Str`, `Lit::Num`,
+//!     `Lit::Bool`, `Lit::Null`, and `Tpl` without substitutions)
+//!   - `.set(prop, value)` — kebab-cased property write (RawOp)
+//!   - Canonical modifier scopes (`.hover(c => ...)` etc.)
+//!   - Arg modifier scopes (`.media('q', c => ...)` /
+//!     `.on('sel', c => ...)`)
+//!   - Trailing `.props` is peeled before walking
+//!
+//! Out of scope for Phase 1 (returns `None` so the host JSX spread
+//! falls back to the runtime path):
+//!   - Non-literal args (Phase 2 dynamic-args)
+//!   - `.cond(test, t, f?)` (Phase 2 Cartesian)
+//!   - `.unsafe(preset)` (preset-expansion logic)
+//!   - Block-body callbacks (`.hover(c => { c.x(); c.y(); })`)
+//!   - Function composition (`withCard(cas())`)
+//!   - Cross-file static eval (Phase 3)
+
+use std::collections::HashSet;
+
+use swc_core::ecma::ast::{
+    ArrowExpr, BindingIdent, BlockStmtOrExpr, CallExpr, Callee, Expr, Lit, MemberExpr, MemberProp,
+    Pat, Tpl,
+};
+
+#[cfg(test)]
+use crate::ir::Scope;
+use crate::ir::{MethodOp, Op, RawOp, ScopedOp};
+use crate::modifiers::{arg_modifier, arg_modifier_scope, canonical_scope};
+
+/// Names of root chain identifiers — i.e. local bindings that resolve
+/// to the `cas` (or `css` / `cassida`) export of `@cassida/core`. The
+/// visitor populates this from `ImportDeclaration` scanning.
+pub type ChainRoots = HashSet<String>;
+
+/// Walk a chain root expression. Returns `Some(Vec<Op>)` on a fully
+/// recognised chain or `None` if any node in the chain is unsupported
+/// — in the latter case the host JSX spread should be left for the
+/// runtime fallback.
+///
+/// `expr` is typically the argument of a JSX `{...<expr>}` spread,
+/// after the trailing `.props` member access has been peeled.
+pub fn walk_chain(expr: &Expr, roots: &ChainRoots) -> Option<Vec<Op>> {
+    let mut ops: Vec<Op> = Vec::new();
+    let mut cursor = peel_props(expr);
+    loop {
+        cursor = peel_parens(cursor);
+        match cursor {
+            Expr::Call(call) => match step_call(call, roots, &mut ops)? {
+                StepOutcome::Continue(next) => cursor = next,
+                StepOutcome::Root => break,
+            },
+            // Bare-identifier root — the callback-param case: a chain
+            // body like `c.color('red')` walks back to just `c`, which
+            // is the callback's parameter and lives in `roots`.
+            Expr::Ident(ident) if roots.contains(ident.sym.as_str()) => break,
+            _ => return None,
+        }
+    }
+    // Walked outer → inner; reverse to source order.
+    ops.reverse();
+    Some(ops)
+}
+
+fn peel_parens(mut expr: &Expr) -> &Expr {
+    while let Expr::Paren(p) = expr {
+        expr = &p.expr;
+    }
+    expr
+}
+
+/// Result of processing one CallExpr in the chain walk.
+enum StepOutcome<'a> {
+    /// Recognised a method call; continue from the receiver expression.
+    Continue(&'a Expr),
+    /// Recognised the `cas()` (or alias) root call — chain walk done.
+    Root,
+}
+
+fn step_call<'a>(
+    call: &'a CallExpr,
+    roots: &ChainRoots,
+    ops: &mut Vec<Op>,
+) -> Option<StepOutcome<'a>> {
+    match &call.callee {
+        Callee::Expr(callee) => match &**callee {
+            // `obj.method(...args)` — the "method" branch.
+            Expr::Member(member) => step_method(member, call, roots, ops),
+            // `cas()` — root call without member access.
+            Expr::Ident(ident) if roots.contains(ident.sym.as_str()) => {
+                // `cas()` accepts an optional preset arg in TS; Phase 1
+                // only handles the zero-arg form. Preset support is a
+                // later Phase 1 follow-up.
+                if call.args.is_empty() {
+                    Some(StepOutcome::Root)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
+        // Super / import calls aren't chain shapes.
+        _ => None,
+    }
+}
+
+/// Handle one `obj.method(args)` step. Pushes an Op into `ops` and
+/// returns the receiver expression to continue from. Returns `None`
+/// for any shape Phase 1 doesn't recognise.
+fn step_method<'a>(
+    member: &'a MemberExpr,
+    call: &'a CallExpr,
+    roots: &ChainRoots,
+    ops: &mut Vec<Op>,
+) -> Option<StepOutcome<'a>> {
+    let method_name = member_ident(&member.prop)?;
+    let args: Vec<&Expr> = call
+        .args
+        .iter()
+        .map(|arg| {
+            // Spread args (`...rest`) aren't supported in chain method
+            // calls. Bail.
+            if arg.spread.is_some() {
+                None
+            } else {
+                Some(&*arg.expr)
+            }
+        })
+        .collect::<Option<_>>()?;
+
+    // 1. `.set(prop, value)` — RawOp, bypasses the registry.
+    if method_name == "set" {
+        if args.len() != 2 {
+            return None;
+        }
+        let prop = literal_string(args[0])?;
+        let value = literal_string_or_number(args[1])?;
+        ops.push(Op::Raw(RawOp {
+            property: camel_to_kebab(&prop),
+            value,
+        }));
+        return Some(StepOutcome::Continue(&member.obj));
+    }
+
+    // 2. Canonical zero-arg modifier (`.hover(c => ...)` etc.) — the
+    // single arg is an arrow function with one param.
+    if let Some(scope) = canonical_scope(&method_name) {
+        if args.len() != 1 {
+            return None;
+        }
+        let inner = walk_callback(args[0], roots)?;
+        ops.push(Op::Scoped(ScopedOp { scope, ops: inner }));
+        return Some(StepOutcome::Continue(&member.obj));
+    }
+
+    // 3. Arg modifier (`.media('q', c => ...)` / `.on('s', c => ...)`).
+    if let Some(arg_mod) = arg_modifier(&method_name) {
+        if args.len() != 2 {
+            return None;
+        }
+        let arg_value = literal_string(args[0])?;
+        let inner = walk_callback(args[1], roots)?;
+        ops.push(Op::Scoped(ScopedOp {
+            scope: arg_modifier_scope(arg_mod, &arg_value),
+            ops: inner,
+        }));
+        return Some(StepOutcome::Continue(&member.obj));
+    }
+
+    // 4. Plain method op with literal args. Any arg that isn't
+    // literal-evaluable bails Phase 1.
+    let mut json_args: Vec<serde_json::Value> = Vec::with_capacity(args.len());
+    for arg in args {
+        let v = literal_to_json(arg)?;
+        json_args.push(v);
+    }
+    ops.push(Op::Method(MethodOp {
+        method: method_name,
+        args: json_args,
+    }));
+    Some(StepOutcome::Continue(&member.obj))
+}
+
+/// Strip leading parens and a trailing `.props` access so the rest
+/// of the walker only deals with the call-chain. `(cas().X().props)`,
+/// `cas().X().props`, and `cas().X()` all reduce to the same starting
+/// `Expr::Call` here.
+fn peel_props(expr: &Expr) -> &Expr {
+    let mut cursor = expr;
+    // Strip any number of parenthesised wrappers — the Babel parser
+    // path does the same, and the SWC parser hands them to us
+    // verbatim when JSX or test fixtures wrap in extra parens.
+    while let Expr::Paren(p) = cursor {
+        cursor = &p.expr;
+    }
+    if let Expr::Member(member) = cursor {
+        if let MemberProp::Ident(ident) = &member.prop {
+            if ident.sym.as_str() == "props" {
+                cursor = &member.obj;
+                while let Expr::Paren(p) = cursor {
+                    cursor = &p.expr;
+                }
+            }
+        }
+    }
+    cursor
+}
+
+/// Extract the `name` of an `obj.<name>` member access. Returns `None`
+/// for computed accesses (`obj[expr]`) or non-identifier props.
+fn member_ident(prop: &MemberProp) -> Option<String> {
+    match prop {
+        MemberProp::Ident(ident) => Some(ident.sym.as_str().to_string()),
+        _ => None,
+    }
+}
+
+/// Resolve an arrow-function callback to the Op[] of its body chain.
+///
+/// Phase 1 only handles expression-body arrows with a single
+/// identifier param. Block bodies and rest-param shapes return `None`.
+fn walk_callback(expr: &Expr, roots: &ChainRoots) -> Option<Vec<Op>> {
+    let arrow = match expr {
+        Expr::Arrow(a) => a,
+        _ => return None,
+    };
+    let inner_roots = arrow_param_root(arrow)?;
+    // Inherit + add the callback param to the chain-root set so the
+    // inner walk recognises `c.color('red')` as a chain.
+    let mut merged = roots.clone();
+    merged.insert(inner_roots);
+    match &*arrow.body {
+        BlockStmtOrExpr::Expr(body) => walk_chain(body, &merged),
+        // Block bodies (`.hover(c => { c.x(); c.y(); })`) are a
+        // follow-up — they require recursing into each ExpressionStatement
+        // / ReturnStatement separately. Phase 1 declines for now.
+        BlockStmtOrExpr::BlockStmt(_) => None,
+    }
+}
+
+/// The arrow's single parameter, as the local binding name to use
+/// when matching chain roots inside the body. Phase 1 requires
+/// exactly one Ident-pattern parameter.
+fn arrow_param_root(arrow: &ArrowExpr) -> Option<String> {
+    if arrow.params.len() != 1 {
+        return None;
+    }
+    match &arrow.params[0] {
+        Pat::Ident(BindingIdent { id, .. }) => Some(id.sym.as_str().to_string()),
+        _ => None,
+    }
+}
+
+/// Extract a string from a literal expression — either `'foo'` or
+/// a substitution-free `` `foo` ``. `Wtf8Atom::as_str` returns `None`
+/// on lone surrogates; we bail in that case (caller falls back to the
+/// runtime path).
+fn literal_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Lit(Lit::Str(s)) => s.value.as_str().map(String::from),
+        Expr::Tpl(tpl) => tpl_to_static_string(tpl),
+        _ => None,
+    }
+}
+
+/// `.set(key, value)` accepts a stringy value or a number that the
+/// runtime stringifies — mirror the Babel parser's behaviour.
+fn literal_string_or_number(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Lit(Lit::Str(s)) => s.value.as_str().map(String::from),
+        Expr::Tpl(tpl) => tpl_to_static_string(tpl),
+        Expr::Lit(Lit::Num(n)) => Some(n.value.to_string()),
+        _ => None,
+    }
+}
+
+/// Resolve a template literal to its static string content when it
+/// has no embedded substitutions. Returns `None` for templates with
+/// `${...}` expressions — those are dynamic and Phase 1 declines.
+fn tpl_to_static_string(tpl: &Tpl) -> Option<String> {
+    if !tpl.exprs.is_empty() || tpl.quasis.len() != 1 {
+        return None;
+    }
+    let quasi = &tpl.quasis[0];
+    // `cooked` is a Wtf8Atom (lossy on lone surrogates → None);
+    // `raw` is a plain UTF-8 Atom. Prefer cooked when present and
+    // valid UTF-8; otherwise fall back to raw.
+    if let Some(cooked) = quasi.cooked.as_ref() {
+        if let Some(s) = cooked.as_str() {
+            return Some(s.to_string());
+        }
+    }
+    Some(quasi.raw.as_str().to_string())
+}
+
+/// Project a literal AST node into a JSON value matching the
+/// argument as it would appear in the TS Op[] shape. `None` for
+/// anything Phase 1 can't statically fold.
+fn literal_to_json(expr: &Expr) -> Option<serde_json::Value> {
+    match expr {
+        Expr::Lit(Lit::Str(s)) => s
+            .value
+            .as_str()
+            .map(|s| serde_json::Value::String(s.to_string())),
+        Expr::Lit(Lit::Num(n)) => Some(serde_json::Value::Number(num_to_json(n.value)?)),
+        Expr::Lit(Lit::Bool(b)) => Some(serde_json::Value::Bool(b.value)),
+        Expr::Lit(Lit::Null(_)) => Some(serde_json::Value::Null),
+        Expr::Tpl(tpl) => tpl_to_static_string(tpl).map(serde_json::Value::String),
+        Expr::Unary(u) if matches!(u.op, swc_core::ecma::ast::UnaryOp::Minus) => {
+            // -42 parses as UnaryExpr(Minus, NumericLit(42)); reduce so
+            // negative numeric args round-trip cleanly.
+            if let Expr::Lit(Lit::Num(n)) = &*u.arg {
+                Some(serde_json::Value::Number(num_to_json(-n.value)?))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Match `JSON.stringify` semantics for numeric round-trip: whole
+/// f64 values fit through `Number::from(i64)` (serialise as `8`, not
+/// `8.0`); fractional values stay floats. NaN / Inf bail because TS
+/// JSON literals also can't carry them.
+fn num_to_json(v: f64) -> Option<serde_json::Number> {
+    if v.is_finite() && v.fract() == 0.0 {
+        let as_int = v as i64;
+        if (as_int as f64) == v {
+            return Some(serde_json::Number::from(as_int));
+        }
+    }
+    serde_json::Number::from_f64(v)
+}
+
+/// `paddingTop` → `padding-top`. Matches the Babel parser's helper
+/// for `.set()` key normalisation.
+fn camel_to_kebab(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    for (i, ch) in name.chars().enumerate() {
+        if i > 0 && ch.is_ascii_uppercase() {
+            out.push('-');
+        }
+        out.push(ch.to_ascii_lowercase());
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use swc_core::common::{sync::Lrc, FileName, SourceMap};
+    use swc_core::ecma::parser::{lexer::Lexer, Parser, StringInput, Syntax, TsSyntax};
+
+    fn parse_expr(source: &str) -> Expr {
+        // Wrap with `;` so the parser produces an ExpressionStatement
+        // we can pull the inner Expr out of.
+        let cm: Lrc<SourceMap> = Default::default();
+        let fm = cm.new_source_file(Lrc::new(FileName::Anon), format!("({source});"));
+        let lexer = Lexer::new(
+            Syntax::Typescript(TsSyntax {
+                tsx: true,
+                ..Default::default()
+            }),
+            Default::default(),
+            StringInput::from(&*fm),
+            None,
+        );
+        let mut parser = Parser::new_from(lexer);
+        let module = parser.parse_module().expect("parse failed");
+        let first = module.body.into_iter().next().expect("empty module");
+        let stmt = first.expect_stmt();
+        *stmt.expect_expr().expr
+    }
+
+    fn cas_roots() -> ChainRoots {
+        let mut r = ChainRoots::new();
+        r.insert("cas".into());
+        r
+    }
+
+    #[test]
+    fn single_method_with_string_arg() {
+        let expr = parse_expr("cas().color('red')");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![Op::Method(MethodOp {
+                method: "color".into(),
+                args: vec![serde_json::Value::String("red".into())],
+            })]
+        );
+    }
+
+    #[test]
+    fn ops_are_in_source_order() {
+        let expr = parse_expr("cas().color('red').padding(8)");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![
+                Op::Method(MethodOp {
+                    method: "color".into(),
+                    args: vec![serde_json::Value::String("red".into())],
+                }),
+                Op::Method(MethodOp {
+                    method: "padding".into(),
+                    args: vec![serde_json::Value::Number(serde_json::Number::from(8))],
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn props_terminator_is_peeled() {
+        let with_props = walk_chain(&parse_expr("cas().color('red').props"), &cas_roots());
+        let without_props = walk_chain(&parse_expr("cas().color('red')"), &cas_roots());
+        assert_eq!(with_props, without_props);
+        assert!(with_props.is_some());
+    }
+
+    #[test]
+    fn hover_modifier_wraps_inner_chain_in_pseudo_scope() {
+        let expr = parse_expr("cas().hover(c => c.color('red'))");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![Op::Scoped(ScopedOp {
+                scope: Scope::Pseudo {
+                    selector: ":hover".into()
+                },
+                ops: vec![Op::Method(MethodOp {
+                    method: "color".into(),
+                    args: vec![serde_json::Value::String("red".into())],
+                })],
+            })]
+        );
+    }
+
+    #[test]
+    fn before_pseudo_element_wraps_content() {
+        let expr = parse_expr(r#"cas().before(c => c.content('""'))"#);
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![Op::Scoped(ScopedOp {
+                scope: Scope::Pseudo {
+                    selector: "::before".into()
+                },
+                ops: vec![Op::Method(MethodOp {
+                    method: "content".into(),
+                    args: vec![serde_json::Value::String("\"\"".into())],
+                })],
+            })]
+        );
+    }
+
+    #[test]
+    fn media_arg_modifier_strips_at_media_and_builds_media_scope() {
+        let expr = parse_expr("cas().media('(min-width: 640px)', c => c.padding(16))");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Scoped(ScopedOp { scope: Scope::Media { query }, .. })) if query == "(min-width: 640px)"
+        ));
+    }
+
+    #[test]
+    fn on_with_pseudo_arg_routes_to_pseudo_scope() {
+        let expr = parse_expr(r#"cas().on(':hover', c => c.color('red'))"#);
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Scoped(ScopedOp { scope: Scope::Pseudo { selector }, .. })) if selector == ":hover"
+        ));
+    }
+
+    #[test]
+    fn set_emits_a_raw_op_with_kebab_property() {
+        let expr = parse_expr(r#"cas().set('paddingTop', '10px')"#);
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![Op::Raw(RawOp {
+                property: "padding-top".into(),
+                value: "10px".into(),
+            })]
+        );
+    }
+
+    #[test]
+    fn dynamic_arg_bails_to_none() {
+        let expr = parse_expr("cas().color(theme.brand)");
+        assert!(walk_chain(&expr, &cas_roots()).is_none());
+    }
+
+    #[test]
+    fn unknown_chain_root_identifier_bails() {
+        let expr = parse_expr("notCas().color('red')");
+        assert!(walk_chain(&expr, &cas_roots()).is_none());
+    }
+
+    #[test]
+    fn aliased_root_via_chain_roots_set_works() {
+        let mut roots = ChainRoots::new();
+        roots.insert("styled".into());
+        let expr = parse_expr("styled().color('red')");
+        let ops = walk_chain(&expr, &roots).expect("recognised");
+        assert_eq!(ops.len(), 1);
+    }
+
+    #[test]
+    fn template_literal_without_substitutions_is_a_string() {
+        let expr = parse_expr("cas().color(`hsl(0 0% 0%)`)");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { method, args })) if method == "color" && args[0] == serde_json::Value::String("hsl(0 0% 0%)".into())
+        ));
+    }
+
+    #[test]
+    fn template_literal_with_substitution_bails() {
+        let expr = parse_expr("cas().color(`hsl(${h} 0% 0%)`)");
+        assert!(walk_chain(&expr, &cas_roots()).is_none());
+    }
+
+    #[test]
+    fn negative_number_arg_is_supported() {
+        let expr = parse_expr("cas().marginTop(-8)");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Number(serde_json::Number::from(-8))
+        ));
+    }
+
+    #[test]
+    fn nested_modifier_scopes_walk_recursively() {
+        let expr = parse_expr("cas().hover(c => c.darkMode(d => d.color('white')))");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        let hover_scoped = match &ops[0] {
+            Op::Scoped(s) => s,
+            _ => panic!("expected outer scope"),
+        };
+        assert!(matches!(
+            hover_scoped.scope,
+            Scope::Pseudo { ref selector } if selector == ":hover"
+        ));
+        let inner_scoped = match &hover_scoped.ops[0] {
+            Op::Scoped(s) => s,
+            _ => panic!("expected inner scope"),
+        };
+        assert!(matches!(
+            inner_scoped.scope,
+            Scope::Media { ref query } if query == "(prefers-color-scheme: dark)"
+        ));
+    }
+}
