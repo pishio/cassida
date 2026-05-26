@@ -338,15 +338,30 @@ fn num_to_json(v: f64) -> Option<serde_json::Number> {
     serde_json::Number::from_f64(v)
 }
 
-/// `paddingTop` → `padding-top`. Matches the Babel parser's helper
-/// for `.set()` key normalisation.
+/// `paddingTop` → `padding-top`. Mirrors `camelToKebab` in
+/// `packages/parser/src/index.ts:1457`:
+///
+///   - If the input already contains a `-`, it's treated as already
+///     kebab (or vendor-prefixed like `-webkit-foo`) and returned
+///     unchanged.
+///   - Otherwise, every uppercase letter — *including the first one*
+///     — is replaced with a leading `-` plus its lowercase form,
+///     so `WebkitBorderRadius` → `-webkit-border-radius`.
+///
+/// Diverging from this would silently produce different class hashes
+/// in the Babel vs SWC paths.
 fn camel_to_kebab(name: &str) -> String {
+    if name.contains('-') {
+        return name.to_string();
+    }
     let mut out = String::with_capacity(name.len() + 4);
-    for (i, ch) in name.chars().enumerate() {
-        if i > 0 && ch.is_ascii_uppercase() {
+    for ch in name.chars() {
+        if ch.is_ascii_uppercase() {
             out.push('-');
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
         }
-        out.push(ch.to_ascii_lowercase());
     }
     out
 }
@@ -489,6 +504,40 @@ mod tests {
             vec![Op::Raw(RawOp {
                 property: "padding-top".into(),
                 value: "10px".into(),
+            })]
+        );
+    }
+
+    /// Match the Babel parser's behaviour: an uppercase first
+    /// character also gets the leading hyphen, so
+    /// `WebkitBorderRadius` produces the proper vendor-prefixed
+    /// CSS property `-webkit-border-radius`. Diverging here would
+    /// drift class hashes between the two compilation paths.
+    #[test]
+    fn set_prefixes_uppercase_first_character_with_hyphen() {
+        let expr = parse_expr(r#"cas().set('WebkitBorderRadius', '4px')"#);
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![Op::Raw(RawOp {
+                property: "-webkit-border-radius".into(),
+                value: "4px".into(),
+            })]
+        );
+    }
+
+    /// A property that already contains a hyphen (the user typed the
+    /// kebab form directly, or it's a vendor-prefixed name) passes
+    /// through unchanged. Same rule the Babel parser applies.
+    #[test]
+    fn set_leaves_already_kebab_property_alone() {
+        let expr = parse_expr(r#"cas().set('-webkit-tap-highlight-color', 'transparent')"#);
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert_eq!(
+            ops,
+            vec![Op::Raw(RawOp {
+                property: "-webkit-tap-highlight-color".into(),
+                value: "transparent".into(),
             })]
         );
     }

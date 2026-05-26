@@ -163,13 +163,20 @@ pub fn arg_modifier_scope(modifier: ArgModifier, arg: &str) -> Scope {
     match modifier {
         ArgModifier::Media => {
             let trimmed = arg.trim();
-            // Strip a leading `@media` (case-insensitive) so users can
-            // pass either form interchangeably.
-            let query = trimmed
-                .strip_prefix("@media")
-                .or_else(|| trimmed.strip_prefix("@MEDIA"))
-                .map(|rest| rest.trim_start().to_string())
-                .unwrap_or_else(|| trimmed.to_string());
+            // Strip a leading `@media` ASCII-case-insensitively so
+            // users can write `@Media`, `@MEDIA`, `@media`, etc.
+            // interchangeably. Compare the first 6 bytes directly so
+            // a single equality check covers all mixed cases without
+            // a regex.
+            let query = if trimmed
+                .as_bytes()
+                .get(..6)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"@media"))
+            {
+                trimmed[6..].trim_start().to_string()
+            } else {
+                trimmed.to_string()
+            };
             Scope::Media { query }
         }
         ArgModifier::On => {
@@ -250,6 +257,33 @@ mod tests {
             arg_modifier_scope(ArgModifier::Media, "  (min-width: 640px)  "),
             Scope::Media {
                 query: "(min-width: 640px)".into()
+            }
+        );
+    }
+
+    /// The `@media` strip is ASCII-case-insensitive — any mixed case
+    /// the user might type lands on the same scope.
+    #[test]
+    fn media_strip_is_case_insensitive_on_at_media() {
+        for prefix in ["@MEDIA", "@Media", "@mEdIa", "@media", "@MEdia"] {
+            assert_eq!(
+                arg_modifier_scope(ArgModifier::Media, &format!("{prefix} (min-width: 640px)")),
+                Scope::Media {
+                    query: "(min-width: 640px)".into()
+                },
+                "case-variant `{prefix}` should strip",
+            );
+        }
+    }
+
+    /// A query that doesn't start with `@media` is left intact (just
+    /// trimmed of surrounding whitespace).
+    #[test]
+    fn media_without_at_media_passes_through() {
+        assert_eq!(
+            arg_modifier_scope(ArgModifier::Media, "(hover: hover)"),
+            Scope::Media {
+                query: "(hover: hover)".into()
             }
         );
     }
