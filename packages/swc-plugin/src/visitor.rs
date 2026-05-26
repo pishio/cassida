@@ -200,6 +200,14 @@ fn collect_chain_roots_from_script(_script: &Script, _roots: &mut ChainRoots) {
 }
 
 fn collect_chain_roots_from_import(decl: &ImportDecl, roots: &mut ChainRoots) {
+    // `import type { ... } from '...'` is erased at runtime — even if
+    // the user wrote `import type { cas } from '@cassida/core'`, the
+    // identifier doesn't exist when JSX runs. Bail before scanning
+    // specifiers so we don't pollute `chain_roots` with type-only
+    // names.
+    if decl.type_only {
+        return;
+    }
     if decl.src.value.as_str() != Some(DEFAULT_IMPORT_SOURCE) {
         return;
     }
@@ -213,6 +221,10 @@ fn collect_chain_roots_from_import(decl: &ImportDecl, roots: &mut ChainRoots) {
                 roots.insert(default.local.sym.clone());
             }
             ImportSpecifier::Named(named) => {
+                // Inline `import { type cas }` is also runtime-erased.
+                if named.is_type_only {
+                    continue;
+                }
                 // `imported_name` is just compared to a static `&str`
                 // list, so keep it as a borrow — no per-import String
                 // allocation.
@@ -375,6 +387,46 @@ const X = () => <div {...cas().before(c => c.content('"."')).props} />;
         assert!(
             out.contains(r#""selector":"::before""#),
             "output was:\n{out}"
+        );
+    }
+
+    /// Type-only imports don't exist at runtime; even if a user
+    /// writes `import type { cas } from '@cassida/core'`, the
+    /// resulting JSX still uses some other binding for `cas` (or
+    /// none — TS would have erased the import entirely). The
+    /// visitor must not register the type-only name as a chain root.
+    #[test]
+    fn type_only_imports_are_ignored() {
+        let out = transform(
+            r#"
+import type { cas } from '@cassida/core';
+const cas = () => ({});
+const X = () => <div {...cas().color('red')} />;
+            "#,
+        );
+        // No chain root → spread left alone, no IR comment emitted.
+        assert!(out.contains("{...cas()"), "output was:\n{out}");
+        assert!(
+            !out.contains("@cassida-ir"),
+            "type-only import should not register a chain root; output was:\n{out}"
+        );
+    }
+
+    /// Inline `import { type cas } from '@cassida/core'` should be
+    /// skipped at the specifier level even when the import decl
+    /// itself isn't type-only overall.
+    #[test]
+    fn inline_type_specifier_is_ignored() {
+        let out = transform(
+            r#"
+import { type cas, default as runtime } from '@cassida/core';
+const X = () => <div {...cas().color('red')} />;
+            "#,
+        );
+        assert!(out.contains("{...cas()"), "output was:\n{out}");
+        assert!(
+            !out.contains("@cassida-ir"),
+            "inline `type` specifier should be ignored; output was:\n{out}"
         );
     }
 

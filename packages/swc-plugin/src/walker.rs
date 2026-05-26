@@ -135,7 +135,11 @@ fn step_method<'a>(
             if arg.spread.is_some() {
                 None
             } else {
-                Some(&*arg.expr)
+                // Peel parens so `cas().color(('red'))` doesn't bail
+                // — Babel's `path.evaluate()` walks past parenthesised
+                // wrappers transparently, and we mirror that for
+                // Babel/SWC parity.
+                Some(peel_parens(&arg.expr))
             }
         })
         .collect::<Option<_>>()?;
@@ -583,6 +587,20 @@ mod tests {
         let expr = parse_expr("styled().color('red')");
         let ops = walk_chain(&expr, &roots).expect("recognised");
         assert_eq!(ops.len(), 1);
+    }
+
+    /// Parity guard: Babel's `path.evaluate()` resolves
+    /// parenthesised expressions transparently. The walker must too,
+    /// or chains with redundant parens around args (rare but legal)
+    /// would silently bail under SWC while compiling under Babel.
+    #[test]
+    fn args_with_redundant_parens_resolve() {
+        let expr = parse_expr("cas().color(('red'))");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { method, args })) if method == "color" && args[0] == serde_json::Value::String("red".into())
+        ));
     }
 
     #[test]
