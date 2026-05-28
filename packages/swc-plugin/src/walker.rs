@@ -307,11 +307,28 @@ fn literal_string(expr: &Expr) -> Option<String> {
 
 /// `.set(key, value)` accepts a stringy value or a number that the
 /// runtime stringifies — mirror the Babel parser's behaviour.
+///
+/// For numeric values, route whole numbers inside the JS safe-integer
+/// range through `(_ as i64).to_string()` so the output matches the
+/// JS path's `Number.prototype.toString` (e.g. `8` not `8.0`,
+/// matching `(8).toString()`). Out-of-range or fractional values fall
+/// back to `f64::to_string()` — same loss-of-precision territory
+/// where `JSON.stringify` itself isn't byte-stable either.
 fn literal_string_or_number(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Lit(Lit::Str(s)) => s.value.as_str().map(String::from),
         Expr::Tpl(tpl) => tpl_to_static_string(tpl),
-        Expr::Lit(Lit::Num(n)) => Some(n.value.to_string()),
+        Expr::Lit(Lit::Num(n)) => {
+            let v = n.value;
+            if v.is_finite()
+                && v.fract() == 0.0
+                && (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v)
+            {
+                Some((v as i64).to_string())
+            } else {
+                Some(v.to_string())
+            }
+        }
         _ => None,
     }
 }
