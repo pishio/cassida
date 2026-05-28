@@ -99,6 +99,19 @@ export interface NextCassidaOptions extends CassConfig {
    * disable auto-discovery, or an explicit map to override.
    */
   readonly pathAliases?: PathAliases | false;
+
+  /**
+   * Files / paths the IR-comment loader should skip. Defaults to
+   * `/node_modules/` — third-party packages don't run through the
+   * Cassida SWC plugin and therefore can't contain IR comments. In
+   * a pnpm / yarn workspace where local packages are symlinked into
+   * `node_modules`, override this (or pass `null` for no exclusion)
+   * so chains inside those workspace packages still get compiled.
+   *
+   * Mirrors webpack's `Rule.exclude` shape: a regex, a string path,
+   * a predicate, or `null` to disable.
+   */
+  readonly loaderExclude?: RegExp | string | ((path: string) => boolean) | null;
 }
 
 /**
@@ -171,18 +184,25 @@ function applyCassida(
   // Next.js's `experimental.swcPlugins` is an array of
   // `[pathOrPackage, jsonOptions]` tuples. The wasm artefact ships
   // alongside this package via the `./loader` subpath export.
+  // Skip the append if the same wasm path is already registered
+  // (e.g. the user wrapped twice, or another tool added it) so the
+  // plugin doesn't run on every file twice.
   const existingSwcPlugins = readSwcPlugins(cfg);
-  const swcPlugins: SwcPluginEntry[] = [
-    ...existingSwcPlugins,
-    [wasmPath, {}],
-  ];
+  const alreadyRegistered = existingSwcPlugins.some(
+    ([path]) => path === wasmPath,
+  );
+  const swcPlugins: SwcPluginEntry[] = alreadyRegistered
+    ? [...existingSwcPlugins]
+    : [...existingSwcPlugins, [wasmPath, {}]];
 
   // 2. Wrap user's `webpack` hook to inject the IR-comment loader.
   const userWebpack = cfg.webpack;
+  const loaderExclude =
+    options.loaderExclude === undefined ? /node_modules/ : options.loaderExclude;
   const wrappedWebpack: NextWebpackHook = (config, ctx) => {
     const base =
       typeof userWebpack === 'function' ? userWebpack(config, ctx) : config;
-    return injectIrLoader(base, loaderOptions);
+    return injectIrLoader(base, loaderOptions, loaderExclude);
   };
 
   return {
@@ -196,24 +216,29 @@ function applyCassida(
 }
 
 /**
+ * Build a `createRequire`-backed resolver anchored at THIS module's
+ * directory, regardless of whether the runtime loaded the package as
+ * ESM (`import.meta.url`) or CJS (`__filename`). Used by the wasm
+ * lookup and the loader-path lookup below. Windows-safe via
+ * `pathToFileURL` for the CJS fallback.
+ */
+function getRequire(): NodeRequire {
+  const url =
+    typeof import.meta !== 'undefined' && import.meta.url
+      ? import.meta.url
+      : pathToFileURL(__filename).toString();
+  const here = dirname(fileURLToPath(url));
+  return createRequire(`${here}/`);
+}
+
+/**
  * Resolve the WASM artefact path via the loader subpath. Avoids
  * `require.resolve('@cassida/swc-plugin')` directly because the
  * package's `main` points at the WASM file — some toolchains
  * stumble on that.
  */
 function resolveWasmPath(): string {
-  // Try `import.meta.url` first when this module is loaded as ESM;
-  // fall back to `__dirname` when bundled as CJS. The createRequire
-  // path bridges both.
-  // Use `pathToFileURL` for the CJS fallback so backslash-separated
-  // paths on Windows produce a valid `file:` URL rather than throwing
-  // through `fileURLToPath`.
-  const url =
-    typeof import.meta !== 'undefined' && import.meta.url
-      ? import.meta.url
-      : pathToFileURL(__filename).toString();
-  const here = dirname(fileURLToPath(url));
-  const req = createRequire(`${here}/`);
+  const req = getRequire();
   const loaderEntry = req('@cassida/swc-plugin/loader') as { wasmPath: string };
   return loaderEntry.wasmPath;
 }
@@ -233,13 +258,16 @@ type WebpackConfig = Parameters<NextWebpackHook>[0];
 function injectIrLoader(
   config: WebpackConfig,
   options: IrLoaderOptions,
+  exclude: RegExp | string | ((path: string) => boolean) | null,
 ): WebpackConfig {
   const loaderRule = {
     test: /\.[cm]?[jt]sx?$/,
     enforce: 'post' as const,
-    // Skip node_modules — the SWC plugin only ran on the user's
-    // own sources, so no Cassida IR comments live outside.
-    exclude: /node_modules/,
+    // Default to skipping node_modules — third-party packages don't
+    // carry Cassida IR. Monorepo consumers with symlinked workspace
+    // packages can override via `loaderExclude` so chains inside
+    // those packages still get compiled.
+    ...(exclude !== null ? { exclude } : {}),
     use: [
       {
         loader: cassidaIrLoaderPath(),
@@ -258,18 +286,7 @@ function injectIrLoader(
 }
 
 function cassidaIrLoaderPath(): string {
-  // Resolve the compiled loader file at the published `dist/`
-  // location so webpack can `require()` it as a loader module.
-  // Use `pathToFileURL` for the CJS fallback so backslash-separated
-  // paths on Windows produce a valid `file:` URL rather than throwing
-  // through `fileURLToPath`.
-  const url =
-    typeof import.meta !== 'undefined' && import.meta.url
-      ? import.meta.url
-      : pathToFileURL(__filename).toString();
-  const here = dirname(fileURLToPath(url));
-  const req = createRequire(`${here}/`);
-  return req.resolve('@cassida/next-plugin/dist/ir-loader.js');
+  return getRequire().resolve('@cassida/next-plugin/dist/ir-loader.js');
 }
 
 export type { CassConfig, CassPlugin, CassParserPlugin, PathAliases };

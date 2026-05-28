@@ -148,6 +148,29 @@ describe('store + virtual-css integration', () => {
     expect(css).not.toContain('color:red');
   });
 
+  it('skips notify when the same rules are re-registered for a file', async () => {
+    const { subscribe } = await import('../src/store.js');
+    let notifyCount = 0;
+    const unsubscribe = subscribe(() => notifyCount++);
+
+    const ir = JSON.stringify([{ method: 'color', args: ['red'] }]);
+    const { rules } = rewriteIrComments(
+      `<div className={/* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__"} />`,
+    );
+
+    setRulesForFile('/abs/a.tsx', rules);
+    expect(notifyCount).toBe(1);
+
+    // Re-register the same rule (same className) — should not notify.
+    const { rules: rulesAgain } = rewriteIrComments(
+      `<div className={/* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__"} />`,
+    );
+    setRulesForFile('/abs/a.tsx', rulesAgain);
+    expect(notifyCount).toBe(1);
+
+    unsubscribe();
+  });
+
   it('removes a file\'s contribution when its rule set drops to empty', () => {
     const ir = JSON.stringify([{ method: 'color', args: ['red'] }]);
     const { rules } = rewriteIrComments(

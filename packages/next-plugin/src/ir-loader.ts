@@ -104,6 +104,15 @@ function cassidaIrLoader(
   this: WebpackLoaderContext,
   source: string,
 ): string {
+  // The loader has a side-effect — it mutates a module-singleton
+  // store. Webpack's persistent cache would otherwise skip this
+  // loader on cold starts when the file's bytes haven't changed,
+  // and the rule set in memory would be missing those files'
+  // contributions to the CSS bundle. A non-cacheable mark forces
+  // the loader to re-run every build; the inner `compileOps` work
+  // is itself cheap and deterministic, so the cost is negligible.
+  this.cacheable?.(false);
+
   const options = (typeof this.getOptions === 'function'
     ? (this.getOptions() as IrLoaderOptions | undefined)
     : undefined) ?? {};
@@ -137,4 +146,5 @@ export default cassidaIrLoader;
 interface WebpackLoaderContext {
   readonly resourcePath: string;
   getOptions?: () => unknown;
+  cacheable?: (flag: boolean) => void;
 }

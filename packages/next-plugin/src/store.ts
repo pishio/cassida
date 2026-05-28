@@ -30,6 +30,22 @@ export function setRulesForFile(
     if (rulesByFile.delete(filename)) notify();
     return;
   }
+  // Skip `notify()` when the incoming rules are identical to the
+  // file's current contribution. During development, editing any
+  // non-CSS part of a file (text, event handlers, etc.) still
+  // re-runs the loader; without this check, every keystroke would
+  // invalidate the virtual CSS module and force the browser to
+  // re-fetch the entire bundle even though the styles didn't move.
+  // ClassName comparison is enough here because hash collisions are
+  // already guarded against in `CssEmitter.add`.
+  const existing = rulesByFile.get(filename);
+  if (
+    existing !== undefined &&
+    existing.length === rules.length &&
+    existing.every((r, i) => r.className === rules[i]?.className)
+  ) {
+    return;
+  }
   rulesByFile.set(filename, rules);
   notify();
 }
