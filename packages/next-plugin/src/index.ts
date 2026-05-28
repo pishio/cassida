@@ -166,18 +166,34 @@ export function withCassida(
   return applyCassida(nextConfig, cassidaOptions);
 }
 
-const wasmPath = resolveWasmPath();
+// Lazy memoisation — defer the wasm lookup until `withCassida` is
+// actually invoked. Importing the package shouldn't fail when the
+// wasm artefact is missing (e.g. during monorepo bootstrap, static
+// analysis, or unit tests that don't exercise the integration).
+let cachedWasmPath: string | undefined;
+function getWasmPath(): string {
+  return (cachedWasmPath ??= resolveWasmPath());
+}
 
 function applyCassida(
   cfg: NextConfig,
   options: NextCassidaOptions,
 ): NextConfig {
+  // `options.plugins` is the declarative form (`{ hoverFix: true, ... }`);
+  // resolve each enabled flag into the actual `CassPlugin` instance and
+  // merge with the inline `options.cssPlugins` list. Without this the
+  // declarative form is silently inert.
+  const resolvedPlugins = resolveDeclarativeCssPlugins(options.plugins);
+  const mergedPlugins: CassPlugin[] = [
+    ...resolvedPlugins,
+    ...(options.cssPlugins ?? []),
+  ];
   const loaderOptions: IrLoaderOptions = {
     ...(options.registry !== undefined ? { registry: options.registry } : {}),
     ...(options.shorthand?.policy !== undefined
       ? { shorthandPolicy: options.shorthand.policy }
       : {}),
-    ...(options.cssPlugins !== undefined ? { plugins: options.cssPlugins } : {}),
+    ...(mergedPlugins.length > 0 ? { plugins: mergedPlugins } : {}),
   };
 
   // 1. Register the SWC plugin (the chain → IR-comment transform).
@@ -187,13 +203,14 @@ function applyCassida(
   // Skip the append if the same wasm path is already registered
   // (e.g. the user wrapped twice, or another tool added it) so the
   // plugin doesn't run on every file twice.
+  const wasm = getWasmPath();
   const existingSwcPlugins = readSwcPlugins(cfg);
   const alreadyRegistered = existingSwcPlugins.some(
-    ([path]) => path === wasmPath,
+    ([path]) => path === wasm,
   );
   const swcPlugins: SwcPluginEntry[] = alreadyRegistered
     ? [...existingSwcPlugins]
-    : [...existingSwcPlugins, [wasmPath, {}]];
+    : [...existingSwcPlugins, [wasm, {}]];
 
   // 2. Wrap user's `webpack` hook to inject the IR-comment loader.
   const userWebpack = cfg.webpack;
@@ -220,13 +237,18 @@ function applyCassida(
  * directory, regardless of whether the runtime loaded the package as
  * ESM (`import.meta.url`) or CJS (`__filename`). Used by the wasm
  * lookup and the loader-path lookup below. Windows-safe via
- * `pathToFileURL` for the CJS fallback.
+ * `pathToFileURL` for the CJS fallback. The `__filename` reference
+ * is guarded behind a `typeof` check so strict ESM hosts that
+ * don't define it (some bundlers, some Deno-compat shims) don't
+ * trip a `ReferenceError` while evaluating the ternary.
  */
 function getRequire(): NodeRequire {
   const url =
     typeof import.meta !== 'undefined' && import.meta.url
       ? import.meta.url
-      : pathToFileURL(__filename).toString();
+      : typeof __filename !== 'undefined'
+        ? pathToFileURL(__filename).toString()
+        : pathToFileURL(process.cwd()).toString();
   const here = dirname(fileURLToPath(url));
   return createRequire(`${here}/`);
 }
@@ -285,8 +307,67 @@ function injectIrLoader(
   };
 }
 
+/**
+ * Resolve the enabled entries in `options.plugins` (the declarative
+ * convenience form) into actual `CassPlugin` instances.
+ *
+ * Phase 1.x scope:
+ *   - `hoverFix`: synchronously require'd from `@cassida/plugin-hover-fix`.
+ *
+ * The remaining flags (`conditional`, `print`, `globalCss`) wire to
+ * pieces that aren't CSS plugins:
+ *   - `conditional` is a parser plugin and needs the Phase 4 parser-
+ *     plugin API on the SWC side before it can fire here.
+ *   - `print` is a CSS-string factory; it's served through the global
+ *     CSS pipeline, not via `compileOps`.
+ *   - `globalCss` is a Vite plugin; the Next.js equivalent is a
+ *     separate webpack integration that lands in a follow-up.
+ * For now those three are recognised but no-op; a console warning
+ * surfaces when the user enables them so the misconfiguration is
+ * visible. Removing the warning is the signal that Phase 1.x has
+ * caught up.
+ */
+function resolveDeclarativeCssPlugins(
+  flags: NextCassidaOptions['plugins'],
+): CassPlugin[] {
+  if (!flags) return [];
+  const plugins: CassPlugin[] = [];
+  if (flags.hoverFix) {
+    try {
+      // `@cassida/plugin-hover-fix` exports a default `hoverFix()`
+      // factory. createRequire'd CJS surfaces ESM defaults as
+      // `mod.default`; the type cast threads both possibilities.
+      const mod = getRequire()('@cassida/plugin-hover-fix') as
+        | { default: (opts?: unknown) => CassPlugin }
+        | ((opts?: unknown) => CassPlugin);
+      const factory = typeof mod === 'function' ? mod : mod.default;
+      plugins.push(factory());
+    } catch (cause) {
+      throw new Error(
+        `[cassida/next-plugin] options.plugins.hoverFix is enabled but @cassida/plugin-hover-fix could not be required: ${(cause as Error).message}`,
+      );
+    }
+  }
+  for (const stubKey of ['conditional', 'print', 'globalCss'] as const) {
+    if (flags[stubKey]) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[cassida/next-plugin] options.plugins.${stubKey} is recognised but not yet wired in the Next.js path. ` +
+          `Tracking issue: https://github.com/pishio/cassida/issues — disable this flag to silence the warning.`,
+      );
+    }
+  }
+  return plugins;
+}
+
 function cassidaIrLoaderPath(): string {
-  return getRequire().resolve('@cassida/next-plugin/dist/ir-loader.js');
+  // Relative resolve sidesteps the package's `exports` map. The
+  // map only exposes `.` and `./package.json`, so a
+  // `require.resolve('@cassida/next-plugin/dist/ir-loader.js')`
+  // call would land on `ERR_PACKAGE_PATH_NOT_EXPORTED` in modern
+  // Node. The relative form anchors at this file's directory and
+  // walks the publish layout directly.
+  return getRequire().resolve('./ir-loader.js');
 }
 
 export type { CassConfig, CassPlugin, CassParserPlugin, PathAliases };
