@@ -102,6 +102,37 @@ export class CassidaWebpackPlugin {
                 ? PLACEHOLDER_CONTENT
                 : buildVirtualCss(this.options);
             virtual.writeModule(VIRTUAL_MODULE_PATH, content);
+
+            // Heads-up for the Phase 1.x multi-compiler race. If
+            // `seen.length === 0` fires in a production build the
+            // emitted `virtual.css` is the placeholder, which means
+            // any cas() chains in *this* compiler's graph never
+            // reached the store — most likely the Server compiler
+            // wrote rules the Client compiler can't see yet. Without
+            // this signal the failure mode is silent: Server-only
+            // styles missing from the Client bundle with no build
+            // warning.
+            //
+            // Gates:
+            //   - NODE_ENV === 'production'  — skip dev (empty
+            //     intermediate compilations are normal) and tests
+            //     (vitest sets NODE_ENV='test').
+            //   - !CASSIDA_QUIET_RACE_WARNING — escape hatch for
+            //     legitimately empty fixtures.
+            if (
+              seen.length === 0 &&
+              process.env.NODE_ENV === 'production' &&
+              !process.env.CASSIDA_QUIET_RACE_WARNING
+            ) {
+              process.stderr.write(
+                '[cassida] CassidaWebpackPlugin: virtual.css written empty ' +
+                  'for this compilation. If the consumer has cas() chains, ' +
+                  "this is most likely the Next.js multi-compiler race " +
+                  '(Phase 1.x) — Server-only styles may not reach the ' +
+                  'Client bundle. Set CASSIDA_QUIET_RACE_WARNING=1 to ' +
+                  'silence (e.g. for fixtures with no chains).\n',
+              );
+            }
           },
         );
       },

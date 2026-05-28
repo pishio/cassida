@@ -123,4 +123,55 @@ describe('CassidaWebpackPlugin', () => {
     expect(content).toMatch(/\.cas-[0-9a-f]+/);
     expect(content).toContain('color:red');
   });
+
+  // The multi-compiler race telemetry (`webpack-plugin.ts` →
+  // process.stderr.write) fires only under
+  // NODE_ENV=production, and is the user-facing signal that a
+  // Phase 1.x race actually bit. Drive it by temporarily setting
+  // NODE_ENV and capturing stderr.
+  it('emits a stderr heads-up when production build sees an empty store', () => {
+    const writes: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+      writes.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString());
+      return true;
+    }) as typeof process.stderr.write;
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const { compiler, fireThisCompilation, fireProcessAssets } = createSyntheticCompiler();
+      new CassidaWebpackPlugin({ layer: 'cas' }).apply(compiler as never);
+      fireThisCompilation();
+      fireProcessAssets();
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      process.stderr.write = origWrite;
+    }
+    expect(writes.join('')).toMatch(/virtual\.css written empty/);
+  });
+
+  it('suppresses the empty-store warning when CASSIDA_QUIET_RACE_WARNING is set', () => {
+    const writes: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+      writes.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString());
+      return true;
+    }) as typeof process.stderr.write;
+    const prevEnv = process.env.NODE_ENV;
+    const prevQuiet = process.env.CASSIDA_QUIET_RACE_WARNING;
+    process.env.NODE_ENV = 'production';
+    process.env.CASSIDA_QUIET_RACE_WARNING = '1';
+    try {
+      const { compiler, fireThisCompilation, fireProcessAssets } = createSyntheticCompiler();
+      new CassidaWebpackPlugin({ layer: 'cas' }).apply(compiler as never);
+      fireThisCompilation();
+      fireProcessAssets();
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      if (prevQuiet === undefined) delete process.env.CASSIDA_QUIET_RACE_WARNING;
+      else process.env.CASSIDA_QUIET_RACE_WARNING = prevQuiet;
+      process.stderr.write = origWrite;
+    }
+    expect(writes.join('')).not.toMatch(/virtual\.css written empty/);
+  });
 });

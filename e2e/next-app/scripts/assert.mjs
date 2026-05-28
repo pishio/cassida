@@ -151,7 +151,15 @@ if (/__CAS_PLACEHOLDER_\d+__/.test(allNextAll)) {
   pass('no __CAS_PLACEHOLDER_ literal anywhere under .next');
 }
 
-// 6. Compiler-runtime purity in the client bundle
+// 6a. Compiler-runtime purity in the client bundle — symbol grep.
+// SWC's prod minifier renames function / const identifiers, so most
+// of these become weak signals (`compileOps` → `cO`-style ident).
+// `node:crypto` survives because it's a webpack-externalised bare
+// specifier left as a string literal in the bundle, so it IS a
+// reliable fingerprint for a runtime leak of `@cassida/compiler`
+// (which imports `createHash` from `node:crypto`). The rest are
+// kept as belt-and-braces against unminified / partial-minify
+// configurations.
 const leakedSymbols = [
   'compileOps',
   'defaultRegistry',
@@ -163,7 +171,27 @@ const found = leakedSymbols.filter((s) => clientJsAll.includes(s));
 if (found.length > 0) {
   fail(`compiler runtime leaked into client JS: ${found.join(', ')}`);
 } else {
-  pass('compiler runtime not leaked into client JS');
+  pass('compiler runtime not leaked into client JS (symbol grep)');
+}
+
+// 6b. Compiler-runtime purity — size budget. Complements the symbol
+// grep above by catching the false-negative case where the minifier
+// renamed every checkable identifier. A full `@cassida/compiler`
+// leak (canonicalizer + emitter + stylis + registry expansion) adds
+// roughly 50–100KB to the client bundle even minified. The budget
+// sits ~300KB above the current measured size — enough to absorb
+// legitimate React / Next.js dependency drift between releases but
+// tight enough to flag a compiler leak. Revisit the constant if
+// the fixture grows on its own (`pnpm verify` then rebaseline).
+const CLIENT_JS_BUDGET = 1_200_000;
+if (clientJsAll.length > CLIENT_JS_BUDGET) {
+  fail(
+    `client JS size ${clientJsAll.length}B exceeds budget ${CLIENT_JS_BUDGET}B — compiler runtime likely leaked (symbol grep may have missed minified idents)`,
+  );
+} else {
+  pass(
+    `client JS within size budget (${clientJsAll.length}B / ${CLIENT_JS_BUDGET}B)`,
+  );
 }
 
 if (failures > 0) {
