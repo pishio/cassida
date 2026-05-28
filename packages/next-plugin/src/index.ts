@@ -20,10 +20,12 @@ import type { CassConfig, CassPlugin, Registry } from '@cassida/compiler';
 import type { CassParserPlugin, PathAliases } from '@cassida/parser';
 
 import type { IrLoaderOptions } from './ir-loader.js';
+import { CassidaWebpackPlugin } from './webpack-plugin.js';
 export { rewriteIrComments, default as cassidaIrLoader } from './ir-loader.js';
 export type { IrLoaderOptions } from './ir-loader.js';
 export { buildVirtualCss } from './virtual-css.js';
 export type { VirtualCssOptions } from './virtual-css.js';
+export { CassidaWebpackPlugin } from './webpack-plugin.js';
 export {
   setRulesForFile,
   deleteRulesForFile,
@@ -300,12 +302,18 @@ function injectIrLoader(
     ],
   };
   const rules = (config.module?.rules ?? []) as unknown[];
+  const existingPlugins = (config.plugins ?? []) as unknown[];
+  // The webpack plugin owns the virtual `@cassida/next-plugin/virtual.css`
+  // module the consumer imports from `app/layout.tsx`. The aggregated
+  // `@layer cas` CSS reaches the bundle through Next.js's standard CSS
+  // pipeline once this is registered.
   return {
     ...config,
     module: {
       ...(config.module ?? {}),
       rules: [...rules, loaderRule],
     },
+    plugins: [...existingPlugins, new CassidaWebpackPlugin()],
   };
 }
 
