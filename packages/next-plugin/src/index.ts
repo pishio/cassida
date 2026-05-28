@@ -15,7 +15,7 @@
 
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { NextConfig } from 'next';
 import type { CassConfig, CassPlugin, Registry } from '@cassida/compiler';
@@ -137,11 +137,18 @@ export function withCassida(
 ): NextConfigInput {
   // Function-form `next.config.js` returns the wrapped function so
   // the integration applies to whatever NextConfig it eventually
-  // resolves to. (Async function-form returns a Promise<NextConfig>.)
+  // resolves to. Preserve the user function's sync / async shape:
+  // forcing an async wrapper around a sync user function would
+  // surprise third-party tools that introspect the return type.
   if (typeof nextConfig === 'function') {
     const userFn = nextConfig;
-    return (async (phase, ctx) =>
-      applyCassida(await userFn(phase, ctx), cassidaOptions)) as NextConfigFn;
+    return ((phase, ctx) => {
+      const resolved = userFn(phase, ctx);
+      if (resolved instanceof Promise) {
+        return resolved.then((cfg) => applyCassida(cfg, cassidaOptions));
+      }
+      return applyCassida(resolved, cassidaOptions);
+    }) as NextConfigFn;
   }
   return applyCassida(nextConfig, cassidaOptions);
 }
@@ -198,10 +205,13 @@ function resolveWasmPath(): string {
   // Try `import.meta.url` first when this module is loaded as ESM;
   // fall back to `__dirname` when bundled as CJS. The createRequire
   // path bridges both.
+  // Use `pathToFileURL` for the CJS fallback so backslash-separated
+  // paths on Windows produce a valid `file:` URL rather than throwing
+  // through `fileURLToPath`.
   const url =
     typeof import.meta !== 'undefined' && import.meta.url
       ? import.meta.url
-      : `file://${__filename}`;
+      : pathToFileURL(__filename).toString();
   const here = dirname(fileURLToPath(url));
   const req = createRequire(`${here}/`);
   const loaderEntry = req('@cassida/swc-plugin/loader') as { wasmPath: string };
@@ -250,10 +260,13 @@ function injectIrLoader(
 function cassidaIrLoaderPath(): string {
   // Resolve the compiled loader file at the published `dist/`
   // location so webpack can `require()` it as a loader module.
+  // Use `pathToFileURL` for the CJS fallback so backslash-separated
+  // paths on Windows produce a valid `file:` URL rather than throwing
+  // through `fileURLToPath`.
   const url =
     typeof import.meta !== 'undefined' && import.meta.url
       ? import.meta.url
-      : `file://${__filename}`;
+      : pathToFileURL(__filename).toString();
   const here = dirname(fileURLToPath(url));
   const req = createRequire(`${here}/`);
   return req.resolve('@cassida/next-plugin/dist/ir-loader.js');

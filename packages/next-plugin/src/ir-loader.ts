@@ -26,7 +26,7 @@ import {
   type ShorthandPolicy,
 } from '@cassida/compiler';
 
-import { setRulesForFile } from './store.js';
+import { deleteRulesForFile, setRulesForFile } from './store.js';
 
 /**
  * Compile-time options the loader receives from the Webpack rule.
@@ -41,17 +41,20 @@ export interface IrLoaderOptions {
 
 /**
  * The IR comment + adjacent placeholder string. Captured groups:
- *   1: the JSON payload (any chars except `*` / `\n` between the
- *      `@cassida-ir:` tag and the comment terminator)
+ *   1: the JSON payload — non-greedy across any character set,
+ *      including newlines, so a formatter or minifier that re-wraps
+ *      the comment doesn't break the match.
  *   2: the placeholder index, used to keep the rewrite local — if
  *      a future SWC pass re-orders comments we still match each
  *      placeholder to its own comment.
  *
- * The JSON is matched non-greedily so an array like
- * `[{"args":["*"]}]` doesn't run away into the next comment.
+ * Quote style for the placeholder accepts `"`, `'`, or backtick:
+ * downstream JS minifiers (esbuild, terser, swc-minifier) sometimes
+ * normalise string literals, and the loader has to stay matched
+ * regardless of the convention the host picked.
  */
 const IR_PATTERN =
-  /\/\*\s*@cassida-ir:(.+?)\s*\*\/\s*"__CAS_PLACEHOLDER_(\d+)__"/g;
+  /\/\*\s*@cassida-ir:([\s\S]+?)\s*\*\/\s*["'`]__CAS_PLACEHOLDER_(\d+)__["'`]/g;
 
 /**
  * Pure transform: given a transformed JS source string and the
@@ -108,7 +111,13 @@ function cassidaIrLoader(
   // Short-circuit when the file doesn't carry any Cassida IR. Avoids
   // a regex pass on every JS file in the bundle (most won't have
   // any).
+  //
+  // Critically, we ALSO drop any previously-registered rules for this
+  // file: a `cas()` chain the user deleted between two HMR
+  // re-transforms would otherwise keep contributing rules to the CSS
+  // bundle until the build was restarted.
   if (!source.includes('@cassida-ir:')) {
+    deleteRulesForFile(this.resourcePath);
     return source;
   }
 

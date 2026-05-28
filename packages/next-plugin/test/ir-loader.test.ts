@@ -80,6 +80,29 @@ describe('rewriteIrComments', () => {
     const src = `<div className={/* @cassida-ir:not-valid-json*/ "__CAS_PLACEHOLDER_0__"} />`;
     expect(() => rewriteIrComments(src)).toThrow(/parse IR JSON/i);
   });
+
+  it('matches IR comments that span multiple lines', () => {
+    // A formatter could legitimately re-wrap the comment onto two
+    // lines; `.` doesn't match `\n` by default in JS regex, so the
+    // pattern uses `[\s\S]` to stay matched.
+    const ir = JSON.stringify([{ method: 'color', args: ['red'] }], null, 2);
+    const src = `<div className={/*\n@cassida-ir:${ir}\n*/ "__CAS_PLACEHOLDER_0__"} />`;
+    const { rules } = rewriteIrComments(src);
+    expect(rules).toHaveLength(1);
+    expect(rules[0]!.tree.bag.color).toBe('red');
+  });
+
+  it('matches placeholders wrapped in single quotes or backticks too', () => {
+    // Downstream minifiers (esbuild / terser / swc-minify) sometimes
+    // normalise string-literal quote style; the loader has to find
+    // the placeholder regardless of which one the host picked.
+    const ir = JSON.stringify([{ method: 'color', args: ['red'] }]);
+    for (const quote of ['"', "'", '`']) {
+      const src = `const x = /* @cassida-ir:${ir}*/ ${quote}__CAS_PLACEHOLDER_0__${quote};`;
+      const { rules } = rewriteIrComments(src);
+      expect(rules).toHaveLength(1);
+    }
+  });
 });
 
 describe('store + virtual-css integration', () => {
