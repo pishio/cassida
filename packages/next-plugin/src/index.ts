@@ -14,8 +14,6 @@
  */
 
 import { createRequire } from 'node:module';
-import { dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { NextConfig } from 'next';
 import type { CassConfig, CassPlugin, Registry } from '@cassida/compiler';
@@ -234,23 +232,27 @@ function applyCassida(
 
 /**
  * Build a `createRequire`-backed resolver anchored at THIS module's
- * directory, regardless of whether the runtime loaded the package as
- * ESM (`import.meta.url`) or CJS (`__filename`). Used by the wasm
- * lookup and the loader-path lookup below. Windows-safe via
- * `pathToFileURL` for the CJS fallback. The `__filename` reference
- * is guarded behind a `typeof` check so strict ESM hosts that
- * don't define it (some bundlers, some Deno-compat shims) don't
- * trip a `ReferenceError` while evaluating the ternary.
+ * file, regardless of whether the runtime loaded the package as ESM
+ * (`import.meta.url`) or CJS (`__filename`). `createRequire` accepts
+ * either form directly — a file URL or an absolute path — so we can
+ * hand it the raw value without round-tripping through
+ * `pathToFileURL` / `fileURLToPath` / `dirname`.
+ *
+ * The `__filename` reference is guarded behind a `typeof` check so
+ * strict ESM hosts that don't define it (some bundlers, Deno-compat
+ * shims) don't trip a `ReferenceError` while evaluating the ternary.
  */
 function getRequire(): NodeRequire {
-  const url =
-    typeof import.meta !== 'undefined' && import.meta.url
-      ? import.meta.url
-      : typeof __filename !== 'undefined'
-        ? pathToFileURL(__filename).toString()
-        : pathToFileURL(process.cwd()).toString();
-  const here = dirname(fileURLToPath(url));
-  return createRequire(`${here}/`);
+  if (typeof import.meta !== 'undefined' && import.meta.url) {
+    return createRequire(import.meta.url);
+  }
+  if (typeof __filename !== 'undefined') {
+    return createRequire(__filename);
+  }
+  // Last-resort fallback: anchor at the current working directory.
+  // Reached only on truly exotic hosts with neither `import.meta.url`
+  // nor `__filename`.
+  return createRequire(`${process.cwd()}/`);
 }
 
 /**

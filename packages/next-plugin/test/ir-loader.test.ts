@@ -5,6 +5,7 @@ import {
   __resetForTests,
   allRules,
   setRulesForFile,
+  subscribe,
   trackedFiles,
 } from '../src/store.js';
 import { buildVirtualCss } from '../src/virtual-css.js';
@@ -148,8 +149,7 @@ describe('store + virtual-css integration', () => {
     expect(css).not.toContain('color:red');
   });
 
-  it('skips notify when the same rules are re-registered for a file', async () => {
-    const { subscribe } = await import('../src/store.js');
+  it('skips notify when the same rules are re-registered for a file', () => {
     let notifyCount = 0;
     const unsubscribe = subscribe(() => notifyCount++);
 

@@ -110,7 +110,14 @@ function cassidaIrLoader(
   // and the rule set in memory would be missing those files'
   // contributions to the CSS bundle. A non-cacheable mark forces
   // the loader to re-run every build; the inner `compileOps` work
-  // is itself cheap and deterministic, so the cost is negligible.
+  // is itself cheap and deterministic, so the cost is acceptable
+  // for Phase 1.
+  //
+  // Phase 1.x architectural follow-up: migrate to a Webpack plugin
+  // that harvests rules from `compilation.moduleGraph` (rules
+  // travel via `module.buildInfo`) so the loader can stay
+  // cacheable. The same migration also fixes the file-deletion
+  // stale-rules window documented on `store.ts`.
   this.cacheable?.(false);
 
   const options = (typeof this.getOptions === 'function'

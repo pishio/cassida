@@ -8,6 +8,13 @@
  * Next.js's webpack instance imports this module once per build;
  * Turbopack will need its own equivalent when we add Turbopack
  * support (Phase 1.5).
+ *
+ * Phase 1 limitation — file deletion / rename: a deleted source
+ * file's previous entry stays in the store until the dev server is
+ * restarted, because the loader doesn't re-run on a path that no
+ * longer exists. The Phase-1.x Webpack-plugin follow-up resolves
+ * this by harvesting rules from the live module graph via
+ * `compilation.moduleGraph` instead of an out-of-band singleton.
  */
 import type { CompiledRule } from '@cassida/compiler';
 
