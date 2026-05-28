@@ -17,10 +17,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./virtual.css": "./virtual.css",
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
+    "virtual.css",
     "README.md"
   ],
   "scripts": {
@@ -32,7 +34,8 @@
   "dependencies": {
     "@cassida/compiler": "workspace:*",
     "@cassida/parser": "workspace:*",
-    "@cassida/swc-plugin": "workspace:*"
+    "@cassida/swc-plugin": "workspace:*",
+    "webpack-virtual-modules": "^0.6.2"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

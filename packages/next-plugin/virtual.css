@@ -1,0 +1,5 @@
+/* @cassida/next-plugin — placeholder for the virtual.css subpath
+ * import. The CassidaWebpackPlugin overwrites this content per
+ * compilation via webpack-virtual-modules; this on-disk file only
+ * matters when the plugin isn't active (static analysis tools,
+ * IDEs that follow the exports map at type-check time, etc.). */

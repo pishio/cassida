@@ -1,0 +1,42 @@
+[package]
+name = "cassida_swc_plugin_next"
+version = "0.7.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cassida SWC plugin — Next.js-targeted build. Same transform as `cassida_swc_plugin`, but pinned to `swc_core = 35.0.0` so the resulting WASM is ABI-compatible with the `@next/swc` binary shipped in Next.js 15.x. The `cassida_swc_plugin` crate stays on the latest `swc_core` (currently 66.x) for Rspack / @swc/core / plugin-react-swc consumers. Sharing this source via `include!` keeps the two crates' transforms identical."
+
+[lib]
+crate-type = ["cdylib"]
+
+# `swc_core` is pinned locally instead of inheriting from the workspace
+# so this crate can sit on a different swc_core major than its sibling
+# `cassida_swc_plugin`. The version must match whatever `@next/swc`
+# ships in the supported Next.js release; bump in lockstep with Next.
+[dependencies]
+swc_core = { version = "=35.0.0", features = [
+  "common",
+  "ecma_ast",
+  "ecma_visit",
+  "ecma_utils",
+  "ecma_plugin_transform",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smol_str = { workspace = true }
+
+[dev-dependencies]
+swc_core = { version = "=35.0.0", features = [
+  "common",
+  "ecma_ast",
+  "ecma_visit",
+  "ecma_utils",
+  "ecma_plugin_transform",
+  "ecma_parser",
+  "ecma_codegen",
+  "testing_transform",
+] }
+
+[features]
+default = []

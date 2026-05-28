@@ -1,9 +1,23 @@
-//! Cassida SWC plugin — Phase 1.
+//! Cassida SWC plugin — Next.js-targeted build (swc_core 35.0.0).
 //!
-//! The current commit ships the IR + modifier table + chain walker
-//! and rewrites JSX spreads to an IR-comment placeholder. The actual
-//! className substitution + CSS bundling happens in a Node post-pass
-//! inside `@cassida/next-plugin`; this crate only mints the IR.
+//! Identical transform to the sibling `cassida_swc_plugin` crate
+//! (which sits on swc_core 66.x for Rspack / @swc/core /
+//! plugin-react-swc consumers). The split exists because the SWC
+//! plugin ABI is version-bound: Next.js 15.x ships `@next/swc` linked
+//! against swc_core 35.0.0, so a plugin compiled against 66.x panics
+//! with "failed to invoke plugin" on every file. We rebuild the same
+//! source against 35.0.0 here.
+//!
+//! Six call sites in `visitor.rs` / `walker.rs` are adapted because
+//! `Atom::as_str()` returned `&str` in swc_core 35.0.0 and widened to
+//! `Option<&str>` in the 66.x line (Wtf8Atom — handles lone
+//! surrogates). Each adapted site is tagged
+//! `// Adapter site #N (see lib.rs `as_str` note).`.
+//!
+//! When Next.js bumps its embedded swc_core (canary is currently at
+//! 65.x), bump the pin in this crate's `Cargo.toml` to match and
+//! re-verify the six adapter sites — they may converge with the
+//! modern crate.
 
 use swc_core::{
     ecma::ast::Program,

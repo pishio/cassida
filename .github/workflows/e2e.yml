@@ -41,6 +41,16 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
+      # @cassida/swc-plugin's `prepublishOnly` triggers `cargo build
+      # --release --target wasm32-wasip1` during `pnpm pack`. Installing
+      # the toolchain explicitly turns the WASM build into a load-bearing
+      # contract of the pack job rather than an accident of the runner
+      # image. wasm32-wasip1 is the standard SWC plugin target.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
       - name: Install workspace
         run: pnpm install --frozen-lockfile
 
@@ -51,14 +61,15 @@ jobs:
         run: pnpm -r --filter='./packages/*' test
 
       - name: Pack tarballs
+        # `pnpm pack` happily packs private packages — they end up in
+        # the artefact for e2e consumption but never reach npm
+        # (publish is a separate, intentional, maintainer-driven step).
+        # Subdirs without a `package.json` (future docs/, scripts/) are
+        # skipped so the loop doesn't error.
         run: |
           mkdir -p tarballs
           for d in packages/*/; do
-            # Skip subdirs without a package.json — future docs/ or
-            # scripts/ folders shouldn't break the pack step.
             [ -f "$d/package.json" ] || continue
-            # Skip packages marked private (scaffolds not ready for publish).
-            grep -q '"private": true' "$d/package.json" && continue
             (cd "$d" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/tarballs")
           done
           ls -la tarballs/
@@ -136,6 +147,66 @@ jobs:
       # is expected to pass against the published tarballs.
       - name: Type-check consumer
         working-directory: e2e/consumer
+        run: npx tsc --noEmit
+
+  consumer-next:
+    name: consumer · next ${{ matrix.next }}
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Next.js 15 is the current stable; Cassida targets that as
+        # the primary integration. Turbopack-mode coverage lands in
+        # Phase 1.5; this leg uses the default Webpack backend.
+        include:
+          - next: '15'
+            react: '19'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: cassida-tarballs
+          path: tarballs/
+
+      - name: Install consumer
+        # Same npm-based install as the Vite consumer: stage the
+        # cassida tarballs by path, pull next / react / typescript
+        # from the registry. The SWC plugin tarball ships the WASM
+        # built by the pack job's prepublishOnly step.
+        working-directory: e2e/next-app
+        run: |
+          npm install --no-audit --no-fund \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-core-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-compiler-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-parser-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-swc-plugin-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-next-plugin-*.tgz \
+            "$GITHUB_WORKSPACE"/tarballs/cassida-plugin-hover-fix-*.tgz \
+            "react@^${{ matrix.react }}" "react-dom@^${{ matrix.react }}" \
+            "next@^${{ matrix.next }}" \
+            typescript@^5 \
+            "@types/react@^${{ matrix.react }}" "@types/react-dom@^${{ matrix.react }}" \
+            @types/node@^20
+
+      - name: Build
+        working-directory: e2e/next-app
+        run: npx next build
+
+      - name: Assert build artifacts
+        working-directory: e2e/next-app
+        run: node scripts/assert.mjs
+
+      - name: Type-check consumer
+        working-directory: e2e/next-app
         run: npx tsc --noEmit
 
   consumer-bun:

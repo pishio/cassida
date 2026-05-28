@@ -20,10 +20,12 @@ import type { CassConfig, CassPlugin, Registry } from '@cassida/compiler';
 import type { CassParserPlugin, PathAliases } from '@cassida/parser';
 
 import type { IrLoaderOptions } from './ir-loader.js';
+import { CassidaWebpackPlugin } from './webpack-plugin.js';
 export { rewriteIrComments, default as cassidaIrLoader } from './ir-loader.js';
 export type { IrLoaderOptions } from './ir-loader.js';
 export { buildVirtualCss } from './virtual-css.js';
 export type { VirtualCssOptions } from './virtual-css.js';
+export { CassidaWebpackPlugin } from './webpack-plugin.js';
 export {
   setRulesForFile,
   deleteRulesForFile,
@@ -210,6 +212,14 @@ function applyCassida(
     ? [...existingSwcPlugins]
     : [...existingSwcPlugins, [wasm, {}]];
 
+  // `CssEmitter`'s `layer` field defaults to `'fss'` (a vestige of
+  // the pre-rename project name); for `withCassida` callers we want
+  // `'cas'` — matching `defaultConfig.layer`, the README, and the
+  // documented `@layer cas { ... }` contract every consumer asserts
+  // against. Honour `options.layer` if the user explicitly set one
+  // (string for custom name, `null` for "no @layer wrap").
+  const layer: string | null = options.layer ?? 'cas';
+
   // 2. Wrap user's `webpack` hook to inject the IR-comment loader.
   const userWebpack = cfg.webpack;
   const loaderExclude =
@@ -217,7 +227,7 @@ function applyCassida(
   const wrappedWebpack: NextWebpackHook = (config, ctx) => {
     const base =
       typeof userWebpack === 'function' ? userWebpack(config, ctx) : config;
-    return injectIrLoader(base, loaderOptions, loaderExclude);
+    return injectIrLoader(base, loaderOptions, loaderExclude, { layer });
   };
 
   return {
@@ -256,15 +266,25 @@ function getRequire(): NodeRequire {
 }
 
 /**
- * Resolve the WASM artefact path via the loader subpath. Avoids
- * `require.resolve('@cassida/swc-plugin')` directly because the
- * package's `main` points at the WASM file — some toolchains
- * stumble on that.
+ * Resolve the Next.js-targeted WASM artefact path via the loader
+ * subpath. `@cassida/swc-plugin` ships two builds (modern for
+ * Rspack / @swc/core mainline, next for `@next/swc`) — we deliberately
+ * pick `wasmPathNext` because the SWC plugin ABI is version-bound to
+ * the host's swc_core and Next.js 15.x pins swc_core 35.0.0, which
+ * the modern (66.x) WASM is not ABI-compatible with. Loading the
+ * wrong build manifests as "failed to invoke plugin" on every file.
+ *
+ * Going through the `loader` subpath avoids
+ * `require.resolve('@cassida/swc-plugin')` — the package's `main`
+ * points at the modern WASM file directly and some toolchains stumble
+ * on that.
  */
 function resolveWasmPath(): string {
   const req = getRequire();
-  const loaderEntry = req('@cassida/swc-plugin/loader') as { wasmPath: string };
-  return loaderEntry.wasmPath;
+  const loaderEntry = req('@cassida/swc-plugin/loader') as {
+    wasmPathNext: string;
+  };
+  return loaderEntry.wasmPathNext;
 }
 
 type SwcPluginEntry = [string, Record<string, unknown>];
@@ -283,6 +303,7 @@ function injectIrLoader(
   config: WebpackConfig,
   options: IrLoaderOptions,
   exclude: RegExp | string | ((path: string) => boolean) | null,
+  webpackPluginOptions: { layer: string | null },
 ): WebpackConfig {
   const loaderRule = {
     test: /\.[cm]?[jt]sx?$/,
@@ -300,12 +321,32 @@ function injectIrLoader(
     ],
   };
   const rules = (config.module?.rules ?? []) as unknown[];
+  const existingPlugins = (config.plugins ?? []) as unknown[];
+  // Next.js invokes the user's `webpack` hook once per compilation
+  // (client + server + edge + middleware in App Router). A naive
+  // append would land N CassidaWebpackPlugin instances on the same
+  // shared config object, each with its own listener wired into
+  // the singleton store — redundant rewrites at best, double-fire
+  // bugs at worst. Check for an existing instance before append,
+  // both `instanceof` (same realm) and constructor-name (different
+  // realm — bundled / re-exported / hoisted copies).
+  const hasCassidaPlugin = existingPlugins.some(
+    (p) =>
+      p instanceof CassidaWebpackPlugin ||
+      (typeof p === 'object' &&
+        p !== null &&
+        (p as { constructor?: { name?: string } }).constructor?.name ===
+          'CassidaWebpackPlugin'),
+  );
   return {
     ...config,
     module: {
       ...(config.module ?? {}),
       rules: [...rules, loaderRule],
     },
+    plugins: hasCassidaPlugin
+      ? existingPlugins
+      : [...existingPlugins, new CassidaWebpackPlugin(webpackPluginOptions)],
   };
 }
 
