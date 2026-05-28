@@ -338,15 +338,34 @@ fn literal_to_json(expr: &Expr) -> Option<serde_json::Value> {
         Expr::Lit(Lit::Bool(b)) => Some(serde_json::Value::Bool(b.value)),
         Expr::Lit(Lit::Null(_)) => Some(serde_json::Value::Null),
         Expr::Tpl(tpl) => tpl_to_static_string(tpl).map(serde_json::Value::String),
-        Expr::Unary(u) if matches!(u.op, swc_core::ecma::ast::UnaryOp::Minus) => {
-            // -42 parses as UnaryExpr(Minus, NumericLit(42)); reduce so
-            // negative numeric args round-trip cleanly.
-            if let Expr::Lit(Lit::Num(n)) = &*u.arg {
-                Some(serde_json::Value::Number(num_to_json(-n.value)?))
-            } else {
-                None
+        // Unary expressions on literal operands: Babel's `path.evaluate()`
+        // folds `-42`, `+42`, and `!true` into their evaluated form. We
+        // mirror that here so equivalent source spellings don't bail
+        // under SWC while compiling under Babel.
+        Expr::Unary(u) => match u.op {
+            swc_core::ecma::ast::UnaryOp::Minus => {
+                if let Expr::Lit(Lit::Num(n)) = &*u.arg {
+                    Some(serde_json::Value::Number(num_to_json(-n.value)?))
+                } else {
+                    None
+                }
             }
-        }
+            swc_core::ecma::ast::UnaryOp::Plus => {
+                if let Expr::Lit(Lit::Num(n)) = &*u.arg {
+                    Some(serde_json::Value::Number(num_to_json(n.value)?))
+                } else {
+                    None
+                }
+            }
+            swc_core::ecma::ast::UnaryOp::Bang => {
+                if let Expr::Lit(Lit::Bool(b)) = &*u.arg {
+                    Some(serde_json::Value::Bool(!b.value))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -651,6 +670,33 @@ mod tests {
             arg.is_f64(),
             "expected float branch for unsafe integer, got {arg:?}"
         );
+    }
+
+    /// `+42` parses as `UnaryExpr(Plus, NumericLit(42))` — Babel's
+    /// `path.evaluate()` folds it to `42`, and we mirror that.
+    #[test]
+    fn unary_plus_on_literal_folds() {
+        let expr = parse_expr("cas().fontSize(+14)");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Number(serde_json::Number::from(14))
+        ));
+    }
+
+    /// `!true` / `!false` fold to their boolean negation — same
+    /// Babel parity, so a chain whose method takes a boolean
+    /// argument (`.someFlag(!true)`) doesn't bail. The method name
+    /// used here is unimportant — the walker only emits IR; the
+    /// canonicalizer validates against the registry downstream.
+    #[test]
+    fn unary_bang_on_literal_bool_folds() {
+        let expr = parse_expr("cas().userSelect(!true)");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Bool(false)
+        ));
     }
 
     #[test]

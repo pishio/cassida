@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use swc_core::common::{comments::Comments, DUMMY_SP};
+use swc_core::common::{comments::Comments, BytePos, Span, DUMMY_SP};
 use swc_core::ecma::ast::{
     Expr, ImportDecl, ImportSpecifier, JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue,
     JSXExpr, JSXExprContainer, JSXOpeningElement, Lit, Module, ModuleItem, Program, Script,
@@ -106,7 +106,7 @@ impl<C: Comments> VisitMut for CassidaVisitor<C> {
         // — the Single Class Principle requires exactly one. The error
         // path lands in a follow-up commit.
         let mut new_attrs: Vec<JSXAttrOrSpread> = Vec::with_capacity(opening.attrs.len());
-        for attr in opening.attrs.drain(..) {
+        for attr in std::mem::take(&mut opening.attrs) {
             match attr {
                 JSXAttrOrSpread::SpreadElement(spread) => {
                     if let Some(replacement) = try_rewrite_spread(self, &spread) {
@@ -151,8 +151,19 @@ fn try_rewrite_spread<C: Comments>(
     // whose BytePos is `<= current_node.lo`; the monotonic property
     // is what keeps each placeholder's IR comment paired with its
     // own placeholder literal.
-    let placeholder_span = spread.dot3_token;
-    let placeholder_lo = placeholder_span.lo;
+    //
+    // Synthetic ASTs from other plugins / macros sometimes carry
+    // `DUMMY_SP` for inserted nodes. Falling through with a dummy
+    // span would land every placeholder on `BytePos(0)` and merge
+    // all the IR comments together — fall back to a high-range
+    // synthetic position keyed by counter (still monotonic) in
+    // that case.
+    let (placeholder_span, placeholder_lo) = if spread.dot3_token.is_dummy() {
+        let lo = BytePos(0x8000_0000u32.saturating_add(counter));
+        (Span::new(lo, lo), lo)
+    } else {
+        (spread.dot3_token, spread.dot3_token.lo)
+    };
     let placeholder_lit = Str {
         span: placeholder_span,
         // `Str::value` is a Wtf8Atom; convert from the regular Atom
