@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { cas, type CassChain } from '@cassida/core';
 
-import { ServerOnly } from './server-only.js';
+import { ServerOnly } from './server-only';
 
 // Same-file mixin — exercises the parser-side function composition
 // path (chain folded into another chain in place).
 const withCard = (c: CassChain): CassChain =>
   c.padding(16).borderRadius(8).backgroundColor('#fff').color('#111');
 
-export default function Page(): React.JSX.Element {
+export default function Page() {
   const [hue, setHue] = useState(180);
 
   return (

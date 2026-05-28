@@ -5,7 +5,7 @@
 
 import { cas } from '@cassida/core';
 
-export function ServerOnly(): React.JSX.Element {
+export function ServerOnly() {
   return (
     <aside
       {...cas()

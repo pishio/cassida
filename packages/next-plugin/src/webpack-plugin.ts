@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 
 import VirtualModulesPlugin from 'webpack-virtual-modules';
 
-import { allRules, subscribe } from './store.js';
+import { allRules } from './store.js';
 import {
   buildVirtualCss,
   type VirtualCssOptions,
@@ -70,41 +70,22 @@ export class CassidaWebpackPlugin {
     });
     virtual.apply(compiler as unknown as Parameters<typeof virtual.apply>[0]);
 
-    // The IR loader calls `setRulesForFile` once per Cassida-bearing
-    // module the graph visits. If we re-built and re-wrote the
-    // virtual CSS on every one of those events, a project with N
-    // styled files would see N redundant `buildVirtualCss()` calls
-    // per compilation. `isCompiling` gates the subscription-driven
-    // path so the active compilation does the single canonical
-    // rewrite at `processAssets`; between-compilation updates (the
-    // rare "external watcher edited a source" case) still fire
-    // through the live subscription.
-    let isCompiling = false;
-
-    const writeFromStore = (force = false): void => {
-      if (isCompiling && !force) return;
-      // Build CSS only when there's something to emit; otherwise
-      // keep the placeholder so a totally Cassida-free build still
-      // resolves the import without surprises.
-      const seen = Array.from(allRules());
-      const content =
-        seen.length === 0 ? PLACEHOLDER_CONTENT : buildVirtualCss(this.options);
-      virtual.writeModule(VIRTUAL_MODULE_PATH, content);
-    };
-
-    compiler.hooks.compile.tap('CassidaWebpackPlugin', () => {
-      isCompiling = true;
-    });
-    compiler.hooks.done.tap('CassidaWebpackPlugin', () => {
-      isCompiling = false;
-    });
-
-    // Pass 1: per-compilation rewrite via `processAssets`. Stage
-    // `PRE_PROCESS` (`-1000`) runs after all `module.build()` calls
-    // finish but before CSS minimisers (`OPTIMIZE` = 100), HTML
-    // emission, and asset hash finalisation. `force = true` here
-    // bypasses the in-compilation guard — this is the canonical
-    // rewrite of the compilation.
+    // Single source of truth: rewrite the virtual module's content
+    // exactly once per compilation, at `processAssets` stage
+    // `PRE_PROCESS` (`-1000`). All IR-loader passes for this
+    // compilation have completed by this stage, so `store.allRules()`
+    // is complete. We deliberately don't subscribe to store updates
+    // between compilations — in Next.js's parallel Server / Client
+    // compilations the store is a shared singleton, and a
+    // subscription-driven write would race with whichever compiler
+    // is mid-build. The HMR loop kicks a fresh compilation on every
+    // source edit anyway, so this hook covers dev too.
+    //
+    // Phase 1.x: the multi-compiler race remains — the Client
+    // compiler's `processAssets` may fire before the Server
+    // compiler's loaders have finished populating the store with
+    // Server-only rules. Mitigation needs a webpack child-compiler
+    // architecture and is out of scope for Phase 1.
     compiler.hooks.thisCompilation.tap(
       'CassidaWebpackPlugin',
       (compilation) => {
@@ -115,25 +96,16 @@ export class CassidaWebpackPlugin {
             stage: Compilation.PROCESS_ASSETS_STAGE_PRE_PROCESS,
           },
           () => {
-            writeFromStore(true);
+            const seen = Array.from(allRules());
+            const content =
+              seen.length === 0
+                ? PLACEHOLDER_CONTENT
+                : buildVirtualCss(this.options);
+            virtual.writeModule(VIRTUAL_MODULE_PATH, content);
           },
         );
       },
     );
-
-    // Pass 2: dev HMR — between-compilation store updates re-write
-    // the virtual content. The subscription lifecycle is anchored
-    // on the watcher's run/close hooks so a `next dev` reload
-    // doesn't leak listeners.
-    let unsubscribe: (() => void) | undefined;
-    compiler.hooks.watchRun.tap('CassidaWebpackPlugin', () => {
-      unsubscribe?.();
-      unsubscribe = subscribe(() => writeFromStore());
-    });
-    compiler.hooks.watchClose.tap('CassidaWebpackPlugin', () => {
-      unsubscribe?.();
-      unsubscribe = undefined;
-    });
   }
 }
 
@@ -143,10 +115,6 @@ export class CassidaWebpackPlugin {
 interface WebpackCompiler {
   readonly hooks: {
     readonly thisCompilation: WebpackSyncHook<[WebpackCompilation]>;
-    readonly watchRun: WebpackSyncHook<[WebpackCompiler]>;
-    readonly watchClose: WebpackSyncHook<[]>;
-    readonly compile: WebpackSyncHook<[]>;
-    readonly done: WebpackSyncHook<[unknown]>;
   };
 }
 
