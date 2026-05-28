@@ -1,0 +1,16 @@
+# Next.js build output + dependency dirs the e2e CI installs into.
+.next/
+node_modules/
+out/
+
+# npm lockfiles produced by the e2e install step. The fixture's
+# package.json stays minimal so the same layout works across
+# matrix legs; reinstall per leg.
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+bun.lock
+
+# Next.js auto-generated type shim.
+next-env.d.ts

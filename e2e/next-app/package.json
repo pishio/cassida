@@ -1,0 +1,12 @@
+{
+  "name": "cassida-e2e-next-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Smoke-test consumer for @cassida/* tarballs against a real Next.js App Router build. Dependencies are installed by the e2e CI workflow with the matrix-pinned Next.js / React / TypeScript versions; the package.json stays pristine so the same fixture can be reused across each leg.",
+  "scripts": {
+    "build": "next build",
+    "assert": "node scripts/assert.mjs",
+    "verify": "next build && node scripts/assert.mjs"
+  }
+}
