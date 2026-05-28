@@ -354,12 +354,21 @@ fn literal_to_json(expr: &Expr) -> Option<serde_json::Value> {
 /// f64 values fit through `Number::from(i64)` (serialise as `8`, not
 /// `8.0`); fractional values stay floats. NaN / Inf bail because TS
 /// JSON literals also can't carry them.
+///
+/// The integer fast-path is gated on the JavaScript safe-integer
+/// range (`[-2^53 + 1, 2^53 - 1]`). Outside that range f64 can no
+/// longer represent consecutive integers, and Rust's `f64 as i64`
+/// saturates at `i64::MAX` while `i64::MAX as f64` rounds up — so
+/// `2^63` would `==`-compare equal to `i64::MAX` and silently
+/// serialise as `2^63 - 1`. JS itself wouldn't preserve those
+/// integers either; keeping the path bounded by `MAX_SAFE_INTEGER`
+/// is the only way to stay in sync with `JSON.stringify`.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0; // 2^53 - 1
+const MIN_SAFE_INTEGER: f64 = -9_007_199_254_740_991.0;
+
 fn num_to_json(v: f64) -> Option<serde_json::Number> {
-    if v.is_finite() && v.fract() == 0.0 {
-        let as_int = v as i64;
-        if (as_int as f64) == v {
-            return Some(serde_json::Number::from(as_int));
-        }
+    if v.is_finite() && v.fract() == 0.0 && (MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&v) {
+        return Some(serde_json::Number::from(v as i64));
     }
     serde_json::Number::from_f64(v)
 }
@@ -617,6 +626,27 @@ mod tests {
     fn template_literal_with_substitution_bails() {
         let expr = parse_expr("cas().color(`hsl(${h} 0% 0%)`)");
         assert!(walk_chain(&expr, &cas_roots()).is_none());
+    }
+
+    /// Beyond the JS safe-integer range (2^53 - 1), f64 can no
+    /// longer represent consecutive integers. JS's `JSON.stringify`
+    /// would also lose precision here, so we follow suit and keep
+    /// the value as a float instead of letting `f64 as i64` saturate
+    /// at `i64::MAX` — which would silently rewrite the user's
+    /// number.
+    #[test]
+    fn unsafe_integer_arg_stays_as_float() {
+        // 2^53 = 9007199254740992 — one past the safe range.
+        let expr = parse_expr("cas().zIndex(9007199254740992)");
+        let ops = walk_chain(&expr, &cas_roots()).expect("recognised");
+        let arg = match &ops[0] {
+            Op::Method(m) => m.args[0].clone(),
+            _ => panic!("expected MethodOp"),
+        };
+        // serde_json::Number::from(i64) and Number::from_f64 hash
+        // differently; what we want is the float branch (so we
+        // don't truncate to i64::MAX or any other lossy form).
+        assert!(arg.is_f64(), "expected float branch for unsafe integer, got {arg:?}");
     }
 
     #[test]
