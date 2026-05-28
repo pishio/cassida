@@ -308,20 +308,21 @@ fn literal_string_or_number(expr: &Expr) -> Option<String> {
 /// Resolve a template literal to its static string content when it
 /// has no embedded substitutions. Returns `None` for templates with
 /// `${...}` expressions — those are dynamic and Phase 1 declines.
+///
+/// Only uses the `cooked` form (the value JS would produce at
+/// runtime). Falling back to `raw` would smuggle literal escape
+/// sequences like `\uD800` into the IR — Babel's path uses the
+/// evaluated `cooked` value, so a raw fallback here would silently
+/// produce different class hashes between the two compilation
+/// pipelines. Cooked unavailable (parse-time invalid escapes) or
+/// non-UTF-8 (lone surrogates) → bail, host JSX falls back to the
+/// runtime path.
 fn tpl_to_static_string(tpl: &Tpl) -> Option<String> {
     if !tpl.exprs.is_empty() || tpl.quasis.len() != 1 {
         return None;
     }
-    let quasi = &tpl.quasis[0];
-    // `cooked` is a Wtf8Atom (lossy on lone surrogates → None);
-    // `raw` is a plain UTF-8 Atom. Prefer cooked when present and
-    // valid UTF-8; otherwise fall back to raw.
-    if let Some(cooked) = quasi.cooked.as_ref() {
-        if let Some(s) = cooked.as_str() {
-            return Some(s.to_string());
-        }
-    }
-    Some(quasi.raw.as_str().to_string())
+    let cooked = tpl.quasis[0].cooked.as_ref()?;
+    cooked.as_str().map(String::from)
 }
 
 /// Project a literal AST node into a JSON value matching the
@@ -646,7 +647,10 @@ mod tests {
         // serde_json::Number::from(i64) and Number::from_f64 hash
         // differently; what we want is the float branch (so we
         // don't truncate to i64::MAX or any other lossy form).
-        assert!(arg.is_f64(), "expected float branch for unsafe integer, got {arg:?}");
+        assert!(
+            arg.is_f64(),
+            "expected float branch for unsafe integer, got {arg:?}"
+        );
     }
 
     #[test]

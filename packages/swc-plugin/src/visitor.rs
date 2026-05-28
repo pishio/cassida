@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use swc_core::common::{comments::Comments, BytePos, Span, DUMMY_SP};
+use swc_core::common::{comments::Comments, DUMMY_SP};
 use swc_core::ecma::ast::{
     Expr, ImportDecl, ImportSpecifier, JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue,
     JSXExpr, JSXExprContainer, JSXOpeningElement, Lit, Module, ModuleItem, Program, Script,
@@ -139,36 +139,34 @@ fn try_rewrite_spread<C: Comments>(
 
     let placeholder_value = format!("{PLACEHOLDER_PREFIX}{counter}{PLACEHOLDER_SUFFIX}");
 
-    // The placeholder needs a UNIQUE non-dummy span so the codegen
-    // emits the attached comment at the right spot. SWC's comments
-    // table is keyed by BytePos; DUMMY_SP (lo = 0) collides across
-    // placeholders and the codegen treats it as "no real position".
-    //
-    // Position MUST increase monotonically with source-order visit:
+    // Re-use the spread's `dot3_token` span — a real source position
+    // already registered in the SourceMap. This satisfies the three
+    // constraints in one shot:
+    //   1. Unique per spread (each `...` token has its own byte range).
+    //   2. Monotonically increasing in source-visit order (the parser
+    //      assigns positions left-to-right, top-to-bottom).
+    //   3. In-bounds — synthetic out-of-source BytePos values can
+    //      panic downstream sourcemap consumers.
     // SWC's `emit_leading_comments` drains every pending comment
-    // whose BytePos is `<= current_node.lo`, so if synthetic
-    // positions DECREASED with the counter, the first placeholder
-    // would sweep up every subsequent placeholder's comment and the
-    // later placeholders would lose theirs (verified by a reproducer).
-    // Anchoring at `0x80000000` keeps the synthetic range safely
-    // above any realistic source byte position while leaving plenty
-    // of headroom for placeholder counts in any single file.
-    let synthetic_lo = BytePos(0x8000_0000u32.saturating_add(counter));
-    let synthetic_span = Span::new(synthetic_lo, synthetic_lo);
+    // whose BytePos is `<= current_node.lo`; the monotonic property
+    // is what keeps each placeholder's IR comment paired with its
+    // own placeholder literal.
+    let placeholder_span = spread.dot3_token;
+    let placeholder_lo = placeholder_span.lo;
     let placeholder_lit = Str {
-        span: synthetic_span,
+        span: placeholder_span,
         // `Str::value` is a Wtf8Atom; convert from the regular Atom
         // via `Into` since our string is plain ASCII.
         value: Atom::from(placeholder_value.as_str()).into(),
         raw: None,
     };
 
-    // Attach the IR as a leading block comment on the placeholder's
-    // synthetic span. SWC's codegen writes block comments back inline
-    // before the token they precede, which gives us the desired
-    // output `className={/* @cassida-ir:[...] */ "__CAS_PLACEHOLDER_0__"}`.
+    // Attach the IR as a leading block comment anchored at the
+    // placeholder's BytePos. SWC's codegen writes block comments
+    // back inline before the token they precede, which gives us
+    // `className={/* @cassida-ir:[...] */ "__CAS_PLACEHOLDER_0__"}`.
     state.comments.add_leading(
-        synthetic_lo,
+        placeholder_lo,
         swc_core::common::comments::Comment {
             kind: swc_core::common::comments::CommentKind::Block,
             span: DUMMY_SP,
