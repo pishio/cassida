@@ -352,31 +352,35 @@ fn literal_to_json(expr: &Expr) -> Option<serde_json::Value> {
         // Unary expressions on literal operands: Babel's `path.evaluate()`
         // folds `-42`, `+42`, and `!true` into their evaluated form. We
         // mirror that here so equivalent source spellings don't bail
-        // under SWC while compiling under Babel.
-        Expr::Unary(u) => match u.op {
-            swc_core::ecma::ast::UnaryOp::Minus => {
-                if let Expr::Lit(Lit::Num(n)) = &*u.arg {
-                    Some(serde_json::Value::Number(num_to_json(-n.value)?))
-                } else {
-                    None
+        // under SWC while compiling under Babel. Peel parens from the
+        // arg first so `-(8)` / `!(true)` also fold.
+        Expr::Unary(u) => {
+            let arg = peel_parens(&u.arg);
+            match u.op {
+                swc_core::ecma::ast::UnaryOp::Minus => {
+                    if let Expr::Lit(Lit::Num(n)) = arg {
+                        Some(serde_json::Value::Number(num_to_json(-n.value)?))
+                    } else {
+                        None
+                    }
                 }
-            }
-            swc_core::ecma::ast::UnaryOp::Plus => {
-                if let Expr::Lit(Lit::Num(n)) = &*u.arg {
-                    Some(serde_json::Value::Number(num_to_json(n.value)?))
-                } else {
-                    None
+                swc_core::ecma::ast::UnaryOp::Plus => {
+                    if let Expr::Lit(Lit::Num(n)) = arg {
+                        Some(serde_json::Value::Number(num_to_json(n.value)?))
+                    } else {
+                        None
+                    }
                 }
-            }
-            swc_core::ecma::ast::UnaryOp::Bang => {
-                if let Expr::Lit(Lit::Bool(b)) = &*u.arg {
-                    Some(serde_json::Value::Bool(!b.value))
-                } else {
-                    None
+                swc_core::ecma::ast::UnaryOp::Bang => {
+                    if let Expr::Lit(Lit::Bool(b)) = arg {
+                        Some(serde_json::Value::Bool(!b.value))
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
             }
-            _ => None,
-        },
+        }
         _ => None,
     }
 }
@@ -703,6 +707,25 @@ mod tests {
         assert!(matches!(
             ops.first(),
             Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Number(serde_json::Number::from(14))
+        ));
+    }
+
+    /// Parens inside the unary operand (`-(8)`, `!(true)`) must also
+    /// fold — Babel's `path.evaluate()` walks past them transparently.
+    #[test]
+    fn unary_on_parenthesised_literal_folds() {
+        let neg = parse_expr("cas().marginTop(-(8))");
+        let ops = walk_chain(&neg, &cas_roots()).expect("neg recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Number(serde_json::Number::from(-8))
+        ));
+
+        let bang = parse_expr("cas().userSelect(!(true))");
+        let ops = walk_chain(&bang, &cas_roots()).expect("bang recognised");
+        assert!(matches!(
+            ops.first(),
+            Some(Op::Method(MethodOp { args, .. })) if args[0] == serde_json::Value::Bool(false)
         ));
     }
 
