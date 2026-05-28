@@ -23,19 +23,23 @@ pub fn process_transform(
     mut program: Program,
     metadata: TransformPluginProgramMetadata,
 ) -> Program {
-    // `metadata.comments` is `Option<PluginCommentsProxy>`; the host
-    // passes `None` when comments are disabled in its SWC config. We
-    // can't proceed in that case — the IR is delivered to the JS
-    // post-pass via comment annotations, and silently dropping them
-    // would leave `__CAS_PLACEHOLDER_N__` strings in production
-    // output uncompiled (with no warning, no error, just broken
-    // styles). Hard-fail at plugin init so the misconfiguration is
-    // visible at build time.
-    let comments = metadata.comments.expect(
-        "Cassida SWC plugin requires comments to be enabled. Set `experimental.swcPlugins` \
-         in next.config.js (which @cassida/next-plugin does automatically) — do not pass \
-         `comments: false` to the SWC config.",
-    );
+    // `metadata.comments` is `Option<PluginCommentsProxy>`. Next.js's
+    // production SWC pipeline strips comments from internal files
+    // (`node_modules/next/dist/**/*.js`), and the plugin runs on
+    // every file in the graph — including those. Passing `None` is
+    // legitimate in that path; we simply skip the transform for
+    // those files (there are no `cas()` chains inside Next.js's
+    // internal sources anyway, so there's nothing to lift).
+    //
+    // The earlier behaviour (panicking via `.expect()`) was meant
+    // to surface "consumer disabled comments globally" — but it
+    // can't distinguish that footgun from Next.js's normal
+    // file-by-file stripping. The right place for the footgun
+    // warning is `@cassida/next-plugin`'s `withCassida` wrapper,
+    // which controls the SWC config at the consumer level.
+    let Some(comments) = metadata.comments else {
+        return program;
+    };
     let mut visitor = CassidaVisitor::new(comments);
     program.visit_mut_with(&mut visitor);
     program

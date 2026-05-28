@@ -27,6 +27,8 @@
  * picks it up — no `module.hot.accept` needed on the consumer side.
  */
 
+import { fileURLToPath } from 'node:url';
+
 import VirtualModulesPlugin from 'webpack-virtual-modules';
 
 import { allRules, subscribe } from './store.js';
@@ -35,11 +37,23 @@ import {
   type VirtualCssOptions,
 } from './virtual-css.js';
 
-/** The path `VirtualModulesPlugin` registers the module at — must
- * match how the consumer's `node_modules` resolution lands when
- * they `import '@cassida/next-plugin/virtual.css'`. */
-const VIRTUAL_MODULE_PATH =
-  'node_modules/@cassida/next-plugin/virtual.css';
+/**
+ * Absolute physical path of the `virtual.css` shipped in this
+ * package. Webpack resolves symlinks to their real on-disk paths
+ * (pnpm workspaces, yarn link, hoisted node_modules), so the path
+ * we register the virtual module under must match the resolved
+ * path the consumer's import ends at — using a hard-coded
+ * `node_modules/...` relative path would miss the symlink case
+ * and the consumer's import would fall through to the on-disk
+ * fallback content instead of the live aggregated CSS.
+ *
+ * `import.meta.url` is the published `dist/webpack-plugin.js`
+ * location at runtime; `virtual.css` sits one directory up
+ * (package root) per `packages/next-plugin/package.json:files`.
+ */
+const VIRTUAL_MODULE_PATH = fileURLToPath(
+  new URL('../virtual.css', import.meta.url),
+);
 
 /** Placeholder content the early-graph resolver lands on. Replaced
  * in `processAssets`; only visible if the build crashes before that
@@ -56,7 +70,19 @@ export class CassidaWebpackPlugin {
     });
     virtual.apply(compiler as unknown as Parameters<typeof virtual.apply>[0]);
 
-    const writeFromStore = (): void => {
+    // The IR loader calls `setRulesForFile` once per Cassida-bearing
+    // module the graph visits. If we re-built and re-wrote the
+    // virtual CSS on every one of those events, a project with N
+    // styled files would see N redundant `buildVirtualCss()` calls
+    // per compilation. `isCompiling` gates the subscription-driven
+    // path so the active compilation does the single canonical
+    // rewrite at `processAssets`; between-compilation updates (the
+    // rare "external watcher edited a source" case) still fire
+    // through the live subscription.
+    let isCompiling = false;
+
+    const writeFromStore = (force = false): void => {
+      if (isCompiling && !force) return;
       // Build CSS only when there's something to emit; otherwise
       // keep the placeholder so a totally Cassida-free build still
       // resolves the import without surprises.
@@ -66,10 +92,19 @@ export class CassidaWebpackPlugin {
       virtual.writeModule(VIRTUAL_MODULE_PATH, content);
     };
 
+    compiler.hooks.compile.tap('CassidaWebpackPlugin', () => {
+      isCompiling = true;
+    });
+    compiler.hooks.done.tap('CassidaWebpackPlugin', () => {
+      isCompiling = false;
+    });
+
     // Pass 1: per-compilation rewrite via `processAssets`. Stage
     // `PRE_PROCESS` (`-1000`) runs after all `module.build()` calls
     // finish but before CSS minimisers (`OPTIMIZE` = 100), HTML
-    // emission, and asset hash finalisation.
+    // emission, and asset hash finalisation. `force = true` here
+    // bypasses the in-compilation guard — this is the canonical
+    // rewrite of the compilation.
     compiler.hooks.thisCompilation.tap(
       'CassidaWebpackPlugin',
       (compilation) => {
@@ -80,7 +115,7 @@ export class CassidaWebpackPlugin {
             stage: Compilation.PROCESS_ASSETS_STAGE_PRE_PROCESS,
           },
           () => {
-            writeFromStore();
+            writeFromStore(true);
           },
         );
       },
@@ -93,7 +128,7 @@ export class CassidaWebpackPlugin {
     let unsubscribe: (() => void) | undefined;
     compiler.hooks.watchRun.tap('CassidaWebpackPlugin', () => {
       unsubscribe?.();
-      unsubscribe = subscribe(writeFromStore);
+      unsubscribe = subscribe(() => writeFromStore());
     });
     compiler.hooks.watchClose.tap('CassidaWebpackPlugin', () => {
       unsubscribe?.();
@@ -110,6 +145,8 @@ interface WebpackCompiler {
     readonly thisCompilation: WebpackSyncHook<[WebpackCompilation]>;
     readonly watchRun: WebpackSyncHook<[WebpackCompiler]>;
     readonly watchClose: WebpackSyncHook<[]>;
+    readonly compile: WebpackSyncHook<[]>;
+    readonly done: WebpackSyncHook<[unknown]>;
   };
 }
 

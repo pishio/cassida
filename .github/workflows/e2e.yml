@@ -156,10 +156,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Phase 1 covers Next.js 14 only. The Next.js 15 matrix leg
-        # lands in Phase 1.5 alongside Turbopack support.
+        # Next.js 15 is the current stable; Cassida targets that as
+        # the primary integration. Turbopack-mode coverage lands in
+        # Phase 1.5; this leg uses the default Webpack backend.
         include:
-          - next: '14'
+          - next: '15'
+            react: '19'
 
     steps:
       - uses: actions/checkout@v4
@@ -189,10 +191,11 @@ jobs:
             "$GITHUB_WORKSPACE"/tarballs/cassida-swc-plugin-*.tgz \
             "$GITHUB_WORKSPACE"/tarballs/cassida-next-plugin-*.tgz \
             "$GITHUB_WORKSPACE"/tarballs/cassida-plugin-hover-fix-*.tgz \
-            react@^18 react-dom@^18 \
+            "react@^${{ matrix.react }}" "react-dom@^${{ matrix.react }}" \
             "next@^${{ matrix.next }}" \
             typescript@^5 \
-            @types/react@^18 @types/react-dom@^18 @types/node@^20
+            "@types/react@^${{ matrix.react }}" "@types/react-dom@^${{ matrix.react }}" \
+            @types/node@^20
 
       - name: Build
         working-directory: e2e/next-app

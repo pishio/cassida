@@ -53,6 +53,8 @@ interface SyntheticCompiler {
     thisCompilation: { tap: (name: string, fn: (c: SyntheticCompilation) => void) => void };
     watchRun: { tap: (name: string, fn: () => void) => void };
     watchClose: { tap: (name: string, fn: () => void) => void };
+    compile: { tap: (name: string, fn: () => void) => void };
+    done: { tap: (name: string, fn: () => void) => void };
   };
 }
 
@@ -62,11 +64,15 @@ function createSyntheticCompiler(): {
   fireProcessAssets: () => void;
   fireWatchRun: () => void;
   fireWatchClose: () => void;
+  fireCompile: () => void;
+  fireDone: () => void;
 } {
   let thisCompilationFn: ((c: SyntheticCompilation) => void) | null = null;
   let processAssetsFn: (() => void) | null = null;
   let watchRunFn: (() => void) | null = null;
   let watchCloseFn: (() => void) | null = null;
+  let compileFn: (() => void) | null = null;
+  let doneFn: (() => void) | null = null;
 
   const compilation: SyntheticCompilation = {
     compiler: { webpack: { Compilation: { PROCESS_ASSETS_STAGE_PRE_PROCESS: -1000 } } },
@@ -96,6 +102,16 @@ function createSyntheticCompiler(): {
           watchCloseFn = fn;
         },
       },
+      compile: {
+        tap: (_name, fn) => {
+          compileFn = fn;
+        },
+      },
+      done: {
+        tap: (_name, fn) => {
+          doneFn = fn;
+        },
+      },
     },
   };
 
@@ -105,6 +121,8 @@ function createSyntheticCompiler(): {
     fireProcessAssets: () => processAssetsFn?.(),
     fireWatchRun: () => watchRunFn?.(),
     fireWatchClose: () => watchCloseFn?.(),
+    fireCompile: () => compileFn?.(),
+    fireDone: () => doneFn?.(),
   };
 }
 
@@ -121,9 +139,11 @@ describe('CassidaWebpackPlugin', () => {
     fireProcessAssets();
 
     expect(MockVirtualModulesPlugin.__writes).toHaveLength(1);
-    expect(MockVirtualModulesPlugin.__writes[0]!.path).toBe(
-      'node_modules/@cassida/next-plugin/virtual.css',
-    );
+    // The virtual module is registered at the published `virtual.css`'s
+    // absolute physical path (via `fileURLToPath`), not a hard-coded
+    // `node_modules/...` relative — symlink-safe across pnpm
+    // workspaces / yarn link / hoisted layouts.
+    expect(MockVirtualModulesPlugin.__writes[0]!.path).toMatch(/virtual\.css$/);
     expect(MockVirtualModulesPlugin.__writes[0]!.content).toMatch(/cassida virtual/);
   });
 
@@ -144,6 +164,31 @@ describe('CassidaWebpackPlugin', () => {
     expect(content).toMatch(/@layer\s+cas/);
     expect(content).toMatch(/\.cas-[0-9a-f]+/);
     expect(content).toContain('color:red');
+  });
+
+  it('suppresses subscription-driven writes while compilation is active', () => {
+    const { compiler, fireWatchRun, fireCompile, fireDone } = createSyntheticCompiler();
+    new CassidaWebpackPlugin({ layer: 'cas' }).apply(compiler as never);
+    fireWatchRun();
+
+    // Enter active compilation — subscription-driven writes must
+    // be suppressed so the IR loader's per-file `setRulesForFile`
+    // calls don't trigger N redundant `writeModule` invocations.
+    fireCompile();
+
+    const irA = JSON.stringify([{ method: 'color', args: ['red'] }]);
+    const { rules: rulesA } = rewriteIrComments(
+      `const x = /* @cassida-ir:${irA}*/ "__CAS_PLACEHOLDER_0__";`,
+    );
+    setRulesForFile('/abs/a.tsx', rulesA);
+    setRulesForFile('/abs/b.tsx', rulesA);
+    expect(MockVirtualModulesPlugin.__writes).toHaveLength(0);
+
+    // Compilation ends; the next between-compilation update goes
+    // through.
+    fireDone();
+    setRulesForFile('/abs/c.tsx', rulesA);
+    expect(MockVirtualModulesPlugin.__writes).toHaveLength(1);
   });
 
   it('re-writes the virtual content when the store fires between compilations', () => {

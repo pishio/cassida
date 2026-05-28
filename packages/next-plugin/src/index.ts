@@ -303,17 +303,31 @@ function injectIrLoader(
   };
   const rules = (config.module?.rules ?? []) as unknown[];
   const existingPlugins = (config.plugins ?? []) as unknown[];
-  // The webpack plugin owns the virtual `@cassida/next-plugin/virtual.css`
-  // module the consumer imports from `app/layout.tsx`. The aggregated
-  // `@layer cas` CSS reaches the bundle through Next.js's standard CSS
-  // pipeline once this is registered.
+  // Next.js invokes the user's `webpack` hook once per compilation
+  // (client + server + edge + middleware in App Router). A naive
+  // append would land N CassidaWebpackPlugin instances on the same
+  // shared config object, each with its own listener wired into
+  // the singleton store — redundant rewrites at best, double-fire
+  // bugs at worst. Check for an existing instance before append,
+  // both `instanceof` (same realm) and constructor-name (different
+  // realm — bundled / re-exported / hoisted copies).
+  const hasCassidaPlugin = existingPlugins.some(
+    (p) =>
+      p instanceof CassidaWebpackPlugin ||
+      (typeof p === 'object' &&
+        p !== null &&
+        (p as { constructor?: { name?: string } }).constructor?.name ===
+          'CassidaWebpackPlugin'),
+  );
   return {
     ...config,
     module: {
       ...(config.module ?? {}),
       rules: [...rules, loaderRule],
     },
-    plugins: [...existingPlugins, new CassidaWebpackPlugin()],
+    plugins: hasCassidaPlugin
+      ? existingPlugins
+      : [...existingPlugins, new CassidaWebpackPlugin()],
   };
 }
 
