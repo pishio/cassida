@@ -55,17 +55,28 @@ pub type ChainRoots = HashSet<Atom>;
 pub fn walk_chain(expr: &Expr, roots: &ChainRoots) -> Option<Vec<Op>> {
     let mut ops: Vec<Op> = Vec::new();
     let mut cursor = peel_props(expr);
+    // `first` distinguishes the chain root from intermediate steps.
+    // A bare identifier (e.g. `{...cas}` — the user forgot the `()`)
+    // would otherwise be accepted as an empty chain on the very
+    // first iteration and silently rewritten to a placeholder. We
+    // require either a `cas()` call or at least one method step
+    // before a bare callback-param Ident is allowed.
+    let mut first = true;
     loop {
         cursor = peel_parens(cursor);
         match cursor {
-            Expr::Call(call) => match step_call(call, roots, &mut ops)? {
-                StepOutcome::Continue(next) => cursor = next,
-                StepOutcome::Root => break,
-            },
+            Expr::Call(call) => {
+                first = false;
+                match step_call(call, roots, &mut ops)? {
+                    StepOutcome::Continue(next) => cursor = next,
+                    StepOutcome::Root => break,
+                }
+            }
             // Bare-identifier root — the callback-param case: a chain
             // body like `c.color('red')` walks back to just `c`, which
-            // is the callback's parameter and lives in `roots`.
-            Expr::Ident(ident) if roots.contains(&ident.sym) => break,
+            // is the callback's parameter and lives in `roots`. Only
+            // valid when at least one method step has been consumed.
+            Expr::Ident(ident) if !first && roots.contains(&ident.sym) => break,
             _ => return None,
         }
     }
@@ -600,6 +611,17 @@ mod tests {
     #[test]
     fn dynamic_arg_bails_to_none() {
         let expr = parse_expr("cas().color(theme.brand)");
+        assert!(walk_chain(&expr, &cas_roots()).is_none());
+    }
+
+    /// `{...cas}` (the user forgot the `()`) used to be accepted as
+    /// an empty chain because the loop matched the Ident-root branch
+    /// on the first iteration and broke immediately. Reject bare
+    /// identifiers so the spread falls through to runtime and the
+    /// chain never gets a className placeholder.
+    #[test]
+    fn bare_chain_root_identifier_without_call_bails() {
+        let expr = parse_expr("cas");
         assert!(walk_chain(&expr, &cas_roots()).is_none());
     }
 
