@@ -212,6 +212,14 @@ function applyCassida(
     ? [...existingSwcPlugins]
     : [...existingSwcPlugins, [wasm, {}]];
 
+  // `CssEmitter`'s `layer` field defaults to `'fss'` (a vestige of
+  // the pre-rename project name); for `withCassida` callers we want
+  // `'cas'` — matching `defaultConfig.layer`, the README, and the
+  // documented `@layer cas { ... }` contract every consumer asserts
+  // against. Honour `options.layer` if the user explicitly set one
+  // (string for custom name, `null` for "no @layer wrap").
+  const layer: string | null = options.layer ?? 'cas';
+
   // 2. Wrap user's `webpack` hook to inject the IR-comment loader.
   const userWebpack = cfg.webpack;
   const loaderExclude =
@@ -219,7 +227,7 @@ function applyCassida(
   const wrappedWebpack: NextWebpackHook = (config, ctx) => {
     const base =
       typeof userWebpack === 'function' ? userWebpack(config, ctx) : config;
-    return injectIrLoader(base, loaderOptions, loaderExclude);
+    return injectIrLoader(base, loaderOptions, loaderExclude, { layer });
   };
 
   return {
@@ -295,6 +303,7 @@ function injectIrLoader(
   config: WebpackConfig,
   options: IrLoaderOptions,
   exclude: RegExp | string | ((path: string) => boolean) | null,
+  webpackPluginOptions: { layer: string | null },
 ): WebpackConfig {
   const loaderRule = {
     test: /\.[cm]?[jt]sx?$/,
@@ -337,7 +346,7 @@ function injectIrLoader(
     },
     plugins: hasCassidaPlugin
       ? existingPlugins
-      : [...existingPlugins, new CassidaWebpackPlugin()],
+      : [...existingPlugins, new CassidaWebpackPlugin(webpackPluginOptions)],
   };
 }
 
