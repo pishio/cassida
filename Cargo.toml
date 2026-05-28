@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["packages/swc-plugin"]
+members = ["packages/swc-plugin", "packages/swc-plugin-next"]
 
 [workspace.package]
 edition = "2021"

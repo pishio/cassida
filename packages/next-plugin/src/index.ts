@@ -258,15 +258,25 @@ function getRequire(): NodeRequire {
 }
 
 /**
- * Resolve the WASM artefact path via the loader subpath. Avoids
- * `require.resolve('@cassida/swc-plugin')` directly because the
- * package's `main` points at the WASM file — some toolchains
- * stumble on that.
+ * Resolve the Next.js-targeted WASM artefact path via the loader
+ * subpath. `@cassida/swc-plugin` ships two builds (modern for
+ * Rspack / @swc/core mainline, next for `@next/swc`) — we deliberately
+ * pick `wasmPathNext` because the SWC plugin ABI is version-bound to
+ * the host's swc_core and Next.js 15.x pins swc_core 35.0.0, which
+ * the modern (66.x) WASM is not ABI-compatible with. Loading the
+ * wrong build manifests as "failed to invoke plugin" on every file.
+ *
+ * Going through the `loader` subpath avoids
+ * `require.resolve('@cassida/swc-plugin')` — the package's `main`
+ * points at the modern WASM file directly and some toolchains stumble
+ * on that.
  */
 function resolveWasmPath(): string {
   const req = getRequire();
-  const loaderEntry = req('@cassida/swc-plugin/loader') as { wasmPath: string };
-  return loaderEntry.wasmPath;
+  const loaderEntry = req('@cassida/swc-plugin/loader') as {
+    wasmPathNext: string;
+  };
+  return loaderEntry.wasmPathNext;
 }
 
 type SwcPluginEntry = [string, Record<string, unknown>];
