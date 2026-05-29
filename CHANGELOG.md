@@ -4,6 +4,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-05-29
+
 ### Added
 
 - **`@cassida/swc-plugin` and `@cassida/next-plugin` scaffolds** — two new workspace packages laying the groundwork for Next.js (App Router included) integration via a Rust-authored SWC plugin. Phase 1 ships the no-op plugin transform and the `withCassida()` config wrapper API surface; subsequent commits fill in the chain walker, IR-comment loader, and CSS pipeline. Architecturally the plugin emits the existing `Op[]` IR as a comment annotation that the Node-side loader feeds to `@cassida/compiler`, so Babel-parsed and SWC-parsed files hash to identical class names. Both packages are marked private until Phase 1 is feature-complete.
@@ -85,7 +87,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - Initial public release of `@cassida/core`, `@cassida/compiler`, `@cassida/parser`, `@cassida/vite-plugin`, `@cassida/recommended`, `@cassida/plugin-hover-fix`, `@cassida/plugin-conditional`. Single Class Principle, LIFO collapse, build-time class table, deterministic hashing, mobile-first media sort, `@layer cas` cascade-layer wrapping, csstype-typed canonical chain methods + mdn-data-derived generated chain methods, `cas.unsafe` / `.set` escape paths, `shorthand-policy` guard.
 
-[Unreleased]: https://github.com/pishio/cassida/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/pishio/cassida/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/pishio/cassida/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/pishio/cassida/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pishio/cassida/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pishio/cassida/compare/v0.4.0...v0.5.0
