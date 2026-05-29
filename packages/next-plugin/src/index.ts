@@ -112,6 +112,29 @@ export interface NextCassidaOptions extends CassConfig {
    * a predicate, or `null` to disable.
    */
   readonly loaderExclude?: RegExp | string | ((path: string) => boolean) | null;
+
+  /**
+   * How the plugin bridges rules across Next.js's parallel webpack
+   * compilers (Client, Server, Edge, Middleware).
+   *
+   *   - `'shared-singleton'` (default) — all four compilers feed into
+   *     the in-process module-singleton rule store. The Client
+   *     compiler's `processAssets` drains the union when it writes
+   *     `virtual.css`. This is the path Server-only Server Components
+   *     take to reach the browser stylesheet. See
+   *     `packages/next-plugin/src/store.ts` for the contract.
+   *
+   *   - `'sidecar-file'` (Phase 2, not yet implemented) — writes
+   *     per-compiler rule snapshots to a filesystem sidecar and reads
+   *     the union from there. Removes the module-singleton at the
+   *     cost of build-time IO. Throws at config time if selected
+   *     today so consumers don't silently fall back.
+   *
+   * Defaults to `'shared-singleton'`. Leave unset unless you have a
+   * specific reason to opt out — every shipped Next.js integration
+   * test relies on the singleton bridge.
+   */
+  readonly multiCompilerMode?: 'shared-singleton' | 'sidecar-file';
 }
 
 /**
@@ -179,6 +202,29 @@ function applyCassida(
   cfg: NextConfig,
   options: NextCassidaOptions,
 ): NextConfig {
+  // `multiCompilerMode` is forward-looking. Only the singleton bridge
+  // is implemented today — fail loudly at config time on the other
+  // value so consumers don't silently fall back. See the option's
+  // JSDoc for the architectural background.
+  const multiCompilerMode = options.multiCompilerMode ?? 'shared-singleton';
+  if (multiCompilerMode === 'sidecar-file') {
+    throw new Error(
+      '[cassida/next-plugin] multiCompilerMode: "sidecar-file" is not yet ' +
+        'implemented (Phase 2). Use "shared-singleton" (the default) or omit ' +
+        'the option entirely.',
+    );
+  }
+  if (
+    multiCompilerMode !== 'shared-singleton' &&
+    multiCompilerMode !== 'sidecar-file'
+  ) {
+    throw new Error(
+      `[cassida/next-plugin] multiCompilerMode: unknown value ${JSON.stringify(
+        multiCompilerMode,
+      )}. Allowed: "shared-singleton" (default), "sidecar-file" (Phase 2 stub).`,
+    );
+  }
+
   // `options.plugins` is the declarative form (`{ hoverFix: true, ... }`);
   // resolve each enabled flag into the actual `CassPlugin` instance and
   // merge with the inline `options.cssPlugins` list. Without this the

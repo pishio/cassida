@@ -4,6 +4,12 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- **`@cassida/next-plugin` multi-compiler bridge — documentation reframe + observability** — the module-singleton rule store in `packages/next-plugin/src/store.ts` was framed in 0.8.0 as a "documented race". That framing was backwards. The singleton is a deliberate **cross-compiler bridge**: Server-only Server Components compile to `cas-XXXXXXXX` class names that ride the RSC payload to the browser, and the browser's `<link rel="stylesheet">` is sourced exclusively from the Client compiler. The shared in-process map is the only path Server-only rules have to reach the Client compiler's emitted `virtual.css`. Top-of-file comments in `store.ts` and `webpack-plugin.ts` are rewritten accordingly; the compiler matrix (Client / Server / Edge / Middleware) is documented inline. Removed the `seen.length === 0 && NODE_ENV === 'production'` stderr heads-up — it fired as a false positive for every Edge / Middleware compiler whose graph has no `cas()` chains. Added a `DEBUG=cassida:store` / `DEBUG=cassida:plugin` opt-in trace (env-gated, zero cost when off) that logs each write / delete / read with file path, compiler name, and rule count. The escape-hatch env var `CASSIDA_QUIET_RACE_WARNING` is now a no-op (kept undocumented for backward-compatible removal).
+- **`@cassida/next-plugin` `multiCompilerMode` option** — new `NextCassidaOptions.multiCompilerMode` field accepts `'shared-singleton'` (default, current behaviour) or `'sidecar-file'` (Phase 2 stub — throws at config time with a clear "not yet implemented" message). Signals that the cross-compiler bridge architecture is open to future evolution while locking in the current default.
+- **e2e/next-app/ assertions** — `assert.mjs` now requires that the rendered HTML / RSC payload carries a `<link rel="stylesheet" href="/_next/static/css/<hash>.css">` and that the referenced asset exists on disk. Catches regressions where the virtual.css emits but Next.js's CSS-link injection silently drops it (e.g. `import '@cassida/next-plugin/virtual.css'` path drift, exports-map regression, symlink mismatch).
+
 ## [0.8.0] — 2026-05-29
 
 ### Added

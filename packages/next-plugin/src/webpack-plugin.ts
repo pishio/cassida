@@ -7,8 +7,7 @@
  * pipeline handles the file like any other CSS import — bundling,
  * minification, chunking, and HMR all come along for free.
  *
- * Resolves the "consumer imports virtual module BEFORE the IR
- * loader populates the store" race in two passes per compilation:
+ * # Two passes per compilation
  *
  *   1. `compiler.hooks.thisCompilation` — seed the placeholder so
  *      the resolver finds the module when the graph is being built.
@@ -19,12 +18,44 @@
  *      store via `buildVirtualCss(...)` and overwrite the virtual
  *      content BEFORE CSS minimisers / chunkers run.
  *
- * For dev / HMR: `compiler.hooks.watchRun` subscribes to
- * `store.subscribe()`, so a between-compilation store update (rare,
- * usually from an external watcher) re-writes the virtual module's
- * content and `webpack-virtual-modules` propagates the change as a
- * file-change event through webpack's watcher. Next.js's CSS HMR
- * picks it up — no `module.hot.accept` needed on the consumer side.
+ * # Multi-compiler bridge (the important part)
+ *
+ * Next.js's App Router runs four parallel webpack compilers: Client,
+ * Server, Edge, Middleware. `CassidaWebpackPlugin` is installed in
+ * every one of them. The rule store (`./store.ts`) is a deliberate
+ * module-singleton shared across all four — see that file's top
+ * comment for the full rationale.
+ *
+ * The browser-facing stylesheet is whichever asset Next.js converts
+ * into `<link rel="stylesheet" href="...static/css/...">`. Next.js
+ * sources those links from the Client compiler's CSS assets. So when
+ * the Client compiler's `processAssets` runs, `allRules()` returns
+ * the UNION of rules registered by every compiler — including
+ * Server-only Server Components that never entered the Client graph.
+ * That's the bridge.
+ *
+ * # The empty-store case is normal
+ *
+ * `seen.length === 0` is NOT a race indicator. Real cases:
+ *
+ *   - Edge / Middleware compilers whose graphs only touch
+ *     `middleware.ts` and contain no `cas()` chains at all.
+ *   - The Client compiler in an app where every styled element is a
+ *     Server Component (all rules registered by the Server compiler,
+ *     none directly by Client). The bridge merges them on read, so
+ *     this isn't actually empty by the time `processAssets` runs in
+ *     practice, but a strictly-ordered scheduler could land Client
+ *     ahead of Server. Even then the resulting `virtual.css` is
+ *     empty in the Client bundle but Next.js's separate CSS pipeline
+ *     still emits a stylesheet — and the next compilation (HMR /
+ *     subsequent build pass) fills it.
+ *   - Fixtures with no styling at all (the initial scaffolding case).
+ *
+ * A previous heuristic stderr warning gated on `seen.length === 0 &&
+ * NODE_ENV === 'production'` is removed: it produced false positives
+ * in every Edge / Middleware build and never caught a real failure
+ * mode. Use `DEBUG=cassida:store` and `DEBUG=cassida:plugin` instead
+ * to see the actual read / write sequence if you suspect a problem.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -61,6 +92,16 @@ const VIRTUAL_MODULE_PATH = fileURLToPath(
  * in the graph). */
 const PLACEHOLDER_CONTENT = '/* cassida virtual — populated post-build */\n';
 
+/**
+ * DEBUG-namespace gate. See `store.ts` for the rationale on the
+ * substring match. `DEBUG=cassida:*` enables both `cassida:store`
+ * and `cassida:plugin`.
+ */
+function pluginTraceEnabled(): boolean {
+  const dbg = process.env.DEBUG;
+  return typeof dbg === 'string' && dbg.includes('cassida:plugin');
+}
+
 export class CassidaWebpackPlugin {
   constructor(private readonly options: VirtualCssOptions = {}) {}
 
@@ -74,18 +115,13 @@ export class CassidaWebpackPlugin {
     // exactly once per compilation, at `processAssets` stage
     // `PRE_PROCESS` (`-1000`). All IR-loader passes for this
     // compilation have completed by this stage, so `store.allRules()`
-    // is complete. We deliberately don't subscribe to store updates
-    // between compilations — in Next.js's parallel Server / Client
-    // compilations the store is a shared singleton, and a
-    // subscription-driven write would race with whichever compiler
-    // is mid-build. The HMR loop kicks a fresh compilation on every
-    // source edit anyway, so this hook covers dev too.
+    // returns the cross-compiler union (see ./store.ts).
     //
-    // Phase 1.x: the multi-compiler race remains — the Client
-    // compiler's `processAssets` may fire before the Server
-    // compiler's loaders have finished populating the store with
-    // Server-only rules. Mitigation needs a webpack child-compiler
-    // architecture and is out of scope for Phase 1.
+    // We deliberately don't subscribe to store updates between
+    // compilations — Next.js HMR kicks a fresh compilation on every
+    // source edit anyway, so this hook covers dev too. A
+    // subscription-driven write would also race with parallel
+    // compilers mid-build.
     compiler.hooks.thisCompilation.tap(
       'CassidaWebpackPlugin',
       (compilation) => {
@@ -103,34 +139,17 @@ export class CassidaWebpackPlugin {
                 : buildVirtualCss(this.options);
             virtual.writeModule(VIRTUAL_MODULE_PATH, content);
 
-            // Heads-up for the Phase 1.x multi-compiler race. If
-            // `seen.length === 0` fires in a production build the
-            // emitted `virtual.css` is the placeholder, which means
-            // any cas() chains in *this* compiler's graph never
-            // reached the store — most likely the Server compiler
-            // wrote rules the Client compiler can't see yet. Without
-            // this signal the failure mode is silent: Server-only
-            // styles missing from the Client bundle with no build
-            // warning.
-            //
-            // Gates:
-            //   - NODE_ENV === 'production'  — skip dev (empty
-            //     intermediate compilations are normal) and tests
-            //     (vitest sets NODE_ENV='test').
-            //   - !CASSIDA_QUIET_RACE_WARNING — escape hatch for
-            //     legitimately empty fixtures.
-            if (
-              seen.length === 0 &&
-              process.env.NODE_ENV === 'production' &&
-              !process.env.CASSIDA_QUIET_RACE_WARNING
-            ) {
+            // Lightweight per-compilation trace. Compiler name is
+            // structural-typed `string | undefined` because we don't
+            // strong-type the Compiler interface; reading via `any`
+            // cast keeps the trace path free of webpack types. Off
+            // by default (zero overhead unless DEBUG matches).
+            if (pluginTraceEnabled()) {
+              const compilerName =
+                (compiler as unknown as { options?: { name?: string } })
+                  .options?.name ?? '<unnamed>';
               process.stderr.write(
-                '[cassida] CassidaWebpackPlugin: virtual.css written empty ' +
-                  'for this compilation. If the consumer has cas() chains, ' +
-                  "this is most likely the Next.js multi-compiler race " +
-                  '(Phase 1.x) — Server-only styles may not reach the ' +
-                  'Client bundle. Set CASSIDA_QUIET_RACE_WARNING=1 to ' +
-                  'silence (e.g. for fixtures with no chains).\n',
+                `[cassida:plugin] processAssets compiler=${compilerName} rules=${seen.length}\n`,
               );
             }
           },

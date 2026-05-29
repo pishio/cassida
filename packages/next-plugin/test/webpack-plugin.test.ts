@@ -124,12 +124,17 @@ describe('CassidaWebpackPlugin', () => {
     expect(content).toContain('color:red');
   });
 
-  // The multi-compiler race telemetry (`webpack-plugin.ts` →
-  // process.stderr.write) fires only under
-  // NODE_ENV=production, and is the user-facing signal that a
-  // Phase 1.x race actually bit. Drive it by temporarily setting
-  // NODE_ENV and capturing stderr.
-  it('emits a stderr heads-up when production build sees an empty store', () => {
+  // The v0.8.0 heads-up gated on `NODE_ENV === 'production' &&
+  // seen.length === 0` was removed: in real Next.js builds every
+  // Edge / Middleware compiler whose graph doesn't import any
+  // `cas()` chain trips that condition harmlessly. The Browser API
+  // contract is that an empty store at `processAssets` is a normal
+  // outcome for compilers whose graph has no styled markup —
+  // Server-only rules still reach the Client stylesheet via the
+  // shared singleton (see `store.ts`). This test pins that
+  // quietness so a future regression that adds the warning back
+  // surfaces immediately.
+  it('stays quiet under NODE_ENV=production when the store is empty', () => {
     const writes: string[] = [];
     const origWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((chunk: string | Uint8Array): boolean => {
@@ -147,31 +152,33 @@ describe('CassidaWebpackPlugin', () => {
       process.env.NODE_ENV = prevEnv;
       process.stderr.write = origWrite;
     }
-    expect(writes.join('')).toMatch(/virtual\.css written empty/);
+    expect(writes.join('')).toBe('');
   });
 
-  it('suppresses the empty-store warning when CASSIDA_QUIET_RACE_WARNING is set', () => {
+  // DEBUG=cassida:plugin opts into per-compilation tracing. The
+  // event line names the compiler (via `compiler.options.name`) and
+  // the rule count drained from the store. Off by default — no
+  // production noise unless explicitly enabled.
+  it('emits a DEBUG trace line when cassida:plugin is enabled', () => {
     const writes: string[] = [];
     const origWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = ((chunk: string | Uint8Array): boolean => {
       writes.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString());
       return true;
     }) as typeof process.stderr.write;
-    const prevEnv = process.env.NODE_ENV;
-    const prevQuiet = process.env.CASSIDA_QUIET_RACE_WARNING;
-    process.env.NODE_ENV = 'production';
-    process.env.CASSIDA_QUIET_RACE_WARNING = '1';
+    const prevDebug = process.env.DEBUG;
+    process.env.DEBUG = 'cassida:plugin';
     try {
       const { compiler, fireThisCompilation, fireProcessAssets } = createSyntheticCompiler();
       new CassidaWebpackPlugin({ layer: 'cas' }).apply(compiler as never);
       fireThisCompilation();
       fireProcessAssets();
     } finally {
-      process.env.NODE_ENV = prevEnv;
-      if (prevQuiet === undefined) delete process.env.CASSIDA_QUIET_RACE_WARNING;
-      else process.env.CASSIDA_QUIET_RACE_WARNING = prevQuiet;
+      if (prevDebug === undefined) delete process.env.DEBUG;
+      else process.env.DEBUG = prevDebug;
       process.stderr.write = origWrite;
     }
-    expect(writes.join('')).not.toMatch(/virtual\.css written empty/);
+    expect(writes.join('')).toMatch(/\[cassida:plugin\] processAssets/);
+    expect(writes.join('')).toMatch(/rules=0/);
   });
 });

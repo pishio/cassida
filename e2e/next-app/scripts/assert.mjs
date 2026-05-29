@@ -1,16 +1,22 @@
 /**
  * Post-build assertions for the Next.js e2e consumer.
  *
- * Verifies six contracts of the SWC-port Phase-1 wiring:
+ * Verifies seven contracts of the SWC-port Phase-1 wiring:
  *
  *   1. Build output exists at `.next/static` + `.next/server/app`
  *   2. CSS contains `@layer cas { ... }` + at least one `.cas-XXXXXXXX`
  *   3. Rendered RSC / HTML carry `class(Name)?="...cas-XXXXXXXX..."`
- *   4. Client JS chunks contain NO `cas(` / `css(` / `cassida(` runtime
+ *   4. Rendered RSC / HTML carry a `<link rel="stylesheet"
+ *      href=".../static/css/...">` whose target exists under
+ *      `.next/static/css/` — proves Next.js's CSS-link injection
+ *      actually ships the virtual.css output (catches the case where
+ *      the import path or exports map regresses and Next.js silently
+ *      drops the stylesheet)
+ *   5. Client JS chunks contain NO `cas(` / `css(` / `cassida(` runtime
  *      calls — zero-runtime contract
- *   5. NO `__CAS_PLACEHOLDER_<N>__` literal under `.next/` — proves
+ *   6. NO `__CAS_PLACEHOLDER_<N>__` literal under `.next/` — proves
  *      the IR loader substituted every placeholder
- *   6. Compiler-side runtime didn't leak into the client bundle
+ *   7. Compiler-side runtime didn't leak into the client bundle
  *      (no `compileOps`, `defaultRegistry`, `createHash`, `node:crypto`)
  *
  * Each failure prints a `✗ msg` and increments a counter; we exit
@@ -129,7 +135,51 @@ if (serverFiles.length === 0) {
   fail('rendered HTML/RSC missing cas-XXXXXXXX class attributes');
 }
 
-// 4. Zero-runtime: no bare cas() / css() / cassida() literal calls in
+// 4. Next.js's CSS-link injection actually ships virtual.css.
+//
+// Verifying that CSS files exist under .next/static/css and that the
+// rendered class names line up is necessary but not sufficient — if
+// the consumer's `import '@cassida/next-plugin/virtual.css'` ever
+// regresses (exports-map drift, symlink mismatch, virtual-module
+// path collision), Next.js silently emits no <link> for it and the
+// browser paints unstyled markup. The CSS file is on disk; nothing
+// in the rendered HTML points at it.
+//
+// So look for the link tag explicitly. App Router prerenders carry
+// it as `<link rel="stylesheet" href="/_next/static/css/<hash>.css"
+// .../>` in `index.html`, and the RSC payload references the same
+// asset path under `"stylesheet"` markers. Match the asset path
+// (cross-format: HTML uses unescaped quotes, RSC encodes it inside
+// the flight payload) and confirm the file it points at actually
+// exists under .next/static/css.
+const STYLESHEET_HREF_RE =
+  /\/_next\/static\/css\/[A-Za-z0-9_-]+\.css/g;
+const stylesheetHrefs = new Set(serverAll.match(STYLESHEET_HREF_RE) ?? []);
+if (stylesheetHrefs.size === 0) {
+  fail(
+    'rendered HTML/RSC missing <link rel="stylesheet"> reference to ' +
+      '/_next/static/css/*.css — Next.js did not inject the virtual.css ' +
+      'stylesheet (check the layout.tsx import path + exports map)',
+  );
+} else {
+  // Each href must resolve to an actual file under .next/static/css.
+  const cssNamesOnDisk = new Set(
+    walk(join(STATIC_DIR, 'css'), ['.css']).map((p) => p.split('/').pop()),
+  );
+  const referenced = [...stylesheetHrefs].map((h) => h.split('/').pop());
+  const missing = referenced.filter((name) => !cssNamesOnDisk.has(name));
+  if (missing.length > 0) {
+    fail(
+      `stylesheet <link> references ${missing.length} file(s) absent from .next/static/css: ${missing.join(', ')}`,
+    );
+  } else {
+    pass(
+      `rendered HTML/RSC carries <link rel="stylesheet"> for ${referenced.length} on-disk CSS asset(s)`,
+    );
+  }
+}
+
+// 5. Zero-runtime: no bare cas() / css() / cassida() literal calls in
 // client chunks. The regex is intentionally narrow — it matches the
 // runtime call shape but not the IR JSON's `args:["…"]`, the css class
 // strings, or property names. We assert no MATCH at all.
@@ -144,14 +194,14 @@ if (clientJsAll.length === 0) {
   pass('client JS contains no runtime cas() / css() / cassida() calls');
 }
 
-// 5. No placeholder leakage anywhere under .next
+// 6. No placeholder leakage anywhere under .next
 if (/__CAS_PLACEHOLDER_\d+__/.test(allNextAll)) {
   fail('placeholder string leaked into .next — IR loader did not substitute every chain');
 } else {
   pass('no __CAS_PLACEHOLDER_ literal anywhere under .next');
 }
 
-// 6a. Compiler-runtime purity in the client bundle — symbol grep.
+// 7a. Compiler-runtime purity in the client bundle — symbol grep.
 // SWC's prod minifier renames function / const identifiers, so most
 // of these become weak signals (`compileOps` → `cO`-style ident).
 // `node:crypto` survives because it's a webpack-externalised bare
@@ -174,7 +224,7 @@ if (found.length > 0) {
   pass('compiler runtime not leaked into client JS (symbol grep)');
 }
 
-// 6b. Compiler-runtime purity — size budget. Complements the symbol
+// 7b. Compiler-runtime purity — size budget. Complements the symbol
 // grep above by catching the false-negative case where the minifier
 // renamed every checkable identifier. A full `@cassida/compiler`
 // leak (canonicalizer + emitter + stylis + registry expansion) adds
