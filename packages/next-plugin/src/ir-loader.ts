@@ -104,41 +104,43 @@ function cassidaIrLoader(
   this: WebpackLoaderContext,
   source: string,
 ): string {
-  // The loader has a side-effect — it mutates a per-compilation
-  // store. Webpack's persistent cache would otherwise skip this
-  // loader on cold starts when the file's bytes haven't changed,
-  // and the new compilation's bag would be missing those files'
-  // contributions to the CSS bundle. `cacheable(false)` forces the
-  // loader to re-run every build; the inner `compileOps` work is
-  // itself cheap and deterministic, so the cost is acceptable.
+  // The loader has a side-effect — it mutates a per-compiler store.
+  // Webpack's persistent cache would otherwise skip this loader on
+  // cold starts when the file's bytes haven't changed, and the new
+  // compiler's bag would be missing those files' contributions to
+  // the CSS bundle. `cacheable(false)` forces the loader to re-run
+  // every build; the inner `compileOps` work is itself cheap and
+  // deterministic, so the cost is acceptable.
   //
   // Phase 1.x follow-up: migrate to `module.buildInfo` so the
   // loader can stay cacheable (rules ride along with the module
   // through webpack's cache), and harvest at `processAssets` from
-  // `compilation.modules` instead of an out-of-band store. The
-  // current `_compilation`-keyed store is the minimum change that
-  // resolves the multi-compiler race without rewiring buildInfo.
+  // `compilation.modules` instead of an out-of-band store.
   this.cacheable?.(false);
 
   const options = (typeof this.getOptions === 'function'
     ? (this.getOptions() as IrLoaderOptions | undefined)
     : undefined) ?? {};
 
-  // `this._compilation` is the parent `Compilation` instance —
-  // underscored in webpack's source for "internal", but the de
-  // facto stable handle for "which compiler am I in". Without it
-  // the loader can't isolate Server / Client writes; bail visibly
-  // rather than silently sending rules to a default key that would
-  // recreate the race.
+  // Key the store off the parent `Compiler`, not the per-call
+  // `Compilation`. Next.js spawns child compilations for CSS
+  // extraction etc. and `this._compilation` could be one of those
+  // children, while `CassidaWebpackPlugin.processAssets` reads on
+  // the main compilation. Both share the same `Compiler` instance
+  // (`this._compilation.compiler`), so keying off it makes loader
+  // writes and plugin reads agree on the bag — while still
+  // isolating Server and Client (those are distinct Compiler
+  // instances under Next.js's parallel-compiler model).
   const compilation = this._compilation;
-  if (compilation === undefined) {
+  const compiler = compilation?.compiler;
+  if (compiler === undefined) {
     throw new Error(
       '[cassida/next-plugin] IR loader: webpack LoaderContext has no ' +
-        '`_compilation` field. Loader cannot route compiled rules to ' +
-        'the per-compilation store. If you are running the loader ' +
-        'outside webpack (unit tests, a non-webpack host), import ' +
-        '`rewriteIrComments` from this package and drive the rewrite ' +
-        'directly.',
+        '`_compilation.compiler` field. Loader cannot route compiled ' +
+        'rules to the per-compiler store. If you are running the ' +
+        'loader outside webpack (unit tests, a non-webpack host), ' +
+        'import `rewriteIrComments` from this package and drive the ' +
+        'rewrite directly.',
     );
   }
 
@@ -151,12 +153,12 @@ function cassidaIrLoader(
   // re-transforms would otherwise keep contributing rules to the CSS
   // bundle until the build was restarted.
   if (!source.includes('@cassida-ir:')) {
-    deleteRulesForFile(compilation, this.resourcePath);
+    deleteRulesForFile(compiler, this.resourcePath);
     return source;
   }
 
   const { code, rules } = rewriteIrComments(source, options);
-  setRulesForFile(compilation, this.resourcePath, rules);
+  setRulesForFile(compiler, this.resourcePath, rules);
   return code;
 }
 
@@ -170,7 +172,7 @@ export default cassidaIrLoader;
  */
 interface WebpackLoaderContext {
   readonly resourcePath: string;
-  readonly _compilation?: object;
+  readonly _compilation?: { readonly compiler: object };
   getOptions?: () => unknown;
   cacheable?: (flag: boolean) => void;
 }

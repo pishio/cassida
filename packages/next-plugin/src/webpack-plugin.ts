@@ -21,11 +21,12 @@
  *      virtual content before CSS minifiers / chunkers run.
  *
  * Multi-compiler safety: in Next.js's parallel Server / Client
- * compilations the per-compilation `Compilation` object keys the
- * store, so Server- and Client-compiler writes never collide and
- * the previous v0.8.0 race (Client `processAssets` firing before
- * Server loaders complete) is structurally impossible. Each
- * compilation only sees rules written by its own loader passes.
+ * compilations the parent `Compiler` keys the store, so Server- and
+ * Client-compiler writes never collide and the previous v0.8.0 race
+ * (Client `processAssets` firing before Server loaders complete) is
+ * structurally impossible. Child compilations under the same
+ * compiler share the bag so the IR loader can run in a CSS-extract
+ * child while the plugin reads on the parent.
  *
  * The v0.8.0 `CASSIDA_QUIET_RACE_WARNING` env var is now a no-op —
  * the race telemetry it muted no longer fires.
@@ -84,11 +85,15 @@ export class CassidaWebpackPlugin {
             stage: Compilation.PROCESS_ASSETS_STAGE_PRE_PROCESS,
           },
           () => {
-            const seen = Array.from(allRules(compilation));
+            // Read against the captured `compiler` — the IR loader
+            // wrote against the same key via `this._compilation.compiler`,
+            // including from any child compilations webpack spawned
+            // off this compiler for CSS extraction.
+            const seen = Array.from(allRules(compiler));
             const content =
               seen.length === 0
                 ? PLACEHOLDER_CONTENT
-                : buildVirtualCss(compilation, this.options);
+                : buildVirtualCss(compiler, this.options);
             virtual.writeModule(VIRTUAL_MODULE_PATH, content);
           },
         );

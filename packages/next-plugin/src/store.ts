@@ -1,59 +1,61 @@
 /**
- * Per-compilation rule store. Replaces v0.8.0's module-singleton
- * store, which couldn't distinguish Server-compiler and Client-
- * compiler writes in Next.js's parallel-compiler model and exposed a
+ * Per-compiler rule store. Replaces v0.8.0's module-singleton store,
+ * which couldn't distinguish Server-compiler and Client-compiler
+ * writes in Next.js's parallel-compiler model and exposed a
  * documented multi-compiler race where the Client compiler's
  * `processAssets` could fire before the Server compiler had finished
  * populating the store with Server-only rules.
  *
- * Keyed by the parent webpack `Compilation`, which the IR loader
- * passes in via `this._compilation` and the `CassidaWebpackPlugin`
- * passes in from the `thisCompilation` hook. Each compilation owns
- * its own `Map<filename, CompiledRule[]>` so Server and Client
- * compilers never share state; the bag is dropped automatically
- * when the compilation object becomes unreachable.
+ * Keyed by the parent webpack `Compiler`, not the `Compilation`:
+ * Next.js spawns child compilations off the main Compiler for CSS
+ * extraction and similar passes, and the IR loader can end up
+ * running in a child while `CassidaWebpackPlugin.processAssets`
+ * reads on the parent. Per-compiler keying makes the two agree
+ * (all of a compiler's children write into one bag) while still
+ * isolating Server- and Client-side state — those are distinct
+ * Compiler instances under Next.js's parallel-compiler architecture.
  *
  * Phase 1.x limitation that remains — file deletion / rename: a
- * deleted source file's previous entry stays in its compilation's
- * bag until that compilation ends, because the loader doesn't re-run
- * on a path that no longer exists. In practice each `next build`
- * starts a fresh compilation so the issue is dev-only; the proper
- * fix is to harvest rules from `compilation.moduleGraph` at
- * `processAssets` time. Tracked for a follow-up.
+ * deleted source file's previous entry stays in its compiler's bag
+ * until that compiler ends, because the loader doesn't re-run on a
+ * path that no longer exists. In practice each `next build` starts
+ * a fresh compiler so the issue is dev-only; the proper fix is to
+ * harvest rules from `compilation.moduleGraph` at `processAssets`
+ * time. Tracked for a follow-up.
  */
 import type { CompiledRule } from '@cassida/compiler';
 
 type FileMap = Map<string, readonly CompiledRule[]>;
 
 /** Used by `__resetForTests` so each test gets a fresh key without
- * having to thread a synthetic compilation through every assertion. */
-const TEST_COMPILATION_KEY: object = { __cassidaTestSingleton: true };
+ * having to thread a synthetic compiler through every assertion. */
+const TEST_COMPILER_KEY: object = { __cassidaTestSingleton: true };
 
-const perCompilation = new WeakMap<object, FileMap>();
+const perCompiler = new WeakMap<object, FileMap>();
 
-function bagFor(compilation: object): FileMap {
-  let bag = perCompilation.get(compilation);
+function bagFor(compiler: object): FileMap {
+  let bag = perCompiler.get(compiler);
   if (bag === undefined) {
     bag = new Map();
-    perCompilation.set(compilation, bag);
+    perCompiler.set(compiler, bag);
   }
   return bag;
 }
 
 export function setRulesForFile(
-  compilation: object,
+  compiler: object,
   filename: string,
   rules: readonly CompiledRule[],
 ): void {
   if (rules.length === 0) {
-    perCompilation.get(compilation)?.delete(filename);
+    perCompiler.get(compiler)?.delete(filename);
     return;
   }
   // Dedup: if the file's previous rules registered the same set of
   // className strings, skip the Map.set. Hash collisions are already
   // guarded against in `CssEmitter.add`, so className equality is a
   // sufficient identity check here.
-  const bag = bagFor(compilation);
+  const bag = bagFor(compiler);
   const existing = bag.get(filename);
   if (
     existing !== undefined &&
@@ -66,20 +68,20 @@ export function setRulesForFile(
 }
 
 export function deleteRulesForFile(
-  compilation: object,
+  compiler: object,
   filename: string,
 ): boolean {
-  return perCompilation.get(compilation)?.delete(filename) ?? false;
+  return perCompiler.get(compiler)?.delete(filename) ?? false;
 }
 
-export function allRules(compilation: object): IterableIterator<CompiledRule> {
-  return iterateAllRules(compilation);
+export function allRules(compiler: object): IterableIterator<CompiledRule> {
+  return iterateAllRules(compiler);
 }
 
 function* iterateAllRules(
-  compilation: object,
+  compiler: object,
 ): IterableIterator<CompiledRule> {
-  const bag = perCompilation.get(compilation);
+  const bag = perCompiler.get(compiler);
   if (!bag) return;
   for (const rules of bag.values()) {
     for (const rule of rules) yield rule;
@@ -87,22 +89,22 @@ function* iterateAllRules(
 }
 
 /** Snapshot of which files currently contribute rules to a given
- * compilation. Useful for tests / debug; not on the build hot path. */
-export function trackedFiles(compilation: object): readonly string[] {
-  const bag = perCompilation.get(compilation);
+ * compiler. Useful for tests / debug; not on the build hot path. */
+export function trackedFiles(compiler: object): readonly string[] {
+  const bag = perCompiler.get(compiler);
   return bag ? [...bag.keys()] : [];
 }
 
 /** Stable sentinel key for tests that don't want to thread a
- * synthetic Compilation through every store call. Returns a fresh
- * value each time the test helper resets, so cases don't bleed into
- * each other. */
-export function testCompilationKey(): object {
-  return TEST_COMPILATION_KEY;
+ * synthetic Compiler through every store call. Stays stable across
+ * the test process; `__resetForTests` drops its entries between
+ * cases so they don't bleed into each other. */
+export function testCompilerKey(): object {
+  return TEST_COMPILER_KEY;
 }
 
 /** Test helper — drop the test-singleton's entries between cases.
- * Real compilations are GC-isolated automatically. */
+ * Real compilers are GC-isolated automatically. */
 export function __resetForTests(): void {
-  perCompilation.delete(TEST_COMPILATION_KEY);
+  perCompiler.delete(TEST_COMPILER_KEY);
 }

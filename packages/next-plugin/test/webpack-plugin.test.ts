@@ -113,11 +113,12 @@ describe('CassidaWebpackPlugin', () => {
       `const x = /* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__";`,
     );
 
-    const { compiler, compilation, fireThisCompilation, fireProcessAssets } =
+    const { compiler, fireThisCompilation, fireProcessAssets } =
       createSyntheticCompiler();
-    // Per-compilation store: rules are keyed off the synthetic
-    // compilation the plugin will receive, not a global singleton.
-    setRulesForFile(compilation, '/abs/a.tsx', rules);
+    // Per-compiler store: rules are keyed off the synthetic compiler
+    // the plugin's apply() will receive (matches the loader's
+    // `this._compilation.compiler` key).
+    setRulesForFile(compiler, '/abs/a.tsx', rules);
 
     new CassidaWebpackPlugin({ layer: 'cas' }).apply(compiler as never);
     fireThisCompilation();
@@ -130,8 +131,8 @@ describe('CassidaWebpackPlugin', () => {
     expect(content).toContain('color:red');
   });
 
-  it('keeps two compilations isolated — Server and Client write distinct virtual.css', () => {
-    // The whole point of the per-compilation refactor. Drive two
+  it('keeps two compilers isolated — Server and Client write distinct virtual.css', () => {
+    // The whole point of the per-compiler refactor. Drive two
     // independent synthetic compilers (think Server + Client) and
     // assert that each compilation's processAssets emits only its
     // own rules.
@@ -146,8 +147,8 @@ describe('CassidaWebpackPlugin', () => {
 
     const server = createSyntheticCompiler();
     const client = createSyntheticCompiler();
-    setRulesForFile(server.compilation, '/abs/server-only.tsx', rulesServer);
-    setRulesForFile(client.compilation, '/abs/page.tsx', rulesClient);
+    setRulesForFile(server.compiler, '/abs/server-only.tsx', rulesServer);
+    setRulesForFile(client.compiler, '/abs/page.tsx', rulesClient);
 
     const plugin = new CassidaWebpackPlugin({ layer: 'cas' });
     plugin.apply(server.compiler as never);
@@ -166,5 +167,30 @@ describe('CassidaWebpackPlugin', () => {
     expect(serverCss).not.toContain('color:blue');
     expect(clientCss).toContain('color:blue');
     expect(clientCss).not.toContain('color:red');
+  });
+
+  it('aggregates rules across a parent compiler and its child compilations', () => {
+    // Models the Next.js case where the IR loader runs in a child
+    // compilation (CSS-extract pass etc.) while the plugin reads on
+    // the parent. Both keys must be the same Compiler instance for
+    // the rules to land in the same bag.
+    const ir = JSON.stringify([{ method: 'color', args: ['red'] }]);
+    const { rules } = rewriteIrComments(
+      `const x = /* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__";`,
+    );
+
+    const { compiler, fireThisCompilation, fireProcessAssets } =
+      createSyntheticCompiler();
+    // Simulate the loader writing through `this._compilation.compiler`
+    // from inside a child compilation — same compiler object.
+    setRulesForFile(compiler, '/abs/a.tsx', rules);
+
+    new CassidaWebpackPlugin({ layer: 'cas' }).apply(compiler as never);
+    fireThisCompilation();
+    fireProcessAssets();
+
+    expect(MockVirtualModulesPlugin.__writes).toHaveLength(1);
+    const content = MockVirtualModulesPlugin.__writes[0]!.content;
+    expect(content).toContain('color:red');
   });
 });
