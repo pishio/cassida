@@ -5,7 +5,7 @@ import {
   __resetForTests,
   allRules,
   setRulesForFile,
-  subscribe,
+  testCompilationKey,
   trackedFiles,
 } from '../src/store.js';
 import { buildVirtualCss } from '../src/virtual-css.js';
@@ -108,78 +108,93 @@ describe('rewriteIrComments', () => {
 
 describe('store + virtual-css integration', () => {
   it('aggregates rules from multiple files into a single CSS bundle', () => {
+    const compilation = testCompilationKey();
+
     const irA = JSON.stringify([{ method: 'color', args: ['red'] }]);
     const { rules: rulesA } = rewriteIrComments(
       `<div className={/* @cassida-ir:${irA}*/ "__CAS_PLACEHOLDER_0__"} />`,
     );
-    setRulesForFile('/abs/a.tsx', rulesA);
+    setRulesForFile(compilation, '/abs/a.tsx', rulesA);
 
     const irB = JSON.stringify([{ method: 'color', args: ['blue'] }]);
     const { rules: rulesB } = rewriteIrComments(
       `<div className={/* @cassida-ir:${irB}*/ "__CAS_PLACEHOLDER_0__"} />`,
     );
-    setRulesForFile('/abs/b.tsx', rulesB);
+    setRulesForFile(compilation, '/abs/b.tsx', rulesB);
 
-    expect(trackedFiles()).toHaveLength(2);
-    const allAccumulated = Array.from(allRules());
+    expect(trackedFiles(compilation)).toHaveLength(2);
+    const allAccumulated = Array.from(allRules(compilation));
     expect(allAccumulated).toHaveLength(2);
 
-    const css = buildVirtualCss({ layer: 'cas' });
+    const css = buildVirtualCss(compilation, { layer: 'cas' });
     expect(css).toContain('@layer cas');
     expect(css).toContain('color:red');
     expect(css).toContain('color:blue');
   });
 
   it('replaces a file\'s rules on a re-transform', () => {
+    const compilation = testCompilationKey();
+
     const irRed = JSON.stringify([{ method: 'color', args: ['red'] }]);
     const { rules: rRed } = rewriteIrComments(
       `<div className={/* @cassida-ir:${irRed}*/ "__CAS_PLACEHOLDER_0__"} />`,
     );
-    setRulesForFile('/abs/a.tsx', rRed);
+    setRulesForFile(compilation, '/abs/a.tsx', rRed);
 
     // The same file is now re-transformed with a different chain.
     const irGreen = JSON.stringify([{ method: 'color', args: ['green'] }]);
     const { rules: rGreen } = rewriteIrComments(
       `<div className={/* @cassida-ir:${irGreen}*/ "__CAS_PLACEHOLDER_0__"} />`,
     );
-    setRulesForFile('/abs/a.tsx', rGreen);
+    setRulesForFile(compilation, '/abs/a.tsx', rGreen);
 
-    const css = buildVirtualCss({ layer: 'cas' });
+    const css = buildVirtualCss(compilation, { layer: 'cas' });
     expect(css).toContain('color:green');
     expect(css).not.toContain('color:red');
   });
 
-  it('skips notify when the same rules are re-registered for a file', () => {
-    let notifyCount = 0;
-    const unsubscribe = subscribe(() => notifyCount++);
-
+  it('removes a file\'s contribution when its rule set drops to empty', () => {
+    const compilation = testCompilationKey();
     const ir = JSON.stringify([{ method: 'color', args: ['red'] }]);
     const { rules } = rewriteIrComments(
       `<div className={/* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__"} />`,
     );
+    setRulesForFile(compilation, '/abs/a.tsx', rules);
 
-    setRulesForFile('/abs/a.tsx', rules);
-    expect(notifyCount).toBe(1);
-
-    // Re-register the same rule (same className) — should not notify.
-    const { rules: rulesAgain } = rewriteIrComments(
-      `<div className={/* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__"} />`,
-    );
-    setRulesForFile('/abs/a.tsx', rulesAgain);
-    expect(notifyCount).toBe(1);
-
-    unsubscribe();
+    expect(trackedFiles(compilation)).toContain('/abs/a.tsx');
+    setRulesForFile(compilation, '/abs/a.tsx', []);
+    expect(trackedFiles(compilation)).not.toContain('/abs/a.tsx');
   });
 
-  it('removes a file\'s contribution when its rule set drops to empty', () => {
-    const ir = JSON.stringify([{ method: 'color', args: ['red'] }]);
-    const { rules } = rewriteIrComments(
-      `<div className={/* @cassida-ir:${ir}*/ "__CAS_PLACEHOLDER_0__"} />`,
-    );
-    setRulesForFile('/abs/a.tsx', rules);
+  it('keeps Server- and Client-compilation bags isolated', () => {
+    // The whole point of the per-compilation refactor: two
+    // synthetic "compilations" don't see each other's rules.
+    const serverCompilation: object = { __label: 'server' };
+    const clientCompilation: object = { __label: 'client' };
 
-    expect(trackedFiles()).toContain('/abs/a.tsx');
-    setRulesForFile('/abs/a.tsx', []);
-    expect(trackedFiles()).not.toContain('/abs/a.tsx');
+    const irServer = JSON.stringify([{ method: 'color', args: ['red'] }]);
+    const { rules: rulesServer } = rewriteIrComments(
+      `<div className={/* @cassida-ir:${irServer}*/ "__CAS_PLACEHOLDER_0__"} />`,
+    );
+    setRulesForFile(serverCompilation, '/abs/server-only.tsx', rulesServer);
+
+    const irClient = JSON.stringify([{ method: 'color', args: ['blue'] }]);
+    const { rules: rulesClient } = rewriteIrComments(
+      `<div className={/* @cassida-ir:${irClient}*/ "__CAS_PLACEHOLDER_0__"} />`,
+    );
+    setRulesForFile(clientCompilation, '/abs/page.tsx', rulesClient);
+
+    expect(trackedFiles(serverCompilation)).toEqual(['/abs/server-only.tsx']);
+    expect(trackedFiles(clientCompilation)).toEqual(['/abs/page.tsx']);
+    expect(Array.from(allRules(serverCompilation))).toHaveLength(1);
+    expect(Array.from(allRules(clientCompilation))).toHaveLength(1);
+
+    const cssServer = buildVirtualCss(serverCompilation, { layer: 'cas' });
+    expect(cssServer).toContain('color:red');
+    expect(cssServer).not.toContain('color:blue');
+
+    const cssClient = buildVirtualCss(clientCompilation, { layer: 'cas' });
+    expect(cssClient).toContain('color:blue');
+    expect(cssClient).not.toContain('color:red');
   });
 });

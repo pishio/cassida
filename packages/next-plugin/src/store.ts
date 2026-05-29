@@ -1,51 +1,60 @@
 /**
- * Module-singleton rule store, shared between the IR-comment loader
- * (writes) and the virtual CSS module (reads). Keyed by the absolute
- * file path of the source module so a re-transform of one file
- * cleanly replaces that file's contribution without disturbing the
- * rest of the bundle.
+ * Per-compilation rule store. Replaces v0.8.0's module-singleton
+ * store, which couldn't distinguish Server-compiler and Client-
+ * compiler writes in Next.js's parallel-compiler model and exposed a
+ * documented multi-compiler race where the Client compiler's
+ * `processAssets` could fire before the Server compiler had finished
+ * populating the store with Server-only rules.
  *
- * Next.js's webpack instance imports this module once per build;
- * Turbopack will need its own equivalent when we add Turbopack
- * support (Phase 1.5).
+ * Keyed by the parent webpack `Compilation`, which the IR loader
+ * passes in via `this._compilation` and the `CassidaWebpackPlugin`
+ * passes in from the `thisCompilation` hook. Each compilation owns
+ * its own `Map<filename, CompiledRule[]>` so Server and Client
+ * compilers never share state; the bag is dropped automatically
+ * when the compilation object becomes unreachable.
  *
- * Phase 1 limitation — file deletion / rename: a deleted source
- * file's previous entry stays in the store until the dev server is
- * restarted, because the loader doesn't re-run on a path that no
- * longer exists. The Phase-1.x Webpack-plugin follow-up resolves
- * this by harvesting rules from the live module graph via
- * `compilation.moduleGraph` instead of an out-of-band singleton.
+ * Phase 1.x limitation that remains — file deletion / rename: a
+ * deleted source file's previous entry stays in its compilation's
+ * bag until that compilation ends, because the loader doesn't re-run
+ * on a path that no longer exists. In practice each `next build`
+ * starts a fresh compilation so the issue is dev-only; the proper
+ * fix is to harvest rules from `compilation.moduleGraph` at
+ * `processAssets` time. Tracked for a follow-up.
  */
 import type { CompiledRule } from '@cassida/compiler';
 
-const rulesByFile = new Map<string, readonly CompiledRule[]>();
+type FileMap = Map<string, readonly CompiledRule[]>;
 
-/**
- * Subscribers wake up when the rule set changes — used by the
- * virtual CSS module's HMR path to invalidate the generated module
- * whenever a source file's compiled rules change. The Node loader
- * fires `notify` after every loader pass.
- */
-type Listener = () => void;
-const listeners = new Set<Listener>();
+/** Used by `__resetForTests` so each test gets a fresh key without
+ * having to thread a synthetic compilation through every assertion. */
+const TEST_COMPILATION_KEY: object = { __cassidaTestSingleton: true };
+
+const perCompilation = new WeakMap<object, FileMap>();
+
+function bagFor(compilation: object): FileMap {
+  let bag = perCompilation.get(compilation);
+  if (bag === undefined) {
+    bag = new Map();
+    perCompilation.set(compilation, bag);
+  }
+  return bag;
+}
 
 export function setRulesForFile(
+  compilation: object,
   filename: string,
   rules: readonly CompiledRule[],
 ): void {
   if (rules.length === 0) {
-    if (rulesByFile.delete(filename)) notify();
+    perCompilation.get(compilation)?.delete(filename);
     return;
   }
-  // Skip `notify()` when the incoming rules are identical to the
-  // file's current contribution. During development, editing any
-  // non-CSS part of a file (text, event handlers, etc.) still
-  // re-runs the loader; without this check, every keystroke would
-  // invalidate the virtual CSS module and force the browser to
-  // re-fetch the entire bundle even though the styles didn't move.
-  // ClassName comparison is enough here because hash collisions are
-  // already guarded against in `CssEmitter.add`.
-  const existing = rulesByFile.get(filename);
+  // Dedup: if the file's previous rules registered the same set of
+  // className strings, skip the Map.set. Hash collisions are already
+  // guarded against in `CssEmitter.add`, so className equality is a
+  // sufficient identity check here.
+  const bag = bagFor(compilation);
+  const existing = bag.get(filename);
   if (
     existing !== undefined &&
     existing.length === rules.length &&
@@ -53,48 +62,47 @@ export function setRulesForFile(
   ) {
     return;
   }
-  rulesByFile.set(filename, rules);
-  notify();
+  bag.set(filename, rules);
 }
 
-export function deleteRulesForFile(filename: string): boolean {
-  const existed = rulesByFile.delete(filename);
-  if (existed) notify();
-  return existed;
+export function deleteRulesForFile(
+  compilation: object,
+  filename: string,
+): boolean {
+  return perCompilation.get(compilation)?.delete(filename) ?? false;
 }
 
-export function allRules(): IterableIterator<CompiledRule> {
-  return iterateAllRules();
+export function allRules(compilation: object): IterableIterator<CompiledRule> {
+  return iterateAllRules(compilation);
 }
 
-function* iterateAllRules(): IterableIterator<CompiledRule> {
-  for (const rules of rulesByFile.values()) {
+function* iterateAllRules(
+  compilation: object,
+): IterableIterator<CompiledRule> {
+  const bag = perCompilation.get(compilation);
+  if (!bag) return;
+  for (const rules of bag.values()) {
     for (const rule of rules) yield rule;
   }
 }
 
-/**
- * Snapshot of which files currently contribute rules. Useful for
- * tests / debug, not on the build hot path.
- */
-export function trackedFiles(): readonly string[] {
-  return [...rulesByFile.keys()];
+/** Snapshot of which files currently contribute rules to a given
+ * compilation. Useful for tests / debug; not on the build hot path. */
+export function trackedFiles(compilation: object): readonly string[] {
+  const bag = perCompilation.get(compilation);
+  return bag ? [...bag.keys()] : [];
 }
 
-export function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+/** Stable sentinel key for tests that don't want to thread a
+ * synthetic Compilation through every store call. Returns a fresh
+ * value each time the test helper resets, so cases don't bleed into
+ * each other. */
+export function testCompilationKey(): object {
+  return TEST_COMPILATION_KEY;
 }
 
-function notify(): void {
-  for (const listener of listeners) listener();
-}
-
-/**
- * Test helper — reset the singleton between cases so a leaky earlier
- * test doesn't pollute the next one. Not part of the public API.
- */
+/** Test helper — drop the test-singleton's entries between cases.
+ * Real compilations are GC-isolated automatically. */
 export function __resetForTests(): void {
-  rulesByFile.clear();
-  listeners.clear();
+  perCompilation.delete(TEST_COMPILATION_KEY);
 }

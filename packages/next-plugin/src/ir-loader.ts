@@ -96,33 +96,51 @@ export function rewriteIrComments(
  * loader runner can bind `this` to the loader context.
  *
  * Side effects:
- *   - calls `setRulesForFile(this.resourcePath, rules)` so the
- *     virtual CSS module sees the latest rules per file
+ *   - calls `setRulesForFile(this._compilation, this.resourcePath, rules)`
+ *     so the virtual CSS module sees the latest rules per file
  *   - returns the transformed source (placeholders → class names)
  */
 function cassidaIrLoader(
   this: WebpackLoaderContext,
   source: string,
 ): string {
-  // The loader has a side-effect — it mutates a module-singleton
+  // The loader has a side-effect — it mutates a per-compilation
   // store. Webpack's persistent cache would otherwise skip this
   // loader on cold starts when the file's bytes haven't changed,
-  // and the rule set in memory would be missing those files'
-  // contributions to the CSS bundle. A non-cacheable mark forces
-  // the loader to re-run every build; the inner `compileOps` work
-  // is itself cheap and deterministic, so the cost is acceptable
-  // for Phase 1.
+  // and the new compilation's bag would be missing those files'
+  // contributions to the CSS bundle. `cacheable(false)` forces the
+  // loader to re-run every build; the inner `compileOps` work is
+  // itself cheap and deterministic, so the cost is acceptable.
   //
-  // Phase 1.x architectural follow-up: migrate to a Webpack plugin
-  // that harvests rules from `compilation.moduleGraph` (rules
-  // travel via `module.buildInfo`) so the loader can stay
-  // cacheable. The same migration also fixes the file-deletion
-  // stale-rules window documented on `store.ts`.
+  // Phase 1.x follow-up: migrate to `module.buildInfo` so the
+  // loader can stay cacheable (rules ride along with the module
+  // through webpack's cache), and harvest at `processAssets` from
+  // `compilation.modules` instead of an out-of-band store. The
+  // current `_compilation`-keyed store is the minimum change that
+  // resolves the multi-compiler race without rewiring buildInfo.
   this.cacheable?.(false);
 
   const options = (typeof this.getOptions === 'function'
     ? (this.getOptions() as IrLoaderOptions | undefined)
     : undefined) ?? {};
+
+  // `this._compilation` is the parent `Compilation` instance —
+  // underscored in webpack's source for "internal", but the de
+  // facto stable handle for "which compiler am I in". Without it
+  // the loader can't isolate Server / Client writes; bail visibly
+  // rather than silently sending rules to a default key that would
+  // recreate the race.
+  const compilation = this._compilation;
+  if (compilation === undefined) {
+    throw new Error(
+      '[cassida/next-plugin] IR loader: webpack LoaderContext has no ' +
+        '`_compilation` field. Loader cannot route compiled rules to ' +
+        'the per-compilation store. If you are running the loader ' +
+        'outside webpack (unit tests, a non-webpack host), import ' +
+        '`rewriteIrComments` from this package and drive the rewrite ' +
+        'directly.',
+    );
+  }
 
   // Short-circuit when the file doesn't carry any Cassida IR. Avoids
   // a regex pass on every JS file in the bundle (most won't have
@@ -133,12 +151,12 @@ function cassidaIrLoader(
   // re-transforms would otherwise keep contributing rules to the CSS
   // bundle until the build was restarted.
   if (!source.includes('@cassida-ir:')) {
-    deleteRulesForFile(this.resourcePath);
+    deleteRulesForFile(compilation, this.resourcePath);
     return source;
   }
 
   const { code, rules } = rewriteIrComments(source, options);
-  setRulesForFile(this.resourcePath, rules);
+  setRulesForFile(compilation, this.resourcePath, rules);
   return code;
 }
 
@@ -152,6 +170,7 @@ export default cassidaIrLoader;
  */
 interface WebpackLoaderContext {
   readonly resourcePath: string;
+  readonly _compilation?: object;
   getOptions?: () => unknown;
   cacheable?: (flag: boolean) => void;
 }

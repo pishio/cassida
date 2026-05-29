@@ -4,6 +4,15 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- **`@cassida/next-plugin` per-compilation rule store** — replaces v0.8.0's module-singleton store, resolving the documented Phase 1.x multi-compiler race. The store is now keyed by the parent webpack `Compilation` (via `WeakMap<Compilation, Map<filename, rules>>`), populated through `this._compilation` in the IR loader and drained through the same key in `CassidaWebpackPlugin.processAssets`. Server- and Client-compiler writes can no longer collide; the previous failure mode (Client `processAssets` emitting CSS before Server loader passes complete, dropping Server-only styles from the Client bundle) is structurally impossible. A new isolation test in `webpack-plugin.test.ts` drives two synthetic compilations side-by-side to lock in the contract.
+
+### Removed
+
+- **`CASSIDA_QUIET_RACE_WARNING` env var** — the v0.8.0 empty-store stderr heads-up no longer fires; the race it muted is structurally gone. Setting the variable is now a no-op (kept silent rather than warning, so consumers who already wired it can leave the env alone).
+- **`subscribe` / `subscribeToRules` export from `@cassida/next-plugin`** — the subscription API was vestigial after v0.8.0 dropped HMR-side reuse of it, and per-compilation isolation makes a global subscriber even less useful. `allRules(compilation)` is now exported in its place for advanced wiring.
+
 ## [0.8.0] — 2026-05-29
 
 ### Added

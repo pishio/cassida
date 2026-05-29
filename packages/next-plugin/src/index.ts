@@ -30,7 +30,7 @@ export {
   setRulesForFile,
   deleteRulesForFile,
   trackedFiles,
-  subscribe as subscribeToRules,
+  allRules,
 } from './store.js';
 
 /**
