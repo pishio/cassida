@@ -4,6 +4,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-01
+
 ### Changed
 
 - **`@cassida/next-plugin` store rebuilt as a cross-compiler bridge** — the module-singleton rule store in `packages/next-plugin/src/store.ts` is now keyed first by webpack compiler namespace (Next.js sets `'client'` / `'server'` / `'edge'` / `'middleware'`), then by file. `allRules()` still merges every namespace on the read path — that merge is the architectural mechanism by which a `cas()` chain inside a Server Component (Server compiler only) flows into the Client compiler's `virtual.css`, which the RSC-serialised className in the browser then resolves against. The previous "multi-compiler race" framing in the v0.8.0 inline docs was inverted: the cross-compiler share is the feature, not the bug. New `allRulesForCompiler()` exposes per-namespace reads for tooling.
@@ -94,7 +96,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - Initial public release of `@cassida/core`, `@cassida/compiler`, `@cassida/parser`, `@cassida/vite-plugin`, `@cassida/recommended`, `@cassida/plugin-hover-fix`, `@cassida/plugin-conditional`. Single Class Principle, LIFO collapse, build-time class table, deterministic hashing, mobile-first media sort, `@layer cas` cascade-layer wrapping, csstype-typed canonical chain methods + mdn-data-derived generated chain methods, `cas.unsafe` / `.set` escape paths, `shorthand-policy` guard.
 
-[Unreleased]: https://github.com/pishio/cassida/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/pishio/cassida/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/pishio/cassida/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/pishio/cassida/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/pishio/cassida/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/pishio/cassida/compare/v0.5.0...v0.6.0
