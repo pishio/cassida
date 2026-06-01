@@ -19,19 +19,41 @@
  *      store via `buildVirtualCss(...)` and overwrite the virtual
  *      content BEFORE CSS minimisers / chunkers run.
  *
- * For dev / HMR: `compiler.hooks.watchRun` subscribes to
- * `store.subscribe()`, so a between-compilation store update (rare,
- * usually from an external watcher) re-writes the virtual module's
- * content and `webpack-virtual-modules` propagates the change as a
- * file-change event through webpack's watcher. Next.js's CSS HMR
- * picks it up — no `module.hot.accept` needed on the consumer side.
+ * Multi-compiler architecture (Next.js App Router runs Server +
+ * Client + Edge compilers in parallel):
+ *
+ *   The store is intentionally a singleton across the whole webpack
+ *   process so Server-Component-only `cas()` chains — which compile
+ *   exclusively in the Server compiler — still reach the *Client*
+ *   compiler's `virtual.css`. The browser receives RSC-serialised
+ *   `<aside className="cas-XXXXXXXX">` markup whose CSS rule only
+ *   exists in the Server namespace; without the bridge, the Client
+ *   bundle ships unstyled markup.
+ *
+ *   Each compiler still owns its own namespace inside the store
+ *   (Next.js sets `compiler.options.name`); the `beforeRun` /
+ *   `watchRun` hooks below clear *only* that compiler's namespace so
+ *   stale rules from a between-build edit don't pile up across HMR
+ *   passes. The OTHER compiler's namespace is preserved across these
+ *   clears — that's the bridge surviving its independent lifecycle.
+ *
+ * For dev / HMR: a between-compilation store update (rare, usually
+ * from an external watcher) re-writes the virtual module's content
+ * the next time a compilation fires; Next.js's CSS HMR picks the
+ * file-change event up.
  */
 
 import { fileURLToPath } from 'node:url';
 
 import VirtualModulesPlugin from 'webpack-virtual-modules';
 
-import { allRules } from './store.js';
+import {
+  allRules,
+  allRulesForCompiler,
+  clearCompilerNamespace,
+  knownCompilerNames,
+  lastWrittenAtForCompiler,
+} from './store.js';
 import {
   buildVirtualCss,
   type VirtualCssOptions,
@@ -70,22 +92,27 @@ export class CassidaWebpackPlugin {
     });
     virtual.apply(compiler as unknown as Parameters<typeof virtual.apply>[0]);
 
+    const compilerName = compiler.options?.name ?? null;
+
+    // Clear THIS compiler's namespace before its loaders re-run.
+    // Without this, `next dev`'s HMR loop accumulates stale rules
+    // from since-deleted source files in this compiler — the IR
+    // loader has no path to re-fire on a file that no longer
+    // exists, so the rule never gets dropped otherwise. Crucially
+    // we leave OTHER compilers' namespaces alone: the cross-
+    // compiler bridge has to survive each compiler's independent
+    // lifecycle (a Client rebuild must not wipe the Server-only
+    // rules that back RSC-serialised classNames).
+    const clearOwn = (): void => clearCompilerNamespace(compilerName);
+    compiler.hooks.beforeRun?.tap?.('CassidaWebpackPlugin', clearOwn);
+    compiler.hooks.watchRun?.tap?.('CassidaWebpackPlugin', clearOwn);
+
     // Single source of truth: rewrite the virtual module's content
     // exactly once per compilation, at `processAssets` stage
     // `PRE_PROCESS` (`-1000`). All IR-loader passes for this
     // compilation have completed by this stage, so `store.allRules()`
-    // is complete. We deliberately don't subscribe to store updates
-    // between compilations — in Next.js's parallel Server / Client
-    // compilations the store is a shared singleton, and a
-    // subscription-driven write would race with whichever compiler
-    // is mid-build. The HMR loop kicks a fresh compilation on every
-    // source edit anyway, so this hook covers dev too.
-    //
-    // Phase 1.x: the multi-compiler race remains — the Client
-    // compiler's `processAssets` may fire before the Server
-    // compiler's loaders have finished populating the store with
-    // Server-only rules. Mitigation needs a webpack child-compiler
-    // architecture and is out of scope for Phase 1.
+    // is complete across every namespace — the merge in `allRules()`
+    // is what carries Server-only rules into the Client bundle.
     compiler.hooks.thisCompilation.tap(
       'CassidaWebpackPlugin',
       (compilation) => {
@@ -103,35 +130,37 @@ export class CassidaWebpackPlugin {
                 : buildVirtualCss(this.options);
             virtual.writeModule(VIRTUAL_MODULE_PATH, content);
 
-            // Heads-up for the Phase 1.x multi-compiler race. If
-            // `seen.length === 0` fires in a production build the
-            // emitted `virtual.css` is the placeholder, which means
-            // any cas() chains in *this* compiler's graph never
-            // reached the store — most likely the Server compiler
-            // wrote rules the Client compiler can't see yet. Without
-            // this signal the failure mode is silent: Server-only
-            // styles missing from the Client bundle with no build
-            // warning.
+            // Real race detection. The v0.8.0 heads-up triggered
+            // when `seen.length === 0`, which produces false
+            // positives on legitimately empty fixtures (test apps,
+            // pages with no cas() chains). The actual race signature
+            // is: ANOTHER compiler has written rules into its
+            // namespace before mine fired, but my graph didn't see
+            // any of its work flow back through the bridge — i.e.
+            // its lastWrittenAt is recent and non-null, yet I'm
+            // reading zero rules from its namespace because its
+            // namespace was cleared between its write and my read.
             //
-            // Gates:
-            //   - NODE_ENV === 'production'  — skip dev (empty
-            //     intermediate compilations are normal) and tests
-            //     (vitest sets NODE_ENV='test').
-            //   - !CASSIDA_QUIET_RACE_WARNING — escape hatch for
-            //     legitimately empty fixtures.
+            // In practice Next.js sequences its Server / Client
+            // compilations enough that the race is rare; the probe
+            // is here so when it does fire we get a precise signal
+            // instead of the previous best-effort heuristic.
             if (
-              seen.length === 0 &&
               process.env.NODE_ENV === 'production' &&
               !process.env.CASSIDA_QUIET_RACE_WARNING
             ) {
-              process.stderr.write(
-                '[cassida] CassidaWebpackPlugin: virtual.css written empty ' +
-                  'for this compilation. If the consumer has cas() chains, ' +
-                  "this is most likely the Next.js multi-compiler race " +
-                  '(Phase 1.x) — Server-only styles may not reach the ' +
-                  'Client bundle. Set CASSIDA_QUIET_RACE_WARNING=1 to ' +
-                  'silence (e.g. for fixtures with no chains).\n',
-              );
+              const stale = detectStaleBridge(compilerName);
+              if (stale !== null) {
+                process.stderr.write(
+                  '[cassida] CassidaWebpackPlugin: detected cross-compiler ' +
+                    `bridge gap — compiler '${stale.peer}' last wrote rules ` +
+                    `at ${new Date(stale.peerWrittenAt).toISOString()} but ` +
+                    `compiler '${stale.self}' read zero rules from its ` +
+                    'namespace at processAssets. Server-only styles may not ' +
+                    'reach the bundle. Set CASSIDA_QUIET_RACE_WARNING=1 to ' +
+                    'silence.\n',
+                );
+              }
             }
           },
         );
@@ -140,12 +169,54 @@ export class CassidaWebpackPlugin {
   }
 }
 
+interface StaleBridgeReport {
+  readonly self: string;
+  readonly peer: string;
+  readonly peerWrittenAt: number;
+}
+
+/**
+ * Walk every known namespace looking for a peer compiler that
+ * recently wrote rules but currently has none in the store. That's
+ * the cross-compiler race: peer wrote, peer's namespace got cleared,
+ * we read zero. Returns the first peer that fits the pattern, or
+ * `null` if everything checks out.
+ *
+ * Self's own namespace is excluded — if we wrote zero rules that's
+ * a legitimately empty source set, not a race.
+ */
+function detectStaleBridge(
+  selfName: string | null,
+): StaleBridgeReport | null {
+  const selfKey = selfName ?? '__cassida_default__';
+  for (const peer of knownCompilerNames()) {
+    if (peer === selfKey) continue;
+    const peerWrittenAt = lastWrittenAtForCompiler(peer);
+    if (peerWrittenAt === null) continue;
+    const peerRuleCount = countIterable(allRulesForCompiler(peer));
+    if (peerRuleCount === 0) {
+      return { self: selfKey, peer, peerWrittenAt };
+    }
+  }
+  return null;
+}
+
+function countIterable<T>(it: Iterable<T>): number {
+  let n = 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  for (const _ of it) n++;
+  return n;
+}
+
 // Structural subset of `webpack.Compiler` — full webpack types are
 // pulled by Next.js at the consumer side; inlining what we touch
 // keeps `@cassida/next-plugin` free of a hard `webpack` dep.
 interface WebpackCompiler {
+  readonly options?: { readonly name?: string };
   readonly hooks: {
     readonly thisCompilation: WebpackSyncHook<[WebpackCompilation]>;
+    readonly beforeRun?: WebpackSyncHook<[WebpackCompiler]>;
+    readonly watchRun?: WebpackSyncHook<[WebpackCompiler]>;
   };
 }
 

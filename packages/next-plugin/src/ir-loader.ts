@@ -96,8 +96,9 @@ export function rewriteIrComments(
  * loader runner can bind `this` to the loader context.
  *
  * Side effects:
- *   - calls `setRulesForFile(this.resourcePath, rules)` so the
- *     virtual CSS module sees the latest rules per file
+ *   - calls `setRulesForFile(this.resourcePath, rules, compilerName)`
+ *     so the virtual CSS module sees the latest rules per file,
+ *     namespaced by which webpack compiler ran this loader pass
  *   - returns the transformed source (placeholders → class names)
  */
 function cassidaIrLoader(
@@ -124,6 +125,13 @@ function cassidaIrLoader(
     ? (this.getOptions() as IrLoaderOptions | undefined)
     : undefined) ?? {};
 
+  // Next.js names its compilers (`'client'`, `'server'`, `'edge'`,
+  // `'middleware'`); we route writes into the namespace for whichever
+  // compiler is running this loader pass. The default read path
+  // (`allRules()`) still merges every namespace, so Server-only rules
+  // reach the Client bundle — see store.ts for the bridge rationale.
+  const compilerName = this._compiler?.options?.name ?? null;
+
   // Short-circuit when the file doesn't carry any Cassida IR. Avoids
   // a regex pass on every JS file in the bundle (most won't have
   // any).
@@ -133,12 +141,12 @@ function cassidaIrLoader(
   // re-transforms would otherwise keep contributing rules to the CSS
   // bundle until the build was restarted.
   if (!source.includes('@cassida-ir:')) {
-    deleteRulesForFile(this.resourcePath);
+    deleteRulesForFile(this.resourcePath, compilerName);
     return source;
   }
 
   const { code, rules } = rewriteIrComments(source, options);
-  setRulesForFile(this.resourcePath, rules);
+  setRulesForFile(this.resourcePath, rules, compilerName);
   return code;
 }
 
@@ -149,9 +157,16 @@ export default cassidaIrLoader;
  * Inlined so the package doesn't pull in `webpack` as a hard
  * dependency at type-check time — consumers' Next.js installs ship
  * webpack and the runtime instance matches this shape.
+ *
+ * `_compiler` is a documented (but underscore-prefixed) webpack
+ * loader-context property. Next.js sets `compiler.options.name`
+ * (`'client'` / `'server'` / `'edge'` / `'middleware'`); we route
+ * store writes into that namespace so the lifecycle hooks in
+ * `CassidaWebpackPlugin` can clear them per-compiler.
  */
 interface WebpackLoaderContext {
   readonly resourcePath: string;
+  readonly _compiler?: { readonly options?: { readonly name?: string } };
   getOptions?: () => unknown;
   cacheable?: (flag: boolean) => void;
 }

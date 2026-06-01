@@ -30,6 +30,11 @@ export {
   setRulesForFile,
   deleteRulesForFile,
   trackedFiles,
+  trackedFilesForCompiler,
+  allRulesForCompiler,
+  clearCompilerNamespace,
+  knownCompilerNames,
+  lastWrittenAtForCompiler,
   subscribe as subscribeToRules,
 } from './store.js';
 
@@ -112,6 +117,26 @@ export interface NextCassidaOptions extends CassConfig {
    * a predicate, or `null` to disable.
    */
   readonly loaderExclude?: RegExp | string | ((path: string) => boolean) | null;
+
+  /**
+   * Experimental knobs that are not yet stable. Reserved API surface
+   * — the keys here may change shape without a semver bump until they
+   * graduate.
+   */
+  readonly experimental?: {
+    /**
+     * Sidecar process for harvesting compiled rules out-of-band
+     * from the webpack module graph. Reserved scaffolding for
+     * Phase 2: when Turbopack lands as a sibling backend, the
+     * cross-compiler bridge can't ride on a Node singleton because
+     * Turbopack and webpack run in separate processes. The sidecar
+     * would proxy writes via IPC or a shared file. Currently a
+     * no-op — set to `true` to opt in once the implementation lands.
+     *
+     * TODO Phase 2 — wire to the actual sidecar transport.
+     */
+    readonly sidecar?: boolean;
+  };
 }
 
 /**
