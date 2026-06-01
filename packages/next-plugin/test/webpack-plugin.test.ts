@@ -235,7 +235,7 @@ describe('CassidaWebpackPlugin', () => {
       return true;
     }) as typeof process.stderr.write;
     const prevEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     try {
       const { compiler, fireThisCompilation, fireProcessAssets } =
         createSyntheticCompiler('client');
@@ -243,7 +243,7 @@ describe('CassidaWebpackPlugin', () => {
       fireThisCompilation();
       fireProcessAssets();
     } finally {
-      process.env.NODE_ENV = prevEnv;
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
       process.stderr.write = origWrite;
     }
     expect(writes.join('')).not.toMatch(/cross-compiler bridge gap/);
@@ -273,7 +273,7 @@ describe('CassidaWebpackPlugin', () => {
       return true;
     }) as typeof process.stderr.write;
     const prevEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     try {
       const { compiler, fireThisCompilation, fireProcessAssets } =
         createSyntheticCompiler('client');
@@ -281,7 +281,7 @@ describe('CassidaWebpackPlugin', () => {
       fireThisCompilation();
       fireProcessAssets();
     } finally {
-      process.env.NODE_ENV = prevEnv;
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
       process.stderr.write = origWrite;
     }
     expect(writes.join('')).toMatch(/cross-compiler bridge gap/);
@@ -304,7 +304,7 @@ describe('CassidaWebpackPlugin', () => {
     }) as typeof process.stderr.write;
     const prevEnv = process.env.NODE_ENV;
     const prevQuiet = process.env.CASSIDA_QUIET_RACE_WARNING;
-    process.env.NODE_ENV = 'production';
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
     process.env.CASSIDA_QUIET_RACE_WARNING = '1';
     try {
       const { compiler, fireThisCompilation, fireProcessAssets } =
@@ -313,7 +313,7 @@ describe('CassidaWebpackPlugin', () => {
       fireThisCompilation();
       fireProcessAssets();
     } finally {
-      process.env.NODE_ENV = prevEnv;
+      (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
       if (prevQuiet === undefined) delete process.env.CASSIDA_QUIET_RACE_WARNING;
       else process.env.CASSIDA_QUIET_RACE_WARNING = prevQuiet;
       process.stderr.write = origWrite;
