@@ -39,3 +39,61 @@ describe('property-spec ↔ defaultCanonicals consistency', () => {
     }
   });
 });
+
+describe('property-spec — CSS shorthand coverage', () => {
+  // Phase 1 surfaced a gap: chains like `.border('1px solid #ddd')`
+  // failed because no canonical entry existed. The fix adds entries
+  // for the major shorthands and wires their longhand families so the
+  // shorthand-policy guard fires on co-occurrence.
+  const shorthandsWithFamily: ReadonlyArray<[string, string]> = [
+    ['border', 'border'],
+    ['font', 'font'],
+    ['flex', 'flex'],
+    ['grid', 'grid'],
+    ['outline', 'outline'],
+  ];
+
+  for (const [method, family] of shorthandsWithFamily) {
+    it(`registers ${method} as a shorthand of family "${family}"`, () => {
+      const entry = defaultRegistry[method];
+      expect(entry, method).toBeDefined();
+      expect(entry!.shorthandFamily).toBe(family);
+    });
+  }
+
+  it('border family: borderWidth / borderStyle / borderColor declare longhandFamily "border"', () => {
+    for (const m of ['borderWidth', 'borderStyle', 'borderColor']) {
+      expect(defaultRegistry[m]!.longhandFamily, m).toBe('border');
+    }
+  });
+
+  it('font family: fontFamily / fontSize / fontWeight / lineHeight declare longhandFamily "font"', () => {
+    for (const m of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight']) {
+      expect(defaultRegistry[m]!.longhandFamily, m).toBe('font');
+    }
+  });
+
+  it('flex family: flexGrow / flexShrink / flexBasis declare longhandFamily "flex"', () => {
+    for (const m of ['flexGrow', 'flexShrink', 'flexBasis']) {
+      expect(defaultRegistry[m]!.longhandFamily, m).toBe('flex');
+    }
+  });
+
+  it('flexDirection is NOT a flex-shorthand longhand (different family)', () => {
+    expect(defaultRegistry['flexDirection']!.longhandFamily).toBeUndefined();
+  });
+
+  it('shorthand formatters produce the user-supplied string verbatim', () => {
+    // Passthrough format: the user already knows what they want. The
+    // bag value is exactly what they wrote.
+    const ops = (method: string, value: string) => [{ method, args: [value] }] as const;
+    expect(defaultRegistry['border']!.format('1px solid #ddd')).toBe('1px solid #ddd');
+    expect(defaultRegistry['font']!.format('italic bold 16px/1.4 sans-serif')).toBe(
+      'italic bold 16px/1.4 sans-serif',
+    );
+    expect(defaultRegistry['flex']!.format('1 1 0%')).toBe('1 1 0%');
+    expect(defaultRegistry['outline']!.format('2px dashed red')).toBe('2px dashed red');
+    expect(defaultRegistry['grid']!.format('auto-flow / 1fr 1fr')).toBe('auto-flow / 1fr 1fr');
+    void ops; // silence unused-helper lint
+  });
+});

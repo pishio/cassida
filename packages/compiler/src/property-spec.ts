@@ -82,6 +82,7 @@ export const canonicalSpec = {
     syntax: '<color>',
     initialValue: 'transparent',
     animatable: true,
+    longhandFamily: 'border',
     format: (v: CSS.Property.BorderColor): string => passthrough(v),
   },
 
@@ -277,9 +278,23 @@ export const canonicalSpec = {
   },
 
   // typography
+  // `font` is the mega-shorthand: `<font-style> <font-variant> <font-weight>
+  // <font-stretch> <font-size>[/<line-height>] <font-family>`. CSS resets
+  // every unspecified subproperty to its initial value, so co-occurring
+  // it with a longhand inside one scope is a silent footgun — the
+  // shorthand-policy family guard makes that an error under 'strict'.
+  // Passthrough format: the user already knows what they mean by `font`;
+  // FSS doesn't try to assemble it from pieces.
+  font: {
+    property: 'font',
+    animatable: false,
+    shorthandFamily: 'font',
+    format: (v: CSS.Property.Font): string => passthrough(v),
+  },
   fontFamily: {
     property: 'font-family',
     animatable: false,
+    longhandFamily: 'font',
     format: (v: CSS.Property.FontFamily): string => passthrough(v),
   },
   fontSize: {
@@ -287,6 +302,7 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'font',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   fontWeight: {
@@ -294,6 +310,7 @@ export const canonicalSpec = {
     syntax: '<number>',
     initialValue: '400',
     animatable: true,
+    longhandFamily: 'font',
     format: (v: CSS.Property.FontWeight): string => passthrough(v),
   },
   lineHeight: {
@@ -301,6 +318,7 @@ export const canonicalSpec = {
     syntax: '<number>',
     initialValue: '1',
     animatable: true,
+    longhandFamily: 'font',
     format: (v: CSS.Property.LineHeight<LenArg>): string => passthrough(v),
   },
   textAlign: {
@@ -370,6 +388,49 @@ export const canonicalSpec = {
   },
 
   // flex
+  // `flex` is the `<flex-grow> <flex-shrink> <flex-basis>` shorthand.
+  // CSS resolves a single number argument to `<n> 1 0%` (`flex: 1` ⇒
+  // `flex: 1 1 0%`), so a numeric overload could either pre-expand
+  // or pass through to the browser. We pass through: the browser's
+  // resolution is well-defined and identical across engines, and
+  // emitting the user's literal preserves diagnostic readability in
+  // devtools (`flex: 1` reads exactly like the source). Callers
+  // wanting the explicit triple can pass the string themselves.
+  //
+  // `flex-direction` is NOT a longhand of the `flex` shorthand
+  // (different family — the shorthand handles `flex-grow` /
+  // `flex-shrink` / `flex-basis`), so it sits outside the family
+  // guard and continues to co-occur freely.
+  flex: {
+    property: 'flex',
+    animatable: false,
+    shorthandFamily: 'flex',
+    format: (v: CSS.Property.Flex<LenArg>): string => passthrough(v),
+  },
+  flexGrow: {
+    property: 'flex-grow',
+    syntax: '<number>',
+    initialValue: '0',
+    animatable: true,
+    longhandFamily: 'flex',
+    format: (v: CSS.Property.FlexGrow): string => passthrough(v),
+  },
+  flexShrink: {
+    property: 'flex-shrink',
+    syntax: '<number>',
+    initialValue: '1',
+    animatable: true,
+    longhandFamily: 'flex',
+    format: (v: CSS.Property.FlexShrink): string => passthrough(v),
+  },
+  flexBasis: {
+    property: 'flex-basis',
+    syntax: '<length>',
+    initialValue: 'auto',
+    animatable: true,
+    longhandFamily: 'flex',
+    format: (n: LenArg, unit?: string): string => length(n, unit),
+  },
   flexDirection: {
     property: 'flex-direction',
     animatable: false,
@@ -393,7 +454,26 @@ export const canonicalSpec = {
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
 
-  // border
+  // border family — shorthand + three top-level longhands. The CSS
+  // `border` shorthand is `<line-width> || <line-style> || <color>`
+  // and resets the four-side longhands plus `border-image` to their
+  // initial values. The shorthand-policy guard prevents mixing
+  // `border` with `borderWidth` / `borderStyle` / `borderColor` (and
+  // `borderColor` above, which already declares family).
+  //
+  // Note: the per-side shorthands (`border-top`, `border-right`, ...)
+  // from `generated-property-specs.ts` are not wired into this family.
+  // CSS treats `border` followed by `border-top` as a deliberate
+  // override (`border` resets the per-side longhands, then `border-top`
+  // sets just the top), and the LIFO bag captures that intent without
+  // ambiguity.
+  border: {
+    property: 'border',
+    syntax: '<line-width> || <line-style> || <color>',
+    animatable: true,
+    shorthandFamily: 'border',
+    format: (v: CSS.Property.Border<LenArg>): string => passthrough(v),
+  },
   borderRadius: {
     property: 'border-radius',
     syntax: '<length>',
@@ -406,11 +486,13 @@ export const canonicalSpec = {
     syntax: '<length>',
     initialValue: '0',
     animatable: true,
+    longhandFamily: 'border',
     format: (n: LenArg, unit?: string): string => length(n, unit),
   },
   borderStyle: {
     property: 'border-style',
     animatable: false,
+    longhandFamily: 'border',
     format: (v: CSS.Property.BorderStyle): string => passthrough(v),
   },
 
@@ -460,6 +542,38 @@ export const canonicalSpec = {
     initialValue: 'none',
     animatable: true,
     format: (v: CSS.Property.Transform): string => passthrough(v),
+  },
+  // `outline` is parallel to `border` (`<width> || <style> || <color>`)
+  // and resets the three longhands. The hand-crafted entry replaces
+  // the generated string-typed one so callers get csstype autocomplete
+  // (`'1px solid red'`) and the shorthand-policy guard fires on
+  // `outline ↔ outlineWidth / outlineStyle / outlineColor` mixes. The
+  // longhands themselves stay in the generated set (they only need
+  // string|number typing); the policy guard only requires that the
+  // shorthand declares its family.
+  outline: {
+    property: 'outline',
+    animatable: true,
+    shorthandFamily: 'outline',
+    format: (v: CSS.Property.Outline<LenArg>): string => passthrough(v),
+  },
+  // `grid` is the mega-shorthand for the explicit + implicit grid
+  // (`grid-template-rows`, `grid-template-columns`, `grid-template-areas`,
+  // `grid-auto-rows`, `grid-auto-columns`, `grid-auto-flow`). It resets
+  // every unspecified subproperty to `initial`, so the family guard
+  // exists for the same reason as `font` and `border`: silently losing
+  // a longhand value is the bug the shorthand-policy is designed to
+  // catch. Longhands aren't enumerated here yet — most live in the
+  // generated set and don't carry `longhandFamily`, so today's guard
+  // only protects against `grid ↔ grid` co-occurrence. Promoting the
+  // common longhands (`gridTemplateColumns`, ...) to the hand-crafted
+  // set with `longhandFamily: 'grid'` is the follow-up when their
+  // typing matters.
+  grid: {
+    property: 'grid',
+    animatable: false,
+    shorthandFamily: 'grid',
+    format: (v: CSS.Property.Grid): string => passthrough(v),
   },
 } as const satisfies Record<string, RawSpec>;
 
