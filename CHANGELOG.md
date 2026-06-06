@@ -4,6 +4,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- **`e2e` CI workflow hardened** — every job carries an explicit `timeout-minutes` (pack: 20, consumer-next: 15, consumer-vite / consumer-bun: 10) so a wedged Cargo or Next build no longer holds a runner for the GitHub Actions 6-hour default. The `pack` job now layers `Swatinem/rust-cache@v2` keyed by Cargo lock + toolchain, dropping wasm32-wasip1 builds from ~3-4 min cold to seconds when warm. `concurrency.cancel-in-progress` is now gated on `github.event_name == 'pull_request'`, so consecutive commits on `main` (including release commits) no longer kill each other's e2e mid-pack. `e2e/next-app/next.config.mjs` sets `outputFileTracingRoot` to silence Next.js 15's "multiple lockfiles" warning when the consumer dir's `package-lock.json` coexists with the repo root's `pnpm-lock.yaml`.
+
 ## [0.9.0] — 2026-06-01
 
 ### Changed

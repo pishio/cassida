@@ -18,12 +18,18 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel in-flight runs only for PRs (rapid iteration). On main, every
+  # commit can carry a release-relevant change; killing a release
+  # commit's e2e mid-pack to start the next commit's loses signal.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pack:
     name: build + pack tarballs
     runs-on: ubuntu-latest
+    # Cold cargo build is ~3-4 minutes, warm pack a fraction of that.
+    # 20 minutes guards a wedged compilation without aborting healthy runs.
+    timeout-minutes: 20
     outputs:
       artifact: cassida-tarballs
     steps:
@@ -50,6 +56,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip1
+
+      # Cache cargo registry, git checkouts, and the `target/` directory
+      # keyed by Cargo.lock + toolchain. Cold pack builds wasm32-wasip1
+      # from scratch (~3-4 min); cached runs drop to seconds.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          shared-key: cassida-swc-wasm32-wasip1
+          cache-on-failure: true
 
       - name: Install workspace
         run: pnpm install --frozen-lockfile
@@ -85,6 +100,7 @@ jobs:
     name: consumer · vite ${{ matrix.vite }} (plugin-react ${{ matrix.plugin-react }})
     needs: pack
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -153,6 +169,7 @@ jobs:
     name: consumer · next ${{ matrix.next }}
     needs: pack
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -213,6 +230,7 @@ jobs:
     name: consumer · bun
     needs: pack
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
