@@ -317,6 +317,38 @@ describe('Canonicalizer.collapse — shorthand policy', () => {
     ).not.toThrow();
   });
 
+  it('font family: fontStyle after font throws under strict policy', () => {
+    // `font` shorthand resets font-style per CSS spec — silent
+    // override is the family-guard's whole job.
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'font', args: ['16px sans-serif'] },
+        { method: 'fontStyle', args: ['italic'] },
+      ]),
+    ).toThrow(/longhand "fontStyle" cannot follow shorthand "font"/);
+  });
+
+  it('outline family: outlineColor after outline throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'outline', args: ['1px solid red'] },
+        { method: 'outlineColor', args: ['blue'] },
+      ]),
+    ).toThrow(/longhand "outlineColor" cannot follow shorthand "outline"/);
+  });
+
+  it('outline family: outline after outlineWidth throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'outlineWidth', args: [2] },
+        { method: 'outline', args: ['1px solid red'] },
+      ]),
+    ).toThrow(/shorthand "outline" cannot follow longhand "outlineWidth"/);
+  });
+
   it('lenient policy lets border + borderWidth co-occur (last-write wins per CSS-property)', () => {
     const c = new Canonicalizer(defaultRegistry, 'lenient');
     const bag = c

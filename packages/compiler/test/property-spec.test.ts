@@ -73,6 +73,33 @@ describe('property-spec — CSS shorthand coverage', () => {
     }
   });
 
+  it('font family: fontStyle / fontVariant / fontStretch also declare longhandFamily "font"', () => {
+    // The `font` shorthand resets these too per CSS spec, so the
+    // family guard needs to see them. Promoted into the hand-curated
+    // set as part of the 0.10.x shorthand-coverage pass.
+    for (const m of ['fontStyle', 'fontVariant', 'fontStretch']) {
+      expect(defaultRegistry[m]!.longhandFamily, m).toBe('font');
+    }
+  });
+
+  it('outline family: outlineWidth / outlineStyle / outlineColor declare longhandFamily "outline"', () => {
+    // Promoted out of the generated set so the policy guard fires on
+    // `outline ↔ outlineWidth / outlineStyle / outlineColor` mixes.
+    for (const m of ['outlineWidth', 'outlineStyle', 'outlineColor']) {
+      expect(defaultRegistry[m]!.longhandFamily, m).toBe('outline');
+    }
+  });
+
+  it('border / outline shorthand entries are animatable:false', () => {
+    // `@property` only accepts a restricted syntax grammar; the
+    // shorthand's `<line-width> || <line-style> || <color>` is
+    // invalid syntax there. Marking them `animatable:false` skips
+    // the `@property` emission path so the CSS parser doesn't
+    // silently drop the declaration.
+    expect(defaultRegistry['border']!.animatable).toBe(false);
+    expect(defaultRegistry['outline']!.animatable).toBe(false);
+  });
+
   it('flex family: flexGrow / flexShrink / flexBasis declare longhandFamily "flex"', () => {
     for (const m of ['flexGrow', 'flexShrink', 'flexBasis']) {
       expect(defaultRegistry[m]!.longhandFamily, m).toBe('flex');

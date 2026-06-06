@@ -313,6 +313,29 @@ export const canonicalSpec = {
     longhandFamily: 'font',
     format: (v: CSS.Property.FontWeight): string => passthrough(v),
   },
+  // `font` shorthand also resets `font-style` / `font-variant` /
+  // `font-stretch` per CSS spec. Hand-curated entries with
+  // `longhandFamily: 'font'` so the shorthand-policy guard catches
+  // co-occurrence with the shorthand (matching `fontFamily` /
+  // `fontSize` / `fontWeight` / `lineHeight`).
+  fontStyle: {
+    property: 'font-style',
+    animatable: false,
+    longhandFamily: 'font',
+    format: (v: CSS.Property.FontStyle): string => passthrough(v),
+  },
+  fontVariant: {
+    property: 'font-variant',
+    animatable: false,
+    longhandFamily: 'font',
+    format: (v: CSS.Property.FontVariant): string => passthrough(v),
+  },
+  fontStretch: {
+    property: 'font-stretch',
+    animatable: true,
+    longhandFamily: 'font',
+    format: (v: CSS.Property.FontStretch): string => passthrough(v),
+  },
   lineHeight: {
     property: 'line-height',
     syntax: '<number>',
@@ -467,10 +490,18 @@ export const canonicalSpec = {
   // override (`border` resets the per-side longhands, then `border-top`
   // sets just the top), and the LIFO bag captures that intent without
   // ambiguity.
+  // `animatable: false` for the shorthand itself: `@property` only
+  // accepts a restricted syntax grammar (`<length>`, `<color>`,
+  // `<image>`, etc., or `*`), not the `<line-width> || <line-style>
+  // || <color>` alternation. Marking the shorthand `animatable: true`
+  // would emit an `@property` declaration with an invalid `syntax`
+  // descriptor, which the CSS parser silently drops — taking the
+  // dynamic-value interpolation path with it. The longhands
+  // (`borderWidth`, `borderColor`) keep `animatable: true` because
+  // each one's syntax is `@property`-valid in isolation.
   border: {
     property: 'border',
-    syntax: '<line-width> || <line-style> || <color>',
-    animatable: true,
+    animatable: false,
     shorthandFamily: 'border',
     format: (v: CSS.Property.Border<LenArg>): string => passthrough(v),
   },
@@ -547,15 +578,40 @@ export const canonicalSpec = {
   // and resets the three longhands. The hand-crafted entry replaces
   // the generated string-typed one so callers get csstype autocomplete
   // (`'1px solid red'`) and the shorthand-policy guard fires on
-  // `outline ↔ outlineWidth / outlineStyle / outlineColor` mixes. The
-  // longhands themselves stay in the generated set (they only need
-  // string|number typing); the policy guard only requires that the
-  // shorthand declares its family.
+  // `outline ↔ outlineWidth / outlineStyle / outlineColor` mixes.
+  //
+  // `animatable: false` for the same reason as `border`: the
+  // shorthand syntax is `@property`-invalid alternation.
   outline: {
     property: 'outline',
-    animatable: true,
+    animatable: false,
     shorthandFamily: 'outline',
     format: (v: CSS.Property.Outline<LenArg>): string => passthrough(v),
+  },
+  // Outline longhands promoted from the generated set so their
+  // `longhandFamily: 'outline'` registration activates the family
+  // guard (`outline ↔ outlineWidth / outlineStyle / outlineColor`).
+  outlineWidth: {
+    property: 'outline-width',
+    syntax: '<length>',
+    initialValue: '0',
+    animatable: true,
+    longhandFamily: 'outline',
+    format: (n: LenArg, unit?: string): string => length(n, unit),
+  },
+  outlineStyle: {
+    property: 'outline-style',
+    animatable: false,
+    longhandFamily: 'outline',
+    format: (v: CSS.Property.OutlineStyle): string => passthrough(v),
+  },
+  outlineColor: {
+    property: 'outline-color',
+    syntax: '<color>',
+    initialValue: 'transparent',
+    animatable: true,
+    longhandFamily: 'outline',
+    format: (v: CSS.Property.OutlineColor): string => passthrough(v),
   },
   // `grid` is the mega-shorthand for the explicit + implicit grid
   // (`grid-template-rows`, `grid-template-columns`, `grid-template-areas`,
@@ -563,12 +619,16 @@ export const canonicalSpec = {
   // every unspecified subproperty to `initial`, so the family guard
   // exists for the same reason as `font` and `border`: silently losing
   // a longhand value is the bug the shorthand-policy is designed to
-  // catch. Longhands aren't enumerated here yet — most live in the
-  // generated set and don't carry `longhandFamily`, so today's guard
-  // only protects against `grid ↔ grid` co-occurrence. Promoting the
-  // common longhands (`gridTemplateColumns`, ...) to the hand-crafted
-  // set with `longhandFamily: 'grid'` is the follow-up when their
-  // typing matters.
+  // catch.
+  //
+  // The longhands live in the generated set and don't carry
+  // `longhandFamily: 'grid'`, and `checkShorthandPolicy` only fires
+  // on shorthand-vs-longhand pairs (not shorthand-vs-shorthand), so
+  // today's guard is effectively inactive for grid mixes — the
+  // `shorthandFamily: 'grid'` declaration here is forward-looking,
+  // ready to activate once `gridTemplateColumns` / `gridTemplateRows`
+  // / etc. are promoted into the hand-crafted set with
+  // `longhandFamily: 'grid'`. Tracked in the backlog.
   grid: {
     property: 'grid',
     animatable: false,
