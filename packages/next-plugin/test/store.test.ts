@@ -99,7 +99,7 @@ describe('namespaced rule store', () => {
   it('knownCompilerNames lists every namespace that has been written to', () => {
     setRulesForFile('/abs/a.tsx', [makeRule('cas-a')], 'server');
     setRulesForFile('/abs/b.tsx', [makeRule('cas-b')], 'client');
-    expect(knownCompilerNames().sort()).toEqual(['client', 'server']);
+    expect([...knownCompilerNames()].sort()).toEqual(['client', 'server']);
   });
 
   it('trackedFiles aggregates files across every namespace', () => {

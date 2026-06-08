@@ -112,7 +112,10 @@ describe('parser plugin: trySpread', () => {
     };
     const handler: CassParserPlugin = {
       name: 'handler',
-      trySpread: conditionalPlugin.trySpread,
+      // `conditionalPlugin.trySpread` is optional on the type — assert
+      // its definedness so `exactOptionalPropertyTypes` doesn't widen
+      // the assignment to include `undefined`.
+      trySpread: conditionalPlugin.trySpread!,
     };
     const lateObserver: CassParserPlugin = {
       name: 'lateObserver',
