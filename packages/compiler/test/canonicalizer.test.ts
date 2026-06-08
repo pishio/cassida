@@ -260,6 +260,120 @@ describe('Canonicalizer.collapse — shorthand policy', () => {
       ]),
     ).toThrow(/longhand "top" cannot follow shorthand "inset"/);
   });
+
+  // Shorthand families added alongside `font` / `border` / `flex` / `grid`
+  // / `outline` canonicals. Each family now matches the padding / margin
+  // / inset pattern: mixing the shorthand with one of its longhands
+  // inside one scope errors under 'strict' policy. The shorthand resets
+  // unspecified subproperties to initial values in real CSS — silently
+  // mixing them is the exact footgun the policy guard exists to catch.
+  it('border family: borderWidth after border throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'border', args: ['1px solid red'] },
+        { method: 'borderWidth', args: [2] },
+      ]),
+    ).toThrow(/longhand "borderWidth" cannot follow shorthand "border"/);
+  });
+
+  it('border family: border after borderColor throws under strict policy (latent-bug direction)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'borderColor', args: ['blue'] },
+        { method: 'border', args: ['1px solid red'] },
+      ]),
+    ).toThrow(/shorthand "border" cannot follow longhand "borderColor"/);
+  });
+
+  it('font family: fontSize after font throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'font', args: ['16px sans-serif'] },
+        { method: 'fontSize', args: [18] },
+      ]),
+    ).toThrow(/longhand "fontSize" cannot follow shorthand "font"/);
+  });
+
+  it('flex family: flexBasis after flex throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'flex', args: [1] },
+        { method: 'flexBasis', args: [100] },
+      ]),
+    ).toThrow(/longhand "flexBasis" cannot follow shorthand "flex"/);
+  });
+
+  it('flex family: flexDirection is unrelated and coexists with flex shorthand', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'flex', args: [1] },
+        { method: 'flexDirection', args: ['row'] },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('font family: fontStyle after font throws under strict policy', () => {
+    // `font` shorthand resets font-style per CSS spec — silent
+    // override is the family-guard's whole job.
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'font', args: ['16px sans-serif'] },
+        { method: 'fontStyle', args: ['italic'] },
+      ]),
+    ).toThrow(/longhand "fontStyle" cannot follow shorthand "font"/);
+  });
+
+  it('outline family: outlineColor after outline throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'outline', args: ['1px solid red'] },
+        { method: 'outlineColor', args: ['blue'] },
+      ]),
+    ).toThrow(/longhand "outlineColor" cannot follow shorthand "outline"/);
+  });
+
+  it('outline family: outline after outlineWidth throws under strict policy', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'outlineWidth', args: [2] },
+        { method: 'outline', args: ['1px solid red'] },
+      ]),
+    ).toThrow(/shorthand "outline" cannot follow longhand "outlineWidth"/);
+  });
+
+  it('lenient policy lets border + borderWidth co-occur (last-write wins per CSS-property)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'lenient');
+    const bag = c
+      .collapse([
+        { method: 'border', args: ['1px solid red'] },
+        { method: 'borderWidth', args: [2] },
+      ]).bag;
+    expect(bag).toEqual({
+      border: '1px solid red',
+      'border-width': '2px',
+    });
+  });
+
+  it('shorthand-policy resets across scope boundaries (border inside hover after outer border is fine)', () => {
+    const c = new Canonicalizer(defaultRegistry, 'strict');
+    expect(() =>
+      c.collapse([
+        { method: 'border', args: ['1px solid red'] },
+        {
+          scope: { kind: 'pseudo', selector: ':hover' },
+          ops: [{ method: 'borderWidth', args: [2] }],
+        },
+      ]),
+    ).not.toThrow();
+  });
 });
 
 describe('Canonicalizer.collapse — multi-property entries (px / py / mx / my)', () => {

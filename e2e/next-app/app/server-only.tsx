@@ -11,9 +11,7 @@ export function ServerOnly() {
       {...cas()
         .marginTop(24)
         .padding(12)
-        .borderWidth(1)
-        .borderStyle('solid')
-        .borderColor('#ddd')
+        .border('1px solid #ddd')
         .borderRadius(4)
         .fontSize(13)
         .color('#666').props}

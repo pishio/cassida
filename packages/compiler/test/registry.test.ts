@@ -10,8 +10,16 @@ import {
 
 describe('default registry layout', () => {
   it('exposes only long-form names as canonicals', () => {
+    // Names that historically failed for being alias-like or for being
+    // intentionally banned from the safe surface. `font` is now a
+    // legitimate CSS-shorthand canonical (the mega font shorthand) and
+    // is therefore excluded from this guard; `background` remains an
+    // intentional miss because we only expose `backgroundColor` —
+    // `background` would set image / repeat / position / size / etc.,
+    // which the family guard can't compensate for without longhand
+    // entries for each subproperty.
     for (const name of Object.keys(defaultCanonicals)) {
-      expect(name).not.toMatch(/^(mt|mr|mb|ml|pt|pr|pb|pl|bg|font|background)$/);
+      expect(name).not.toMatch(/^(mt|mr|mb|ml|pt|pr|pb|pl|bg|background)$/);
     }
   });
 
