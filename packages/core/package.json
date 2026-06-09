@@ -1,6 +1,6 @@
 {
   "name": "@cassida/core",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Cassida runtime — cas() chain builder. In production this is replaced at build time; in dev / for dynamic chains it materializes inline style.",
   "license": "MIT",
   "sideEffects": false,

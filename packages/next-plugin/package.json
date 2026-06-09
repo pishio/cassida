@@ -1,7 +1,6 @@
 {
   "name": "@cassida/next-plugin",
-  "version": "0.9.0",
-  "private": true,
+  "version": "0.10.0",
   "description": "Next.js integration for Cassida. Bundles the SWC plugin registration, the IR-comment loader, the @layer cas CSS virtual module, and the optional plugin registry (hover-fix, conditional, print, global-css). Phase 1 scaffold — withCassida() API surface only. Private until the integration is filled in.",
   "license": "MIT",
   "repository": {
