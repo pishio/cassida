@@ -503,7 +503,12 @@ export const canonicalSpec = {
     property: 'border',
     animatable: false,
     shorthandFamily: 'border',
-    format: (v: CSS.Property.Border<LenArg>): string => passthrough(v),
+    // Drop the `<LenArg>` generic — the csstype generic widens the input
+    // union to include `number`, but `passthrough(v)` returns `String(v)`
+    // which would emit `border: 1` (invalid CSS). The shorthand grammar
+    // requires a string like `'1px solid red'` — the longhand
+    // `borderWidth(1)` is the path for numeric input.
+    format: (v: CSS.Property.Border): string => passthrough(v),
   },
   borderRadius: {
     property: 'border-radius',
@@ -586,7 +591,12 @@ export const canonicalSpec = {
     property: 'outline',
     animatable: false,
     shorthandFamily: 'outline',
-    format: (v: CSS.Property.Outline<LenArg>): string => passthrough(v),
+    // Drop the `<LenArg>` generic — the csstype generic widens the input
+    // union to include `number`, but `passthrough(v)` returns `String(v)`
+    // which would emit `outline: 1` (invalid CSS). The shorthand grammar
+    // requires a string like `'1px solid red'` — the longhand
+    // `outlineWidth(1)` is the path for numeric input.
+    format: (v: CSS.Property.Outline): string => passthrough(v),
   },
   // Outline longhands promoted from the generated set so their
   // `longhandFamily: 'outline'` registration activates the family

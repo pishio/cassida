@@ -9,6 +9,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 - **Supported Next.js versions policy** — `@cassida/next-plugin`'s README now documents that only the current Next.js LTS release is supported; older majors aren't tested in CI and may break silently when `@next/swc` bumps its embedded `swc_core`.
 - **swc_core drift monitoring** — a weekly GitHub Actions cron (`.github/workflows/swc-core-drift.yml`) compares `@cassida/swc-plugin-next`'s `swc_core` pin against the latest Next.js LTS release and auto-opens a tracking issue when they diverge. Enforces the Supported Next.js versions policy added in the previous changelog entry.
 
+### Fixed
+
+- **`.border(number)` / `.outline(number)` typecheck-runtime mismatch fixed** — the csstype `Border<TLength>` / `Outline<TLength>` generics widened the input union to include `number`, but the runtime passthrough emitted invalid CSS (`border: 1`). Dropped the generic so only strings (`'1px solid red'`) typecheck; numeric width goes through `.borderWidth(1)` / `.outlineWidth(1)`.
+
 ## [0.10.0] — 2026-06-09
 
 ### Added
