@@ -60,6 +60,31 @@ export default withCassida(
 
 It also ships the App Router (RSC) guard that warns when a `cas()` call would land in a Server Component runtime, the lazy plugin loader so you only require what you enable, and the standard `@layer cas` CSS bundle endpoint.
 
+## Monorepo and `output: 'standalone'`
+
+In a monorepo where the Next.js app directory holds its own lockfile but the workspace root also has one, Next.js 15 emits a "multiple lockfiles detected" warning on every build. The conventional fix — setting `outputFileTracingRoot` to the app directory — silences the warning, but it has a second effect that bites later: it also governs which `node_modules` files are copied into the `.next/standalone/` bundle when you use `output: 'standalone'`.
+
+If `outputFileTracingRoot` points at the **app directory**, the standalone bundle won't include the `@cassida/*` packages (they live one or more levels up under the workspace `node_modules`), and the SWC plugin's WASM loader will fail to resolve at runtime in production.
+
+The fix: point `outputFileTracingRoot` at the **workspace root**, not the app directory.
+
+```js
+// next.config.mjs
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { withCassida } from '@cassida/next-plugin';
+
+const workspaceRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+// (or hard-code if your structure is stable)
+
+export default withCassida({
+  // ...
+  outputFileTracingRoot: workspaceRoot,
+});
+```
+
+In single-package consumers (no monorepo), `outputFileTracingRoot` can be left unset — the warning won't fire and the standalone bundle traces correctly by default.
+
 ## License
 
 MIT
