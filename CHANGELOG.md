@@ -4,6 +4,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **Supported Next.js versions policy** — `@cassida/next-plugin`'s README now documents that only the current Next.js LTS release is supported; older majors aren't tested in CI and may break silently when `@next/swc` bumps its embedded `swc_core`.
+
 ## [0.10.0] — 2026-06-09
 
 ### Added
