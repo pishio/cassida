@@ -48,6 +48,25 @@ No runtime. No specificity computation. No utility-class composition. Just one e
 
 The five principles (Single Class · Zero-runtime · LIFO Collapse · Bijection · Shorthand Policy) and the *toge-ari toge-nashi toge-toge* → shield origin are written up in **[PHILOSOPHY.md](./PHILOSOPHY.md)** (English + 日本語).
 
+## Next.js Quick Start
+
+```bash
+pnpm add @cassida/core @cassida/next-plugin
+```
+
+```js
+// next.config.mjs
+import { withCassida } from '@cassida/next-plugin';
+export default withCassida({ /* your existing config */ });
+```
+
+```tsx
+// app/layout.tsx
+import '@cassida/next-plugin/virtual.css';
+```
+
+App Router only, Next.js 15 LTS, webpack only (Turbopack is queued behind Phase 1.5). The full setup, the SWC plugin internals, and the webpack plugin API are documented on the Cassida docs site under **Frameworks**.
+
 ## Status
 
 **v0.10.0** — `@cassida/swc-plugin` and `@cassida/next-plugin` are now published to npm. `npm install @cassida/next-plugin` from a Next.js 15 App Router project + `withCassida(nextConfig)` in `next.config.mjs` is the supported entry point; `@cassida/swc-plugin` ships the dual-WASM build (modern `swc_core` 66.x for Rspack / `@swc/core`, next-targeted `swc_core` 35.0.0 for `@next/swc` 15.x) and is pulled in transitively. Same release: five hand-curated CSS shorthands (`border`, `font`, `flex`, `grid`, `outline`) join the chain surface with csstype-typed passthrough formatters and full shorthand-policy family wiring (`border ↔ borderWidth / borderStyle / borderColor`, `font ↔ fontFamily / fontSize / fontWeight / lineHeight / fontStyle / fontVariant / fontStretch`, `flex ↔ flexGrow / flexShrink / flexBasis`, `outline ↔ outlineWidth / outlineStyle / outlineColor`). Type-level test baseline lifted across `@cassida/compiler`, `@cassida/parser`, `@cassida/next-plugin`, and `@cassida/vite-plugin` — public type contracts are now CI-gated via standardised `tsconfig.typecheck.json`. CI workflow hardened with `timeout-minutes`, `Swatinem/rust-cache`, and PR-only `cancel-in-progress`.

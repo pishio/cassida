@@ -10,6 +10,9 @@ import Modifiers from './pages/Modifiers.js';
 import Registry from './pages/Registry.js';
 import Unsafe from './pages/Unsafe.js';
 import Config from './pages/Config.js';
+import NextSetup from './pages/NextSetup.js';
+import SwcPlugin from './pages/SwcPlugin.js';
+import NextPlugin from './pages/NextPlugin.js';
 import Recommended from './pages/Recommended.js';
 import HoverFix from './pages/HoverFix.js';
 import Conditional from './pages/Conditional.js';
@@ -45,6 +48,9 @@ export const routes: RouteRecord[] = [
       { path: 'api/registry', Component: Registry },
       { path: 'api/unsafe', Component: Unsafe },
       { path: 'api/config', Component: Config },
+      { path: 'frameworks/next', Component: NextSetup },
+      { path: 'frameworks/swc-plugin', Component: SwcPlugin },
+      { path: 'frameworks/next-plugin', Component: NextPlugin },
       { path: 'plugins/recommended', Component: Recommended },
       { path: 'plugins/hover-fix', Component: HoverFix },
       { path: 'plugins/conditional', Component: Conditional },

@@ -76,6 +76,10 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       registry: 'Property registry',
       unsafe: 'Unsafe surface',
       config: 'Configuration',
+      frameworks: 'Frameworks',
+      nextSetup: 'Next.js setup',
+      swcPlugin: '@cassida/swc-plugin',
+      nextPlugin: '@cassida/next-plugin',
       plugins: 'Plugins',
       recommended: '@cassida/recommended',
       hoverFix: '@cassida/plugin-hover-fix',
@@ -94,6 +98,10 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       registry: 'プロパティレジストリ',
       unsafe: 'unsafe な API',
       config: '設定',
+      frameworks: 'フレームワーク',
+      nextSetup: 'Next.js セットアップ',
+      swcPlugin: '@cassida/swc-plugin',
+      nextPlugin: '@cassida/next-plugin',
       plugins: 'プラグイン',
       recommended: '@cassida/recommended',
       hoverFix: '@cassida/plugin-hover-fix',
@@ -119,6 +127,11 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
         <NavItem to={`${base}/api/registry`} label={labels.registry} />
         <NavItem to={`${base}/api/unsafe`} label={labels.unsafe} />
         <NavItem to={`${base}/api/config`} label={labels.config} />
+      </NavSection>
+      <NavSection title={labels.frameworks}>
+        <NavItem to={`${base}/frameworks/next`} label={labels.nextSetup} />
+        <NavItem to={`${base}/frameworks/swc-plugin`} label={labels.swcPlugin} />
+        <NavItem to={`${base}/frameworks/next-plugin`} label={labels.nextPlugin} />
       </NavSection>
       <NavSection title={labels.plugins}>
         <NavItem to={`${base}/plugins/recommended`} label={labels.recommended} />
