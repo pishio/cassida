@@ -10,6 +10,8 @@ Cassida supports the current Next.js LTS release only (15.x at the time of writi
 
 The `@cassida/swc-plugin` package ships two ABI-pinned WASM artefacts — the next-targeted one tracks the `swc_core` pinned by the current Next.js LTS, and won't be backported when Next.js bumps its `swc_core` in a future release.
 
+**Enforcement.** A weekly cron in this repo ([`.github/workflows/swc-core-drift.yml`](../../.github/workflows/swc-core-drift.yml)) watches the `swc_core` version embedded in the current Next.js LTS release. When the pin drifts, an issue is auto-opened on this repo with the `Cassida-Phase-1.5` label so the `@cassida/swc-plugin-next` crate can be bumped before consumers' Next.js upgrades break.
+
 ## Install
 
 ```bash
