@@ -7,7 +7,7 @@ export default function NextPlugin(): React.JSX.Element {
   const copy = useT({
     en: {
       title: '@cassida/next-plugin',
-      lead: 'The Next.js side of the build pipeline. It pairs an IR-comment loader (which reads the markers @cassida/swc-plugin emitted), a webpack plugin (which serves @cassida/next-plugin/virtual.css through webpack-virtual-modules), and a cross-compiler bridge (which lets Server-only Server Component styles reach the Client compiler\'s stylesheet).',
+      lead: 'The Next.js side of the build pipeline. It pairs an IR-comment loader (which reads the markers emitted by @cassida/swc-plugin), a webpack plugin (which serves @cassida/next-plugin/virtual.css through webpack-virtual-modules), and a cross-compiler bridge (which lets Server-only Server Component styles reach the Client compiler\'s stylesheet).',
       configHeading: 'withCassida()',
       configCopy: 'The entry point. Pass it your next config and it returns a config with the SWC plugin (./next entry of @cassida/swc-plugin) wired into experimental.swcPlugins and the webpack plugin wired into config.webpack. Plain object configs and config functions are both supported.',
       virtualHeading: '/virtual.css',
