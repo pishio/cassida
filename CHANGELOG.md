@@ -8,6 +8,7 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - **Supported Next.js versions policy** — `@cassida/next-plugin`'s README now documents that only the current Next.js LTS release is supported; older majors aren't tested in CI and may break silently when `@next/swc` bumps its embedded `swc_core`.
 - **swc_core drift monitoring** — a weekly GitHub Actions cron (`.github/workflows/swc-core-drift.yml`) compares `@cassida/swc-plugin-next`'s `swc_core` pin against the latest Next.js LTS release and auto-opens a tracking issue when they diverge. Enforces the Supported Next.js versions policy added in the previous changelog entry.
+- **`@cassida/next-plugin` README guidance for monorepo + `output: 'standalone'`** — documents the `outputFileTracingRoot` footgun where setting it to the app directory silences Next.js 15's "multiple lockfiles" warning but silently drops `@cassida/*` from the standalone bundle's `node_modules` tree.
 
 ### Fixed
 
