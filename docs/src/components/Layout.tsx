@@ -69,6 +69,7 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       home: 'Home',
       philosophy: 'Philosophy',
       install: 'Install',
+      glossary: 'Glossary',
       api: 'API',
       cas: 'cas() chain',
       modifiers: 'Modifiers',
@@ -86,11 +87,12 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       home: 'ホーム',
       philosophy: '設計思想',
       install: 'インストール',
+      glossary: '用語集',
       api: 'API',
       cas: 'cas() チェーン',
       modifiers: '修飾子',
       registry: 'プロパティレジストリ',
-      unsafe: 'unsafe 面',
+      unsafe: 'unsafe な API',
       config: '設定',
       plugins: 'プラグイン',
       recommended: '@cassida/recommended',
@@ -109,6 +111,7 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
         <NavItem to={`${base}/`} label={labels.home} end />
         <NavItem to={`${base}/philosophy`} label={labels.philosophy} />
         <NavItem to={`${base}/install`} label={labels.install} />
+        <NavItem to={`${base}/glossary`} label={labels.glossary} />
       </NavSection>
       <NavSection title={labels.api}>
         <NavItem to={`${base}/api/cas`} label={labels.cas} />

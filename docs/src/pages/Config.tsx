@@ -29,23 +29,23 @@ export default function Config(): React.JSX.Element {
     ja: {
       title: '設定',
       intro:
-        'プロジェクトルートに `cassida.config.json` を置く。Vite プラグインが自動で見つけ、指定された値を documented デフォルトの上にマージする。すべてのフィールドは optional — キーを書かなければデフォルトが採用される。',
+        'プロジェクトルートに `cassida.config.json` を置く。Vite プラグインがこれを自動で見つけ、指定された値を既定値の上にマージする。すべてのフィールドは optional で、書かなかったキーは既定値が使われる。',
       fields: 'フィールド',
       shorthandTitle: 'shorthand.policy',
       shorthandCopy:
-        '`"strict"` (デフォルト) は同一スコープ内での shorthand と longhand の共起をどちらの方向でも拒否する。`"shorthand-first"` は longhand → shorthand を許すが、逆方向 (静かにバグる方向) は依然として拒否する。`"lenient"` はチェックを完全に無効化する — 下流のカスケードに衝突解決を委ねる宣言だと理解した上で選ぶ。',
+        '`"strict"` (デフォルト) は、同じスコープ内に shorthand と longhand が同居することを、どちら向きでも拒否する。`"shorthand-first"` は longhand → shorthand の順だけ許す。逆向き (黙ってバグる方向) は引き続き拒否する。`"lenient"` はチェックを完全に外す。衝突の解決はブラウザ側のカスケードに委ねる、と明示的に決めた場合だけ選ぶ。',
       mediaSortTitle: 'media.sort',
       mediaSortCopy:
-        '`"mobile-first"` (デフォルト) は `min-width` クエリを小 → 大にソートする。`"desktop-first"` は `max-width` クエリを大 → 小にソートする。`em` / `rem` は 16px で正規化されるため、`px` と適切な順で交互に並ぶ。幅基準でないクエリ (`print`、`prefers-color-scheme` など) は幅ブロックの後ろにアルファベット順で続く。',
+        '`"mobile-first"` (デフォルト) は `min-width` クエリを小 → 大の順に並べる。`"desktop-first"` は `max-width` クエリを大 → 小の順に並べる。`em` / `rem` は 16px で正規化されるので、`px` と混ぜても順序が一貫する。幅基準でないクエリ (`print`、`prefers-color-scheme` など) は、幅ブロックの後にアルファベット順で続く。',
       layerTitle: 'layer',
       layerCopy:
-        'Cassida が emit するすべてのルールを包む cascade layer 名。デフォルトは `"cas"`。`null` にすると wrap を無効化できるが、ほぼ常に誤った選択だ — Cassida のクラスがプリフライトを詳細度トリックなしで凌ぐのは、このレイヤーの存在のおかげだ。',
+        'Cassida が出力するすべてのルールを包む cascade layer の名前。デフォルトは `"cas"`。`null` にすると層で包まずに出力できるが、ほぼ常に誤った選択になる。Cassida のクラスが詳細度の小細工なしでプリフライトより優先されるのは、この層に置かれているからだ。',
       hashTitle: 'hash',
       hashCopy:
-        'クラスハッシュのフォーマット。デフォルトは `{ prefix: "cas-", length: 8 }`。8 文字の MurmurHash3 は実用上は無視できる確率でしか衝突しない。npm 上の全チェーン規模で動かす場合のみ `length` を引き上げる。',
+        'クラスハッシュの形式。デフォルトは `{ prefix: "cas-", length: 8 }`。8 文字の MurmurHash3 は、現実的なプロジェクト規模では無視できる確率でしか衝突しない。npm 上の全チェーンを 1 つのインデックスで扱うような規模で運用する場合に限り、`length` を伸ばす。',
       cssTitle: 'css',
       cssCopy:
-        '出力モードと後処理。`mode: "rule-per-class"` (クラスハッシュごとに 1 ルール、デフォルト) または `"shared-by-declaration"` (値ごとに宣言をグルーピングして CSS サイズを微減)。`lightningcss.enabled` を true にすると、emit された CSS が lightningcss を通って autoprefix と minify を受ける。',
+        '出力モードと後処理の設定。`mode: "rule-per-class"` は 1 クラスにつき 1 ルールを出力する (デフォルト)。`"shared-by-declaration"` は同じ宣言を持つクラスをまとめて出力サイズを少し縮める。`lightningcss.enabled` を true にすると、出力された CSS を lightningcss に通してベンダープレフィックスと minify を行う。',
     },
   });
 

@@ -3,6 +3,7 @@ import Layout from './components/Layout.js';
 import RedirectIndex from './pages/RedirectIndex.js';
 import Landing from './pages/Landing.js';
 import Philosophy from './pages/Philosophy.js';
+import Glossary from './pages/Glossary.js';
 import Install from './pages/Install.js';
 import Cas from './pages/Cas.js';
 import Modifiers from './pages/Modifiers.js';
@@ -38,6 +39,7 @@ export const routes: RouteRecord[] = [
       { index: true, Component: Landing },
       { path: 'philosophy', Component: Philosophy },
       { path: 'install', Component: Install },
+      { path: 'glossary', Component: Glossary },
       { path: 'api/cas', Component: Cas },
       { path: 'api/modifiers', Component: Modifiers },
       { path: 'api/registry', Component: Registry },

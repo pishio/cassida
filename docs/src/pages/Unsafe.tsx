@@ -46,28 +46,34 @@ export default function Unsafe(): React.JSX.Element {
       blacklistTable: 'The names excluded from the safe surface:',
     },
     ja: {
-      title: 'unsafe な面',
+      title: 'unsafe な API',
       intro:
-        '型付き cas() の面は、特定の CSS shorthand と標準セット外のプロパティを意図的に拒否する。だが、本当にそれが必要な場面 — ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、暗黙リセットを伴う shorthand を受け入れた上での記述 — のためには、名前付きの脱出経路が用意してある。命名は Rust に倣い、cas.unsafe (および .set) はレジストリを迂回するコストを呼び出し側に明示する。',
+        '型付きの cas() の API は、特定の CSS shorthand と標準セット外のプロパティを意図的に拒否する。それでも本当に必要な場面 — ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、暗黙のリセットを承知した上で shorthand を使いたい場合 — には、名前付きの脱出経路を用意してある。命名は Rust に倣った。cas.unsafe (および .set) は、レジストリを迂回するというコストを呼び出し側に対して明示している。',
       whyHeading: 'なぜ unsafe なのか',
       whyCopy:
-        'background や font などの shorthand には暗黙リセット意味論がある — 1 つ書き込むと、その shorthand が覆うすべてのサブプロパティが (明示していないものも含めて) リセットされる。任意のカスケード文脈で "padding: 8px" の後に "padding-top: 16px" を書けば、勝つのはソース順に依存する宣言になる。Cassida のデフォルト strict な shorthand-policy はこの共起を拒否し、LIFO とカスケードの結果を一致させ続ける。cas.unsafe や .set はそれらのチェックを意図的に迂回するためのものだ — そう設計されており、そう命名されている。',
+        'background や font のような shorthand には暗黙のリセットがある。1 つ書き込むと、その shorthand が覆うサブプロパティはすべて (書いていないものも含めて) リセットされる。"padding: 8px" の後に "padding-top: 16px" を書いた場合、どちらが勝つかはソース上の出現順に依存する。Cassida のデフォルトである strict な shorthand-policy は、その同居を拒否することで LIFO の結果とカスケードの結果を一致させている。cas.unsafe や .set は、それらのチェックを明示的に外すための入口だ。設計上そういう役割を持っていて、名前にもその意図が反映されている。',
       casUnsafeHeading: 'cas.unsafe(preset)',
       casUnsafeCopy:
-        '任意の string キーを含むオブジェクトからチェーンを開始する。preset の各エントリは生の CSS 宣言として inline され、レジストリ検索・shorthand-policy ガード・family tracking はすべてバイパスされる。',
+        '任意の string キーを持つオブジェクトからチェーンを開始する。preset の各エントリは生の CSS 宣言としてそのまま埋め込まれる。レジストリ検索、shorthand-policy ガード、ファミリー追跡はいずれも適用されない。',
       setHeading: '.set(key, value)',
       setCopy:
-        'cas.unsafe のメソッド形式 — チェーンの途中に 1 プロパティ書き込みを差し込む。単位の自動付与はない。"10px" や "1.5rem" のように完全な CSS 値を渡す。',
+        'cas.unsafe のメソッド版にあたる。チェーンの途中に 1 プロパティだけ生の書き込みを差し込める。単位の自動付与はないので、"10px" や "1.5rem" のように完全な CSS 値の文字列を渡す。',
       blacklistHeading: 'ブラックリストの shorthand',
       blacklistCopy:
-        '以下の shorthand 名は型付き cas() チェーンから欠落している。型付き preset の SafePreset が境界でこれらを除外し、チェーンメソッドとしても存在しない。これらを書きたい場合は cas.unsafe({ ... }) もしくは cas().set(\'background\', \'...\') を経由する:',
-      blacklistTable: 'safe surface から除外されている名前:',
+        '以下の shorthand 名は型付き cas() チェーンには載っていない。型付き preset の SafePreset が境界で除外しているので、チェーンメソッドとしても存在しない。これらを書きたい場合は cas.unsafe({ ... }) か cas().set(\'background\', \'...\') を使う。',
+      blacklistTable: '安全な API から除外されている名前:',
     },
   });
 
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
+      <Code source={`cas.unsafe({
+  '-webkit-tap-highlight-color': 'transparent',
+  '--brand-color': '#1a73e8',
+}).color('var(--brand-color)')
+
+cas().padding(8).set('background', 'linear-gradient(45deg, #fafafa, #e8e8e8)')`} />
       <p>{copy.intro}</p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.whyHeading}</h2>

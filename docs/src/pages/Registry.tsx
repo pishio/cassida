@@ -26,19 +26,19 @@ export default function Registry(): React.JSX.Element {
     ja: {
       title: 'プロパティレジストリ',
       intro:
-        '標準 CSS プロパティはすべてチェーンメソッドとして呼べる。curated なサブセットは csstype で hand-typed され、IDE 補完が実在の CSS 値を提案する。残りの「長い裾」は mdn-data から自動生成されており、引数は permissive な (string | number) だ。呼び出し側からはその境界は見えない — どちらにせよ同じ形のチェーンが手に入る。',
+        '標準 CSS プロパティはすべてチェーンメソッドとして呼べる。canonical な (手書きの) サブセットは csstype で型付けされていて、IDE の補完に実際の CSS 値が並ぶ。それ以外は mdn-data から自動生成されたメソッドが埋めている。生成側の引数は (string | number) で受ける緩い形だ。呼び出し側からは、canonical なメソッドと生成メソッドの境界は見えない。どちらでもチェーンの形は同じだ。',
       canonicalHeading: 'Canonical エントリ',
       canonicalCopy:
-        '手書き、csstype 型付き。box-model の shorthand ファミリー (margin / padding / inset) と各 longhand に加え、Tailwind 流の multi-property utility — px / py / mx / my — を備える。これらは 1 回の呼び出しで 2 つの論理 longhand (padding-inline-start/end, padding-block-start/end, …) を書き込む — 書字方向に応じて物理的な左右が決まる。shorthand-policy ガードは、同一スコープ内での shorthand と longhand の併存をビルド時に拒否する。LIFO とカスケードの曖昧さに足元を救われる余地は、ここに残されていない。',
+        '手書きで、csstype で型付けされた集合。box-model の shorthand ファミリー (margin / padding / inset) とそれぞれの longhand に加え、Tailwind と同じ形の multi-property ユーティリティ — px / py / mx / my — を含む。これらは 1 回の呼び出しで 2 つの論理 longhand (padding-inline-start/end, padding-block-start/end, …) を書き込む。物理的な左右は書字方向に応じて決まる。shorthand-policy ガードは、同じスコープ内に shorthand と longhand が同居することをビルド時に拒否する。LIFO とカスケードの結果がずれる余地は、ここでは閉じている。',
       generatedHeading: 'Generated エントリ',
       generatedCopy:
-        'curated なセットが埋めない穴は、mdn-data から自動生成された約 230 個のメソッドが受け持つ。引数は permissive な (string | number) を 1 つ。同名のメソッドが canonical 側にある場合、TypeScript の intersection が curated な型付けを優先する — generated は幅をもたらすために存在しており、curated が課す制約を緩めるためではない。',
+        'canonical な集合が拾わない部分は、mdn-data から自動生成された約 230 個のメソッドが受け持つ。引数は (string | number) を 1 つ取る緩い形だ。canonical 側に同じ名前のメソッドがある場合は、TypeScript の intersection が canonical の型付けを優先する。生成エントリは網羅性のためにある。canonical が課す制約をゆるめる目的では用意していない。',
       multiHeading: 'Multi-property utility (v0.4+)',
       multiCopy:
-        'px(n) は padding-inline-start と padding-inline-end の双方を書き込む。LIFO 畳み込みは longhand 単位で効くため、cas().px(8).paddingInlineStart(4) の結果は start: 4px, end: 8px に落ち着く。shorthand-policy の世界では padding / margin ファミリーの longhand として扱われ、px と padding を同一スコープで混在させればビルド時にエラーになる — paddingTop の場合とまったく同じ挙動だ。',
+        'px(n) は padding-inline-start と padding-inline-end の両方を書き込む。LIFO は longhand 単位で効くので、cas().px(8).paddingInlineStart(4) の結果は start: 4px, end: 8px になる。shorthand-policy の文脈では padding / margin ファミリーの longhand として扱う。同じスコープで px と padding を混ぜるとビルド時にエラーになる。paddingTop を混ぜたときと同じ挙動だ。',
       mdnHeading: 'MDN クロスリファレンス',
       mdnCopy:
-        '全行が現在のロケール (en-US または ja) の MDN ドキュメントページへリンクしている。メソッド名・CSS プロパティ名・エイリアスで検索でき、カテゴリで絞り込める。表はランタイムと同じレジストリから生成されているので、両者が乖離することはない。',
+        '表の各行は、現在のロケール (en-US または ja) の MDN ページへリンクしている。メソッド名・CSS プロパティ名・エイリアスのいずれでも検索でき、カテゴリで絞り込める。表はランタイムと同じレジストリから生成しているので、表と実装がずれることはない。',
     },
   });
 
