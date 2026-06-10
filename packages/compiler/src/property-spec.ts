@@ -424,6 +424,14 @@ export const canonicalSpec = {
   // (different family — the shorthand handles `flex-grow` /
   // `flex-shrink` / `flex-basis`), so it sits outside the family
   // guard and continues to co-occur freely.
+  //
+  // `.flex(0)` is a CSS-spec edge case worth flagging: `flex: 0`
+  // resolves to `0 1 auto` (the `flex: none` family), not `0 1 0%`
+  // like `.flex(1)` or `.flex(2)`. A consumer reading `.flex(0)` as
+  // "no grow, no shrink, basis 0" gets the right grow and basis but
+  // `shrink: 1` instead of `shrink: 0`. Callers wanting a fixed-basis
+  // non-shrinking item should pass `'0 0 auto'` explicitly.
+  // (Reference: CSS Flexbox L1 §7.4.)
   flex: {
     property: 'flex',
     animatable: false,
