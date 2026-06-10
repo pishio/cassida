@@ -246,4 +246,15 @@ if (_execute) {
   }
   // @ts-expect-error -- "doesNotExist" is not in the canonical modifier map
   void canonicalModifiers.doesNotExist;
+
+  // ────────────────────────────────────────────────────────────────
+  // 12) `CompiledRule['tree']['children']` is exactly `readonly ScopeBag[]`.
+  //     Emitter recurses through this; widening to `ReadonlyArray<ScopeBag
+  //     | RawOp>` (or similar) would break the nested `:hover` / `@media`
+  //     emission silently.
+  // ────────────────────────────────────────────────────────────────
+  type _ChildElement = CompiledRule['tree']['children'] extends ReadonlyArray<infer C> ? C : never;
+  type _ChildIsScopeBag = _ChildElement extends ScopeBag ? (ScopeBag extends _ChildElement ? true : false) : false;
+  const _childAssert: _ChildIsScopeBag = true;
+  void _childAssert;
 }
