@@ -42,6 +42,12 @@ export default function Recommended(): React.JSX.Element {
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
+      <Code source={`import cassida from '@cassida/vite-plugin';
+import { recommended } from '@cassida/recommended';
+
+export default defineConfig({
+  plugins: [cassida(recommended()), react()],
+});`} />
       <p>{copy.intro}</p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.contents}</h2>

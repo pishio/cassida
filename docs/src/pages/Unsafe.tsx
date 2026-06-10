@@ -68,6 +68,12 @@ export default function Unsafe(): React.JSX.Element {
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
+      <Code source={`cas.unsafe({
+  '-webkit-tap-highlight-color': 'transparent',
+  '--brand-color': '#1a73e8',
+}).color('var(--brand-color)')
+
+cas().padding(8).set('background', 'linear-gradient(45deg, #fafafa, #e8e8e8)')`} />
       <p>{copy.intro}</p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.whyHeading}</h2>

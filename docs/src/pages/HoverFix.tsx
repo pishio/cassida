@@ -21,21 +21,25 @@ export default function HoverFix(): React.JSX.Element {
     ja: {
       title: '@cassida/plugin-hover-fix',
       intro:
-        ':hover スコープをすべて @media (hover: hover) で包む CSS レイヤーのプラグイン。実際に hover できるポインティングデバイスにだけ hover スタイルが適用される。iOS Safari の長年のバグ — 要素をタップした後、別の場所をタップするまで :hover が残り続ける挙動 — をこれで塞ぐ。',
+        ':hover スコープをすべて @media (hover: hover) で包む CSS 側のプラグイン。実際にホバーできる入力装置 (マウスやトラックパッド) でだけ hover スタイルが適用されるようになる。iOS Safari の長年の挙動 — 要素を一度タップした後、別の場所をタップするまで :hover が残り続ける — を回避できる。',
       effectHeading: 'Before / After',
       withoutHeading: 'プラグインなし',
       withHeading: 'プラグインあり',
       optionsHeading: 'オプション',
       optionsQuery:
-        'query: メディアクエリを上書きする。デフォルト "(hover: hover)"。精密なポインティング (マウス・トラックパッド — coarse なスタイラスは除外) も要求するなら "(hover: hover) and (pointer: fine)" を渡す。',
+        'query: 包むのに使うメディアクエリを上書きする。デフォルトは "(hover: hover)"。細かい位置指定ができる入力装置 (マウスとトラックパッドのみ、粗いスタイラスは除く) に限定したいときは "(hover: hover) and (pointer: fine)" を渡す。',
       optionsSelectors:
-        'selectors: ラップ対象となる擬似クラス名の配列。デフォルト ["hover"]。:any-hover にも同じゲートをかけたければ "any-hover" を加える。',
+        'selectors: 包む対象になる擬似クラス名の配列。デフォルトは ["hover"]。:any-hover にも同じゲートをかけたい場合は "any-hover" を追加する。',
     },
   });
 
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
+      <Code source={`import cassida from '@cassida/vite-plugin';
+import { hoverFix } from '@cassida/plugin-hover-fix';
+
+cassida({ plugins: [hoverFix()] });`} />
       <p>{copy.intro}</p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.effectHeading}</h2>

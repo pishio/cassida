@@ -22,22 +22,28 @@ export default function GlobalCss(): React.JSX.Element {
     ja: {
       title: '@cassida/plugin-global-css',
       intro:
-        'グローバル CSS (プリフライト、リセット、body / タグセレクタルール) を virtual module 経由で配信する Vite プラグイン。configurable な @layer で包むため、Cassida の単一クラス出力と素直に共存できる。Cassida のチェーンは 1 要素につき必ず 1 クラスを emit する — その形では表現できないルールをこのプラグインが担う。二重のスタイリングシステムは導入しない。',
+        'グローバルな CSS (プリフライト、リセット、body / タグセレクタのルール) を virtual module 経由で配信する Vite プラグイン。包む @layer の名前は設定で変えられるので、Cassida の単一クラス出力と素直に共存する。Cassida のチェーンは 1 要素につき 1 クラスしか出さない設計のため、その形に乗せられないルール (body 直接、universal selector など) はこのプラグインが受け持つ。スタイリングの仕組みを 2 系統に分けるためのものではない。',
       install: 'インストール',
       use: '使い方',
       optionsHeading: 'オプション',
       optionsCss:
-        'css: 生の CSS 文字列。プラグインは解析も変換も行わず、Vite にそのまま渡す。`layer` が null でないときは @layer で包む。',
+        'css: 生の CSS 文字列。プラグインは解析も変換もせずに Vite に渡す。`layer` が null でないときは @layer で包んでから渡す。',
       optionsLayer:
-        'layer: CSS を包む cascade layer 名。デフォルト "base"。canonical な @layer base, cas; 宣言と組み合わせれば、@layer cas にある Cassida クラスが詳細度トリックなしで勝つ。null を渡せば wrap を省略できる。',
+        'layer: CSS を包む cascade layer の名前。デフォルトは "base"。`@layer base, cas;` の宣言を CSS の先頭に置くことを前提とし、@layer cas にある Cassida のクラスが詳細度の小細工なしでこのレイヤーより優先される。null を渡すと包まずに出力できる。',
       optionsVirtualId:
-        'virtualId: virtual module の id。デフォルト "virtual:cassida-global.css"。複数インスタンスをマウントする場合 (プリフライト用と print 用、…) は別の id を指定する。',
+        'virtualId: virtual module の id。デフォルトは "virtual:cassida-global.css"。複数のインスタンスを並行で使う場合 (プリフライト用と印刷用、など) は、それぞれ別の id を指定する。',
     },
   });
 
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
+      <Code source={`import { cassidaGlobalCss } from '@cassida/plugin-global-css';
+
+cassidaGlobalCss({
+  css: 'body { margin: 0; font-family: system-ui }',
+  layer: 'base',
+});`} />
       <p>{copy.intro}</p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.install}</h2>

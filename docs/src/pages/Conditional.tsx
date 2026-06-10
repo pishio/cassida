@@ -38,12 +38,12 @@ export default function Conditional(): React.JSX.Element {
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
-      <p><Prose>{copy.intro}</Prose></p>
       <Code source={`// before
 <button {...(highlight ? cas().shadowXl() : cas().shadowMd()).props} />
 
 // after build
 <button className={highlight ? "cas-XXXXXXXX" : "cas-YYYYYYYY"} />`} />
+      <p><Prose>{copy.intro}</Prose></p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.dynamicHeading}</h2>
       <p><Prose>{copy.dynamicCopy}</Prose></p>

@@ -50,7 +50,7 @@ export default function Modifiers(): React.JSX.Element {
     ja: {
       title: '修飾子',
       intro:
-        '修飾子はスコープ — 擬似クラス、擬似要素、メディアクエリのいずれか — を開き、その内側を書くためのコールバックを受け取る。コールバックには新しいチェーンが渡される。その中で呼ばれたメソッドは、修飾子のスコープ内側に積まれる。コールバックから戻ると、外側のチェーンがその塊をスコープ付きのルールとして 1 つにまとめる。',
+        '修飾子はスコープ — 擬似クラス、擬似要素、メディアクエリのいずれか — を開き、その内側を書くためのコールバックを受け取る。コールバックには新しいチェーンが渡され、そこで呼ばれたメソッドは、修飾子の内側のスコープに記録される。コールバックから戻った時点で、外側のチェーンが内側を 1 つのスコープ付きルールにまとめる。',
       zeroArgHeading: '引数なし修飾子',
       zeroArgIntro:
         '固定の擬似クラス、擬似要素、またはメディアクエリに解決される 19 個のプリセットがある。chain.<name>(c => …) と書くと、内側のチェーンに制御が渡る。',
@@ -72,6 +72,10 @@ export default function Modifiers(): React.JSX.Element {
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
       <h1 {...cas().fontSize(36).marginBottom(8).props}>{copy.title}</h1>
+      <Code source={`cas().color('black')
+  .hover(c => c.color('blue'))
+  .media('(min-width: 768px)', c => c.fontSize(20))
+  .on('[data-state="open"]', c => c.backgroundColor('#eef'))`} />
       <p>{copy.intro}</p>
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.zeroArgHeading}</h2>
