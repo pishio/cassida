@@ -4,6 +4,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-06-11
+
 ### Added
 
 - **Supported Next.js versions policy** — `@cassida/next-plugin`'s README now documents that only the current Next.js LTS release is supported; older majors aren't tested in CI and may break silently when `@next/swc` bumps its embedded `swc_core`.
@@ -127,7 +129,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - Initial public release of `@cassida/core`, `@cassida/compiler`, `@cassida/parser`, `@cassida/vite-plugin`, `@cassida/recommended`, `@cassida/plugin-hover-fix`, `@cassida/plugin-conditional`. Single Class Principle, LIFO collapse, build-time class table, deterministic hashing, mobile-first media sort, `@layer cas` cascade-layer wrapping, csstype-typed canonical chain methods + mdn-data-derived generated chain methods, `cas.unsafe` / `.set` escape paths, `shorthand-policy` guard.
 
-[Unreleased]: https://github.com/pishio/cassida/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/pishio/cassida/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/pishio/cassida/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/pishio/cassida/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/pishio/cassida/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/pishio/cassida/compare/v0.7.0...v0.8.0

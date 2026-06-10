@@ -1,6 +1,6 @@
 {
   "name": "@cassida/parser",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Cassida Babel-based AST transform: detects cas() chains in JSX spread and rewrites them to static className attributes.",
   "license": "MIT",
   "sideEffects": false,
