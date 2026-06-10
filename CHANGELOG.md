@@ -14,6 +14,7 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 ### Changed
 
 - **`tsconfig.typecheck.json` adoption standardised across all public packages** — five plugins / `@cassida/recommended` previously used `tsconfig.test.json` (or no typecheck config at all). They now use `tsconfig.typecheck.json` consistently with the other packages, and a CI guard fails the build if a public `@cassida/*` package is missing the file or its `scripts.typecheck` doesn't route through it.
+- **Docs site Japanese prose rewritten for plain-language readability** — Landing, `cas() chain`, and Property registry pages get full rewrites; Modifiers, Configuration, Unsafe surface, `@cassida/recommended`, and `@cassida/plugin-conditional` get targeted edits. Replaces translation-shaped sentences, literary verbs ("畳み込む" outside the now-locked LIFO term, "刈り込む", "昇華"), abstract math vocabulary ("正準なバッグ", "全単射 (bijection) が保証される"), and the internal-IR name ("ScopedOp") that had leaked into the public docs surface. The English copy is untouched.
 
 ### Fixed
 

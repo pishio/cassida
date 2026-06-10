@@ -29,23 +29,23 @@ export default function Cas(): React.JSX.Element {
     ja: {
       title: 'cas() チェーン',
       intro:
-        '`cas()` はチェーンを返す。メソッド 1 回ごとに CSS 書き込みが 1 つ記録され、最後に `.props` (あるいは別の終端子) を呼ぶと JSX に spread できる `{ className, style }` が返る。テンプレートリテラルも文字列連結も登場しない — 型付きメソッド呼び出しの並びを、ビルド側がハッシュ化されたクラスへ畳み込む。',
+        '`cas()` はチェーンを返す。メソッドを 1 回呼ぶごとに CSS の書き込みが 1 つ記録される。最後に `.props` (あるいは別の終端子) を呼ぶと、JSX に spread できる `{ className, style }` が返る。テンプレートリテラルや文字列連結は出てこない。型付きのメソッド呼び出しだけで書き、ビルド時に 1 つのハッシュ済みクラスへ解決される。',
       propsHeading: '.props — JSX 終端子',
       propsCopy:
-        'すべてのチェーンは `.props` で終わる。返るのは `{ className: string; style: Readonly<CSSProperties> }` — JSX が必要とする 2 属性だけだ。チェーンが持つメソッド面は剥がされ、React の型システムが spread を素直に受け入れる。',
+        'すべてのチェーンは `.props` で終わる。返るのは `{ className: string; style: Readonly<CSSProperties> }` の 2 キーだけ。これは JSX 側が必要としている形そのものだ。チェーン自身が持っていたメソッド面はここで落とされるので、React の型システムが spread をそのまま受け入れる。',
       propsWhy:
-        'なぜ終端子が要るのか。チェーンが持つ約 460 個のメソッドハンドルのうち、HTML 属性名と衝突するものがいくつかある — 例えば `translate` (CSS プロパティと HTML `translate` 属性が同名) や `disabled` (zero-arg modifier と HTML `disabled` 属性が同名)、それに `color` / `width` / `height` は要素によって HTML 属性として宣言されているため、その要素で衝突する。React の JSX 型はその union を拒否する。`.props` はその union を 2 キーへ刈り込む — チェーンの autocomplete は失われず、strict 設定下でも spread が型を通る。',
+        'なぜ終端子が必要か。チェーンが持つメソッドハンドルは約 460 個あり、そのうちのいくつかは HTML 属性名と名前が同じだ。例えば `translate` は CSS プロパティであると同時に HTML 属性でもある。`disabled` は引数を取らない修飾子であると同時に HTML 属性でもある。`color` / `width` / `height` も、要素によって HTML 属性として宣言されていて衝突する。チェーンの型をそのまま spread すると、React の JSX 型はその union を拒否する。`.props` を呼ぶと、その union が 2 キーに絞られる。チェーンの autocomplete は維持されたまま、strict 設定下でも spread が型を通る。',
       condHeading: '.cond(test, truthy, falsy?) — チェーン内分岐',
       condCopy:
-        'JSX レベルの三項演算子は、外側のチェーンメソッドを両分岐に複製させる。`.cond` ならその重複を取り除ける — 共通のメソッドは 1 度だけ書き、差分だけを分岐に閉じ込める。ビルド時に各分岐がそれぞれ独自のクラスハッシュを得て、JSX の `className` はそれを選ぶ入れ子の三項式に書き換わる。',
+        'JSX の三項演算子で書くと、外側のチェーンメソッドを両方の分岐に複製しないといけない。`.cond` を使えば共通部分は 1 度だけ書き、差分だけを分岐に閉じ込められる。ビルド時にそれぞれの分岐が独自のクラスハッシュに解決され、JSX の `className` は両者を選ぶ三項式に書き換えられる。',
       condRuntime:
-        'ランタイムでは `test` が即座に評価され、選ばれた分岐の ops が線形リストに合流する。生まれるハッシュはビルド時の対応する leaf とバイト単位で一致する — 同じバッグからは、経路を問わず同じクラスが出る。',
+        'ランタイムでは `test` が即座に評価され、選ばれた分岐の ops が線形リストにつなげられる。出てくるハッシュは、ビルド時に解決された対応分岐とバイト単位で一致する。チェーンの形が同じなら、経路を問わず同じクラスになる。',
       setHeading: '.set(key, value) — 1 プロパティだけレジストリを迂回する',
       setCopy:
-        'curated な面の外側に出たいとき (ベンダープレフィックス、CSS カスタムプロパティ `--brand-*`、実験的な仕様) は `.set` を使う。単位の自動付与もなければ shorthand-policy のチェックもない。`"10px"` や `"1.5rem"` のように完全な CSS 値を渡し、正しさは呼び出し側が引き受ける。',
+        '型付きの面の外に出たいとき (ベンダープレフィックス、CSS カスタムプロパティ `--brand-*`、まだ仕様が固まっていない値) は `.set` を使う。単位の自動付与もなく、shorthand-policy のチェックもかからない。`"10px"` や `"1.5rem"` のように完全な CSS 値の文字列を渡す。値の正しさは呼び出し側の責任になる。',
       aliasesHeading: 'エイリアス',
       aliasesCopy:
-        '`bg` → `backgroundColor`、`mt` → `marginTop` のような短縮形は、canonical なエントリと同じ実体を指すランタイム上のショートカットだ。型付き `CassChain` にはあえて載せていない — エイリアスは指の動きを軽くするためと、型なしのエスケープ経路のためのもので、意図を読み取らせる必要があるプロダクションコードでは long form の方が雄弁だ。',
+        '`bg` → `backgroundColor`、`mt` → `marginTop` のような短縮形は、canonical なエントリと同じ実体を指すランタイム上のショートカットだ。型付き `CassChain` には意図的に載せていない。エイリアスは手早く書くためと、型なしの脱出経路のためにある。意図を伝えたいプロダクションコードでは、長い形のほうが読みやすい。',
     },
   });
 

@@ -24,18 +24,18 @@ export default function Recommended(): React.JSX.Element {
     ja: {
       title: '@cassida/recommended',
       intro:
-        'メンテナーがデフォルトで有効化しているプラグインセットを、import 1 行でまとめて引き込むためのバンドル。recommended() は vite.config.ts の cassida(...) にそのまま spread できるオブジェクトを返す。同梱プラグインは transitive 依存として一緒に入るため、パッケージ 1 つで curated なセットが揃う。',
+        'メンテナーがデフォルトで有効にしているプラグインのまとまりを、import 1 行で取り込むためのバンドル。recommended() は vite.config.ts の cassida(...) にそのまま spread できるオブジェクトを返す。中身のプラグインは依存として一緒に入るので、このパッケージ 1 つで既定のセットが揃う。',
       contents: '同梱されるもの',
       hoverFix:
-        '@cassida/plugin-hover-fix — すべての :hover スコープを @media (hover: hover) でゲートする。iOS Safari がタップ起因の hover 状態に留まり続ける問題を回避する。',
+        '@cassida/plugin-hover-fix — すべての :hover スコープを @media (hover: hover) で包む。iOS Safari でタップした要素が :hover 状態のまま残り続ける問題を回避する。',
       conditional:
-        '@cassida/plugin-conditional — 条件式形状や短絡形状の JSX spread をビルド時クラステーブルへ引き上げる。動的スロットを含む分岐も、並列の分岐条件付き style 三項式によってビルド時パスに残り続ける。',
+        '@cassida/plugin-conditional — 三項式や短絡 (&&) で書かれた JSX spread を、ビルド時のクラス選択に書き換える。動的な値を含む分岐も、対応する style を選ぶ三項式と組み合わせることでビルド時の経路に残り続ける。',
       surface: 'API',
       surfaceCopy:
-        'recommended(options?) はプラグイン単位のオプションを受け取る。false を渡せばそのプラグインを完全に無効化でき、オブジェクトを渡せば各プラグインのオプションがそのまま forwarding される。',
+        'recommended(options?) はプラグインごとのオプションを受け取る。false を渡すとそのプラグインを完全に外せる。オブジェクトを渡した場合は、その中身が各プラグインのオプションとしてそのまま渡される。',
       composing: 'カスタム合成',
       composingCopy:
-        '別の組合せが欲しいときは recommended() を経由せず、各ファクトリを直接 import する — エルゴノミクスのために @cassida/recommended から再 export されている。結果を cassida() の plugins / parserPlugins に手動で渡せばよい。',
+        '別の組み合わせで使いたいときは recommended() を経由せず、各プラグインのファクトリを直接 import する。書きやすさのために @cassida/recommended からも再 export してある。得られた値を cassida() の plugins / parserPlugins に手で渡す。',
     },
   });
 
