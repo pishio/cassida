@@ -130,6 +130,13 @@ if (_execute) {
   // @ts-expect-error -- `layer` cannot be a number on the TS surface either
   const badConfig: CassConfig = { layer: 42 };
   void badConfig;
+  // The `CassConfig` Zod schema is `.strict()` — extra fields are
+  // rejected at runtime. Lock the same contract at the type level so
+  // a typo in user config surfaces as a typecheck error, not a runtime
+  // surprise from `parseCassConfig`.
+  // @ts-expect-error -- `CassConfig` rejects unknown fields
+  const _badConfig: CassConfig = { unknownField: 1, layer: 'cas' };
+  void _badConfig;
 
   // The Zod schema itself is exported, so consumers can compose it.
   const schema = CassConfigSchema;
