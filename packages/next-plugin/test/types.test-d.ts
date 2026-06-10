@@ -171,4 +171,23 @@ if (_execute) {
   // @ts-expect-error -- numbers are not a valid loaderExclude
   const badEx: NextCassidaOptions = { loaderExclude: 42 };
   void badEx;
+
+  // ────────────────────────────────────────────────────────────────
+  // 9) `VirtualCssOptions` shape lock — extends `CssEmitterOptions`,
+  //    so `layer` accepts `string | null | undefined` and `mediaSort`
+  //    is the narrow literal union `'mobile-first' | 'desktop-first'`.
+  //    A future widening (e.g. csstype change in `CssEmitterOptions`)
+  //    would surface here as a typecheck regression.
+  // ────────────────────────────────────────────────────────────────
+  const vco1: VirtualCssOptions = {};
+  void vco1;
+  const vco2: VirtualCssOptions = { layer: 'cas' };
+  void vco2;
+  const vco3: VirtualCssOptions = { layer: null };
+  void vco3;
+  const vco4: VirtualCssOptions = { mediaSort: 'desktop-first' };
+  void vco4;
+  // @ts-expect-error -- `mediaSort` is a literal union, no arbitrary strings
+  const vcoBad: VirtualCssOptions = { mediaSort: 'whatever-first' };
+  void vcoBad;
 }
