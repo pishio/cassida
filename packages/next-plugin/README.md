@@ -4,6 +4,12 @@ Next.js integration for Cassida. One-line drop-in for `next.config.js` that wire
 
 **Status: Phase 1 scaffold.** Currently exports the `withCassida()` API surface and the `NextCassidaOptions` type. The actual integration lands in subsequent commits.
 
+## Supported Next.js versions
+
+Cassida supports the current Next.js LTS release only (15.x at the time of writing). Earlier majors aren't tested in CI; future bumps in `@next/swc`'s embedded `swc_core` may break older Next.js installs of `@cassida/next-plugin` without notice.
+
+The `@cassida/swc-plugin` package ships two ABI-pinned WASM artefacts — the next-targeted one tracks the `swc_core` pinned by the current Next.js LTS, and won't be backported when Next.js bumps its `swc_core` in a future release.
+
 ## Install
 
 ```bash
