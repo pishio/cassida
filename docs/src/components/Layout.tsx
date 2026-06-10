@@ -92,7 +92,7 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       cas: 'cas() チェーン',
       modifiers: '修飾子',
       registry: 'プロパティレジストリ',
-      unsafe: 'unsafe 面',
+      unsafe: 'unsafe な API',
       config: '設定',
       plugins: 'プラグイン',
       recommended: '@cassida/recommended',

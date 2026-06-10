@@ -31,7 +31,7 @@ export default function Landing(): React.JSX.Element {
       browseApi: 'API を見る →',
       pluginsTitle: 'プラグイン',
       pluginsBlurb:
-        'メンテナーが既定で有効にしているプラグインは @cassida/recommended にまとめてある (iOS の :hover 居座り問題のゲートと、条件分岐 spread のビルド時解決)。プリフライトやリセット CSS を扱う @cassida/plugin-global-css と、@media print の保守的なデフォルトを返す @cassida/plugin-print も別パッケージで用意してある。印刷は後付けの対象ではなく、最初から出力経路として組み込まれている。',
+        'メンテナーが既定で有効にしているプラグインは @cassida/recommended にまとめてある (iOS の :hover 居座り対策と、条件分岐 spread のビルド時解決)。プリフライトやリセット CSS を扱う @cassida/plugin-global-css と、@media print の保守的なデフォルトを返す @cassida/plugin-print も別パッケージで用意してある。印刷は後付けの対象ではなく、最初から出力経路として組み込まれている。',
       whyTitle: 'なぜ別の道を選ぶのか',
       whyBody:
         'BEM は状態が増えるとクラス名が長くなる。Tailwind は要素ごとにプロパティ数だけクラスを並べる。どちらも動くが、どちらもカスケードを解決せずブラウザに渡している。Cassida は同じ問題をビルド時に解く。チェーンは LIFO で 1 つの形に畳まれ、そこから安定したハッシュが計算され、専用の @layer cas に置かれた単一クラスになる。詳細度は (0,1,0) で固定。出力される CSS は、書いた内容そのものだけだ。',
