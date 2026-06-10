@@ -190,4 +190,20 @@ if (_execute) {
   // @ts-expect-error -- `mediaSort` is a literal union, no arbitrary strings
   const vcoBad: VirtualCssOptions = { mediaSort: 'whatever-first' };
   void vcoBad;
+
+  // ────────────────────────────────────────────────────────────────
+  // 10) `NextCassidaOptions['plugins']` is a closed record — unknown
+  //     keys (typos like `hoverFixx`) are rejected at the type level
+  //     even when EPC is bypassed via a variable indirection. This
+  //     catches the silent-runtime-no-op footgun the multi-persona
+  //     review flagged.
+  // ────────────────────────────────────────────────────────────────
+  // @ts-expect-error -- typo: `hoverFix` (closed-record rejects unknown keys)
+  const _typo: NextCassidaOptions = { plugins: { hoverFixx: true } };
+  void _typo;
+  // Sanity: every documented key is still accepted.
+  const _ok: NextCassidaOptions = {
+    plugins: { hoverFix: true, conditional: true, print: true, globalCss: true },
+  };
+  void _ok;
 }
