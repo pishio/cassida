@@ -1,6 +1,6 @@
 {
   "name": "@cassida/plugin-conditional",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Cassida parser plugin: rewrites `{...(cond ? cas().X() : cas().Y()).props}` and `{...cond && cas().X().props}` JSX spreads to a single className expression at build time. Lets component libraries express prop-driven variants without a runtime variant DSL.",
   "license": "MIT",
   "sideEffects": false,

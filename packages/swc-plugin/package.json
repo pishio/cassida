@@ -1,6 +1,6 @@
 {
   "name": "@cassida/swc-plugin",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Cassida SWC plugin (WASM). Detects cas() chains in JSX spreads and emits an Op[] IR for the @cassida/next-plugin loader to compile against @cassida/compiler. Phase 1 scaffold — no-op transform. Private until the transform is filled in.",
   "license": "MIT",
   "repository": {
