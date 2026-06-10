@@ -69,6 +69,38 @@ jobs:
       - name: Install workspace
         run: pnpm install --frozen-lockfile
 
+      # Public @cassida/* packages must ship `tsconfig.typecheck.json` and
+      # route `scripts.typecheck` through it — otherwise their `.test-d.ts`
+      # files silently fall out of `pnpm -r typecheck` because
+      # `tsc -p tsconfig.json --noEmit` excludes `test/**/*`. The strategic
+      # loop accumulates type-level contracts in these files; this guard
+      # prevents future packages from creating a blind spot.
+      - name: Verify tsconfig.typecheck.json adoption
+        run: |
+          node --input-type=module -e "
+            import { readdirSync, readFileSync, existsSync } from 'node:fs';
+            import { join } from 'node:path';
+            const violations = [];
+            let checked = 0;
+            for (const d of readdirSync('packages')) {
+              const pkgPath = join('packages', d, 'package.json');
+              if (!existsSync(pkgPath)) continue;
+              const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+              if (!pkg.name?.startsWith('@cassida/') || !pkg.scripts?.typecheck) continue;
+              checked++;
+              const script = pkg.scripts.typecheck;
+              const cfgPath = join('packages', d, 'tsconfig.typecheck.json');
+              if (!existsSync(cfgPath)) violations.push(\`\${pkg.name}: missing tsconfig.typecheck.json\`);
+              else if (!script.includes('tsconfig.typecheck.json')) violations.push(\`\${pkg.name}: scripts.typecheck does not route through tsconfig.typecheck.json\`);
+            }
+            if (violations.length) {
+              console.error('tsconfig.typecheck.json adoption violations:');
+              for (const v of violations) console.error('  -', v);
+              process.exit(1);
+            }
+            console.log(\`OK: all \${checked} public @cassida/* packages route through tsconfig.typecheck.json\`);
+          "
+
       - name: Build all @cassida/* packages
         run: pnpm -r --filter='./packages/*' build
 

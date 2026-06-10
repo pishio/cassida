@@ -10,6 +10,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 - **swc_core drift monitoring** — a weekly GitHub Actions cron (`.github/workflows/swc-core-drift.yml`) compares `@cassida/swc-plugin-next`'s `swc_core` pin against the latest Next.js LTS release and auto-opens a tracking issue when they diverge. Enforces the Supported Next.js versions policy added in the previous changelog entry.
 - **`@cassida/next-plugin` README guidance for monorepo + `output: 'standalone'`** — documents the `outputFileTracingRoot` footgun where setting it to the app directory silences Next.js 15's "multiple lockfiles" warning but silently drops `@cassida/*` from the standalone bundle's `node_modules` tree.
 
+### Changed
+
+- **`tsconfig.typecheck.json` adoption standardised across all public packages** — five plugins / `@cassida/recommended` previously used `tsconfig.test.json` (or no typecheck config at all). They now use `tsconfig.typecheck.json` consistently with the other packages, and a CI guard fails the build if a public `@cassida/*` package is missing the file or its `scripts.typecheck` doesn't route through it.
+
 ### Fixed
 
 - **`.border(number)` / `.outline(number)` typecheck-runtime mismatch fixed** — the csstype `Border<TLength>` / `Outline<TLength>` generics widened the input union to include `number`, but the runtime passthrough emitted invalid CSS (`border: 1`). Dropped the generic so only strings (`'1px solid red'`) typecheck; numeric width goes through `.borderWidth(1)` / `.outlineWidth(1)`.
