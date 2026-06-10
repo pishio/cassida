@@ -65,4 +65,13 @@ if (_execute) {
   cas().px(8).paddingInlineStart('4px');
   // @ts-expect-error -- LenArg rejects booleans (must be number | string)
   cas().px(true);
+
+  // 9) `.border(1)` previously typechecked but emitted `border: 1` (invalid
+  //    CSS) because csstype's `Border<TLength>` widens to include `number`.
+  //    The runtime `passthrough(v)` returned `String(v)`. Now the shorthand
+  //    accepts strings only; numeric `border-width` goes through `borderWidth(1)`.
+  // @ts-expect-error -- `.border(number)` no longer typechecks
+  cas().border(1);
+  // @ts-expect-error -- `.outline(number)` no longer typechecks
+  cas().outline(1);
 }
