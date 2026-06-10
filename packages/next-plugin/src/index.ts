@@ -24,8 +24,8 @@ import { CassidaWebpackPlugin } from './webpack-plugin.js';
 export { rewriteIrComments, default as cassidaIrLoader } from './ir-loader.js';
 export type { IrLoaderOptions } from './ir-loader.js';
 export { buildVirtualCss } from './virtual-css.js';
-export type { VirtualCssOptions } from './virtual-css.js';
 import type { VirtualCssOptions } from './virtual-css.js';
+export type { VirtualCssOptions };
 export { CassidaWebpackPlugin } from './webpack-plugin.js';
 export {
   setRulesForFile,
