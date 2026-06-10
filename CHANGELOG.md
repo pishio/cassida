@@ -4,6 +4,12 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- **`lightningcss` post-processing is now enabled by default** (`defaultConfig.css.lightningcss.enabled = true`). Emitted CSS is run through `lightningcss` for vendor prefixing and (`minify: true` by default) minification. `@layer cas` and `@property` rules are preserved across the pass — lightningcss 1.28+ understands both natively. Disable with `{ css: { lightningcss: { enabled: false }}}` in `cassida.config.json` or inline plugin options. Behaviour change: production CSS bundles will now contain `-webkit-` / `-ms-` prefixes on properties whose browserslist target needs them. Adjust your snapshots accordingly.
+- **`lightningcss` post-processing ported to `@cassida/next-plugin`** — the implementation was previously bound to `@cassida/vite-plugin`. It now lives in `@cassida/compiler/internal` (`postProcessLightningCss` / `resolveTargets`) and both plugins consume it from there. The Next.js webpack plugin (`CassidaWebpackPlugin`) runs the same pass on the emitted `virtual.css`, resolving browserslist targets from the webpack `compiler.context` (project root).
+- **`@cassida/compiler` peer deps for `lightningcss` + `browserslist`** — both are declared as optional peer dependencies on `@cassida/compiler`. The vite-plugin / next-plugin pull them in as runtime deps; standalone CLI consumers can opt out (lightningcss is skipped when the peer is absent, the emitter still produces unprocessed CSS).
+
 ## [0.11.0] — 2026-06-11
 
 ### Added

@@ -15,7 +15,10 @@ describe('defaultConfig', () => {
     expect(defaultConfig.hash.length).toBe(8);
     expect(defaultConfig.media.sort).toBe('mobile-first');
     expect(defaultConfig.css.mode).toBe('rule-per-class');
-    expect(defaultConfig.css.lightningcss.enabled).toBe(false);
+    // v0.12.0: lightningcss is opt-out (default true). Cassida's
+    // emit output is post-processed by lightningcss for vendor
+    // prefixing + minification unless the user explicitly disables it.
+    expect(defaultConfig.css.lightningcss.enabled).toBe(true);
   });
 });
 

@@ -1,8 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import browserslist from 'browserslist';
-import { browserslistToTargets, transform as lightningTransform } from 'lightningcss';
-import type { Targets } from 'lightningcss';
 import {
   CssEmitter,
   defaultRegistry,
@@ -14,6 +11,7 @@ import {
   type Registry,
   type ResolvedCassConfig,
 } from '@cassida/compiler';
+import { postProcessLightningCss, resolveTargets, type Targets } from '@cassida/compiler/internal';
 import {
   createModuleCache,
   loadTsconfigPaths,
@@ -232,60 +230,6 @@ function extractConfig(options: CassPluginOptions): CassConfig | undefined {
   void plugins;
   if (Object.keys(cfg).length === 0) return undefined;
   return parseCassConfig(cfg, '<vite.config.ts plugin options>');
-}
-
-/**
- * Run the emitter's CSS string through lightningcss for autoprefixing,
- * minification (when `minify: true`), and target-aware downleveling.
- *
- * `@property` rules are preserved through this pass — lightningcss
- * supports the Houdini descriptor natively. We additionally split the
- * input so emitter-emitted property declarations are processed in the
- * same pass as the `@layer` block; they share a single document.
- */
-function postProcessLightningCss(
-  css: string,
-  filename: string,
-  resolved: ResolvedCassConfig,
-  targets: Targets | null,
-): string {
-  const result = lightningTransform({
-    filename,
-    code: Buffer.from(css, 'utf-8'),
-    minify: resolved.css.lightningcss.minify,
-    ...(targets ? { targets } : {}),
-  });
-  return Buffer.from(result.code).toString('utf-8');
-}
-
-/**
- * Resolve a `Targets` object from the user's config, or fall back to
- * auto-discovering a browserslist query from the project root
- * (`.browserslistrc`, `package.json#browserslist`, or environment
- * defaults). Returning `null` lets lightningcss apply its own default.
- *
- * The `'defaults'` literal in `defaultConfig` is treated as "no
- * explicit override given, please auto-discover" — only when the user
- * actually puts a different string in the config (or the auto-
- * discovery picks up a project file) do we set explicit targets.
- */
-function resolveTargets(configTargets: string, root: string): Targets | null {
-  // `'defaults'` is the synthetic placeholder coming from the resolved
-  // config defaults; treat it as "no explicit user choice" and let
-  // browserslist read project files first.
-  if (configTargets !== 'defaults') {
-    const queries = browserslist(configTargets);
-    return browserslistToTargets(queries);
-  }
-  try {
-    const queries = browserslist(undefined, { path: root });
-    if (queries.length === 0) return null;
-    return browserslistToTargets(queries);
-  } catch {
-    // No project browserslist + no explicit env defaults — let
-    // lightningcss decide.
-    return null;
-  }
 }
 
 function loadFileConfig(root: string): CassConfig | undefined {
