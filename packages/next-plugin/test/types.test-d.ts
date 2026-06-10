@@ -8,7 +8,8 @@
  * type error, the directive itself errors and CI surfaces the regression.
  */
 import type { NextConfig } from 'next';
-import type { CassConfig } from '@cassida/compiler';
+import type { CassConfig, Registry } from '@cassida/compiler';
+import { defaultRegistry } from '@cassida/compiler';
 import {
   buildVirtualCss,
   rewriteIrComments,
@@ -206,4 +207,19 @@ if (_execute) {
     plugins: { hoverFix: true, conditional: true, print: true, globalCss: true },
   };
   void _ok;
+
+  // ────────────────────────────────────────────────────────────────
+  // 11) `IrLoaderOptions.registry` accepts a `Registry` from
+  //     `@cassida/compiler`. Consumers who override the registry
+  //     pass it through this slot; widening or removing the
+  //     `Registry` import would silently break that path.
+  // ────────────────────────────────────────────────────────────────
+  const _loaderWithReg: IrLoaderOptions = { registry: defaultRegistry };
+  void _loaderWithReg;
+  // The slot is optional — must also accept the empty form.
+  const _loaderEmpty: IrLoaderOptions = {};
+  void _loaderEmpty;
+  // Anchor the `Registry` import as load-bearing.
+  const _regAlias: Registry = defaultRegistry;
+  void _regAlias;
 }
