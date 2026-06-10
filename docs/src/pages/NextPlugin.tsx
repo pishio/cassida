@@ -20,7 +20,7 @@ export default function NextPlugin(): React.JSX.Element {
       bridgeCopy2: 'The store is therefore keyed (compilerName, filename) two-level. Each compiler\'s loader writes into its own namespace. allRules() merges every namespace on the read path. The merge is the bridge.',
       storeHeading: 'Store API',
       storeCopy: 'The store is module-singleton on the Node side; @cassida/next-plugin/store exposes it for tooling. allRules() returns every rule across every compiler namespace — that is what the webpack plugin reads to assemble virtual.css. allRulesForCompiler(name) reads a single namespace, useful for testing or for tools that need to introspect what a specific compiler emitted.',
-      subscribeCopy: 'subscribe(listener) is for live updates — the listener fires whenever any namespace changes, with the new merged rule list. CassidaWebpackPlugin uses this internally to rewrite virtual.css when a chain changes during HMR.',
+      subscribeCopy: 'subscribe(listener) is for live updates — the listener fires whenever any namespace changes. The listener takes no arguments; call allRules() inside it to read the merged rule list as of that moment. CassidaWebpackPlugin uses this internally to rewrite virtual.css when a chain changes during HMR.',
     },
     ja: {
       title: '@cassida/next-plugin',
@@ -37,7 +37,7 @@ export default function NextPlugin(): React.JSX.Element {
       bridgeCopy2: 'そのためストアは (compilerName, filename) の 2 段で keyed されている。各コンパイラのローダーは自分の namespace に書き込み、allRules() は読み取り時に全 namespace をマージする。このマージそのものがブリッジだ。',
       storeHeading: 'Store API',
       storeCopy: 'ストアは Node 側でモジュール単位の singleton になっており、@cassida/next-plugin/store からツール向けに公開されている。allRules() は全コンパイラ namespace を横断したルール集合を返す。webpack プラグインが virtual.css を組み立てるときに読む先だ。allRulesForCompiler(name) は単一 namespace だけを返す。テストや、特定コンパイラが何を emit したか調べたいツール向け。',
-      subscribeCopy: 'subscribe(listener) はライブ更新用。いずれかの namespace が変化したタイミングでリスナが新しいマージ済みのルールリストを受け取る。CassidaWebpackPlugin は HMR でチェーンが変わったとき virtual.css を書き直すためにこれを内部で使っている。',
+      subscribeCopy: 'subscribe(listener) はライブ更新用。いずれかの namespace が変化したタイミングでリスナが呼ばれる。リスナは引数を取らないので、その時点でのマージ済みルールが必要なら listener の中で allRules() を呼び直す。CassidaWebpackPlugin は HMR でチェーンが変わったとき virtual.css を書き直すためにこれを内部で使っている。',
     },
   });
 
@@ -111,7 +111,10 @@ const merged = allRules();
 // Per-namespace read
 const clientOnly = allRulesForCompiler('client');`} />
       <p>{copy.subscribeCopy}</p>
-      <Code source={`const unsubscribe = subscribe((rules) => {
+      <Code source={`import { allRules, subscribe } from '@cassida/next-plugin/store';
+
+const unsubscribe = subscribe(() => {
+  const rules = allRules();
   // rules is the merged list as of the latest write
 });
 

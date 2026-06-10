@@ -101,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.verifyHeading}</h2>
       <p>{copy.verifyCopy}</p>
-      <Code source={`pnpm next build && pnpm next start
+      <Code source={`pnpm build && pnpm start
 # DevTools: every styled element → exactly one cas-XXXXXXXX class
 # .next/static/css/*.css → contains @layer cas { ... }
 # .next/static/chunks/*.js → no cas( occurrences`} />
