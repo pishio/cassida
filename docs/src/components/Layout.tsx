@@ -67,6 +67,7 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
   const labels = useT({
     en: {
       home: 'Home',
+      philosophy: 'Philosophy',
       install: 'Install',
       api: 'API',
       cas: 'cas() chain',
@@ -83,6 +84,7 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
     },
     ja: {
       home: 'ホーム',
+      philosophy: '設計思想',
       install: 'インストール',
       api: 'API',
       cas: 'cas() チェーン',
@@ -105,6 +107,7 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       <h2 {...cas().fontSize(18).marginBottom(16).props}>Cassida</h2>
       <NavSection title={labels.home}>
         <NavItem to={`${base}/`} label={labels.home} end />
+        <NavItem to={`${base}/philosophy`} label={labels.philosophy} />
         <NavItem to={`${base}/install`} label={labels.install} />
       </NavSection>
       <NavSection title={labels.api}>

@@ -2,6 +2,7 @@ import type { RouteRecord } from 'vite-react-ssg';
 import Layout from './components/Layout.js';
 import RedirectIndex from './pages/RedirectIndex.js';
 import Landing from './pages/Landing.js';
+import Philosophy from './pages/Philosophy.js';
 import Install from './pages/Install.js';
 import Cas from './pages/Cas.js';
 import Modifiers from './pages/Modifiers.js';
@@ -35,6 +36,7 @@ export const routes: RouteRecord[] = [
     getStaticPaths: () => ['/en', '/ja'],
     children: [
       { index: true, Component: Landing },
+      { path: 'philosophy', Component: Philosophy },
       { path: 'install', Component: Install },
       { path: 'api/cas', Component: Cas },
       { path: 'api/modifiers', Component: Modifiers },
