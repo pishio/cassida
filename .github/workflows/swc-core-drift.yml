@@ -1,0 +1,90 @@
+name: swc_core drift
+
+# Weekly probe of Next.js's `swc_core` pin vs. ours. When `@next/swc`'s
+# embedded `swc_core` major moves out from under us, the WASM artefact
+# `@cassida/swc-plugin` ships at the `./next` subpath stops loading inside
+# `next build` for new Next.js installs — the exact failure mode the
+# "Supported Next.js versions" policy (see packages/next-plugin/README.md)
+# promises consumers we'll catch. This workflow is the physical
+# enforcement of that promise.
+
+on:
+  schedule:
+    # Mondays 09:00 UTC. Far enough from typical Vercel release Mondays
+    # that the latest tag is settled; early enough in the week to leave
+    # room for a same-week bump PR.
+    - cron: '0 9 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  check-drift:
+    name: compare swc_core pin against latest Next.js LTS
+    runs-on: ubuntu-latest
+    permissions:
+      # Read-only repo access is enough for the diff; write is needed
+      # only by the `gh issue create` step on drift.
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check swc_core drift
+        id: drift
+        # Capture stdout so the issue body can echo the diff line verbatim
+        # without re-running the script. `set +e` lets us inspect the
+        # non-zero exit without aborting the job before the issue is filed.
+        run: |
+          set +e
+          OUTPUT=$(node scripts/check-swc-core-drift.mjs)
+          STATUS=$?
+          echo "$OUTPUT"
+          {
+            echo "status=$STATUS"
+            echo "diff<<DRIFT_EOF"
+            echo "$OUTPUT"
+            echo "DRIFT_EOF"
+          } >> "$GITHUB_OUTPUT"
+          # Exit 0 here so the next step can run; we branch on `status`.
+          exit 0
+
+      - name: Open drift issue
+        if: steps.drift.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRIFT_DIFF: ${{ steps.drift.outputs.diff }}
+        run: |
+          # The helper script's drift line is:
+          #   drift: next_tag=<tag> next_swc_core=<X> cassida_swc_core=<Y>
+          NEXT_TAG=$(printf '%s' "$DRIFT_DIFF" | sed -n 's/.*next_tag=\([^ ]*\).*/\1/p')
+          NEXT_SWC=$(printf '%s' "$DRIFT_DIFF" | sed -n 's/.*next_swc_core=\([^ ]*\).*/\1/p')
+          OUR_SWC=$(printf '%s' "$DRIFT_DIFF" | sed -n 's/.*cassida_swc_core=\([^ ]*\).*/\1/p')
+
+          TITLE="swc_core drift detected: Next.js ${NEXT_TAG} uses ${NEXT_SWC}, @cassida/swc-plugin-next pins ${OUR_SWC}"
+
+          {
+            printf 'The weekly `swc-core-drift` cron detected a divergence between the `swc_core` version pinned in `packages/swc-plugin-next/Cargo.toml` and the version embedded in the current Next.js LTS release.\n\n'
+            printf -- '- Next.js release: **%s**\n' "$NEXT_TAG"
+            printf -- '- Next.js `swc_core`: **%s**\n' "$NEXT_SWC"
+            printf -- '- `@cassida/swc-plugin-next` pin: **%s**\n\n' "$OUR_SWC"
+            printf 'Raw diff line:\n\n```\n%s\n```\n\n' "$DRIFT_DIFF"
+            printf '### Action\n\n'
+            printf '1. Bump `swc_core` in `packages/swc-plugin-next/Cargo.toml` (`[dependencies]` and `[dev-dependencies]`) to `=%s`.\n' "$NEXT_SWC"
+            printf '2. Rebuild the next-targeted WASM and verify the `consumer · next` e2e leg stays green.\n'
+            printf '3. Open a release PR — this is a Supported Next.js versions policy commitment (`packages/next-plugin/README.md`).\n\n'
+            printf 'Workflow: `.github/workflows/swc-core-drift.yml`\n'
+          } > issue-body.md
+
+          gh issue create \
+            --title "$TITLE" \
+            --body-file issue-body.md \
+            --label "Cassida-Phase-1.5"
+
+      - name: Fail job on hard error
+        if: steps.drift.outputs.status == '2'
+        run: |
+          echo "drift script exited 2 (hard failure); see prior step output" >&2
+          exit 1
