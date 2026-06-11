@@ -61,6 +61,15 @@ export interface TransformOptions {
    */
   readonly plugins?: readonly CassPlugin[];
   /**
+   * Built-in macros (and any user-defined ones registered through
+   * `defineMacro`). Forwarded to `compileOps` and run BEFORE
+   * `plugins` so the plugin pass sees the macro-filled tree.
+   * When omitted, the compile pipeline runs with no macros — the
+   * vite-plugin / next-plugin layer is responsible for supplying
+   * the resolved set from `config.macros`.
+   */
+  readonly macros?: readonly CassPlugin[];
+  /**
    * Cross-file static evaluator controls. When the parser hits an
    * argument that Babel's local `path.evaluate()` can't resolve, it
    * walks `import` declarations from the file at `filename` and tries
@@ -661,6 +670,7 @@ export function transform(source: string, options: TransformOptions): TransformR
           ? { shorthandPolicy: options.shorthandPolicy }
           : {}),
         ...(options.plugins !== undefined ? { plugins: options.plugins } : {}),
+        ...(options.macros !== undefined ? { macros: options.macros } : {}),
       }),
     peelPropsAccess,
     registerDynamicSource: (node) => {
@@ -729,6 +739,9 @@ export function transform(source: string, options: TransformOptions): TransformR
             : {}),
           ...(options.plugins !== undefined
             ? { plugins: options.plugins }
+            : {}),
+          ...(options.macros !== undefined
+            ? { macros: options.macros }
             : {}),
         }),
       peelPropsAccess,

@@ -16,7 +16,7 @@
 import { createRequire } from 'node:module';
 
 import type { NextConfig } from 'next';
-import { mergeConfig, type CassConfig, type CassPlugin, type Registry } from '@cassida/compiler';
+import { mergeConfig, resolveMacros, type CassConfig, type CassPlugin, type Registry } from '@cassida/compiler';
 import type { CassParserPlugin, PathAliases } from '@cassida/parser';
 
 import type { IrLoaderOptions } from './ir-loader.js';
@@ -214,12 +214,20 @@ function applyCassida(
     ...resolvedPlugins,
     ...(options.cssPlugins ?? []),
   ];
+  // Resolve the full config once so the loader and the webpack plugin
+  // both see the same macros.disable list. `mergeConfig(options)` is
+  // re-invoked below for the webpack plugin (the wrapping cost is
+  // negligible; the resolved value is structurally equal).
+  const resolved = mergeConfig(options);
+  const macros = resolveMacros(resolved.macros.disable);
+
   const loaderOptions: IrLoaderOptions = {
     ...(options.registry !== undefined ? { registry: options.registry } : {}),
     ...(options.shorthand?.policy !== undefined
       ? { shorthandPolicy: options.shorthand.policy }
       : {}),
     ...(mergedPlugins.length > 0 ? { plugins: mergedPlugins } : {}),
+    ...(macros.length > 0 ? { macros } : {}),
   };
 
   // 1. Register the SWC plugin (the chain → IR-comment transform).
@@ -245,12 +253,6 @@ function applyCassida(
   // against. Honour `options.layer` if the user explicitly set one
   // (string for custom name, `null` for "no @layer wrap").
   const layer: string | null = options.layer ?? 'cas';
-
-  // Resolve the full config once per `applyCassida` invocation. The
-  // resolved form is what the webpack plugin needs to decide whether
-  // to post-process emitted CSS through lightningcss; passing the
-  // partial `options` would re-merge on every read.
-  const resolved = mergeConfig(options);
 
   // 2. Wrap user's `webpack` hook to inject the IR-comment loader.
   const userWebpack = cfg.webpack;

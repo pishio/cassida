@@ -4,6 +4,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **Built-in macros + `defineMacro` API** — three macros now run before the user plugin pipeline in `compileOps`, filling in property defaults the user almost always wants but rarely writes explicitly: `.zIndex(n)` → `position: relative` (a z-index value is a no-op against a statically-positioned ancestor); `.transform(...)` → `will-change: transform` (compositor-layer hint, removes the first-frame jank); `.position('sticky')` → `top: 0` (a sticky position needs at least one of top/right/bottom/left to actually stick, and `top: 0` is the common case — suppressed if the user already wrote any of the four directions). Explicit user values always win — a macro never overrides an existing property write. Modifier-scope writes (`:hover`, `@media`, ...) are intentionally NOT touched in this version; macros only fire on the root scope. Disable specific macros through `cassida.config.json` → `{ macros: { disable: ['zIndex'] } }`; register custom macros through the inline plugin option using the new `defineMacro({ name, trigger, fills, ... })` factory exported from `@cassida/compiler`. The new exports surface (`@cassida/compiler` index): `defineMacro`, `defaultMacros`, `resolveMacros`, `zIndexMacro`, `transformMacro`, `positionStickyMacro`, `type MacroDefinition`.
+
 ### Changed
 
 - **`lightningcss` post-processing is now enabled by default** (`defaultConfig.css.lightningcss.enabled = true`). Emitted CSS is run through `lightningcss` for vendor prefixing and (`minify: true` by default) minification. `@layer cas` and `@property` rules are preserved across the pass — lightningcss 1.28+ understands both natively. Disable with `{ css: { lightningcss: { enabled: false }}}` in `cassida.config.json` or inline plugin options. Behaviour change: production CSS bundles will now contain `-webkit-` / `-ms-` prefixes on properties whose browserslist target needs them. Adjust your snapshots accordingly.

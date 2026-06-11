@@ -37,6 +37,12 @@ export interface IrLoaderOptions {
   readonly registry?: Registry;
   readonly shorthandPolicy?: ShorthandPolicy;
   readonly plugins?: readonly CassPlugin[];
+  /**
+   * Built-in macros (and any user-defined ones) forwarded to
+   * `compileOps`. Run BEFORE `plugins` so the plugin pass sees the
+   * macro-filled tree.
+   */
+  readonly macros?: readonly CassPlugin[];
 }
 
 /**
@@ -73,6 +79,7 @@ export function rewriteIrComments(
       ? { shorthandPolicy: options.shorthandPolicy }
       : {}),
     ...(options.plugins ? { plugins: options.plugins } : {}),
+    ...(options.macros ? { macros: options.macros } : {}),
   };
   const code = source.replace(IR_PATTERN, (_match, jsonPayload, _index) => {
     let ops: readonly Op[];

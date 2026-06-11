@@ -46,6 +46,21 @@ const CssSchema = z
   .strict();
 
 /**
+ * Macros are a special class of build-time plugin: small `CassPlugin`
+ * instances that fill in property defaults (e.g. `position: relative`
+ * when `z-index` is set without an explicit position). The full set of
+ * built-in macros runs by default; individual macros can be disabled
+ * by name. Custom macros are registered through the inline
+ * `macros` plugin option (functions are not JSON-serializable, so
+ * the config file only exposes the disable knob).
+ */
+const MacrosSchema = z
+  .object({
+    disable: z.array(z.string()).readonly().optional(),
+  })
+  .strict();
+
+/**
  * Strict schema for `cassida.config.json` and inline plugin options.
  * `.strict()` rejects unknown fields so config typos surface as
  * build-time errors instead of silently ignored entries.
@@ -60,6 +75,7 @@ export const CassConfigSchema = z
     media: MediaSchema.optional(),
     css: CssSchema.optional(),
     shorthand: ShorthandSchema.optional(),
+    macros: MacrosSchema.optional(),
   })
   .strict();
 
@@ -95,6 +111,9 @@ export interface ResolvedCassConfig {
   readonly shorthand: {
     readonly policy: ShorthandPolicy;
   };
+  readonly macros: {
+    readonly disable: readonly string[];
+  };
 }
 
 export const defaultConfig: ResolvedCassConfig = Object.freeze({
@@ -117,6 +136,9 @@ export const defaultConfig: ResolvedCassConfig = Object.freeze({
   }),
   shorthand: Object.freeze({
     policy: 'strict' as const,
+  }),
+  macros: Object.freeze({
+    disable: Object.freeze([]) as readonly string[],
   }),
 }) satisfies ResolvedCassConfig;
 
@@ -158,6 +180,9 @@ export function mergeConfig(
       },
       shorthand: {
         policy: layer.shorthand?.policy ?? acc.shorthand.policy,
+      },
+      macros: {
+        disable: layer.macros?.disable ?? acc.macros.disable,
       },
     };
   }
