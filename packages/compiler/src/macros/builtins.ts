@@ -25,6 +25,12 @@ export const zIndexMacro: CassPlugin = defineMacro({
  *
  * `will-change` is intentionally a coarse hint — `auto` is a valid
  * user opt-out that suppresses the macro.
+ *
+ * Caveat: per the CSS Will Change Module L1 spec, `will-change` should
+ * be used sparingly. Apps that use `transform` heavily for static
+ * layout (e.g. `translate(-50%, -50%)` centring) may want to disable
+ * this macro via `{ macros: { disable: ['transform'] } }` to avoid
+ * over-promotion to compositor layers.
  */
 export const transformMacro: CassPlugin = defineMacro({
   name: 'transform',
@@ -34,16 +40,30 @@ export const transformMacro: CassPlugin = defineMacro({
 
 /**
  * `.position('sticky')` requires at least one of `top` / `right` /
- * `bottom` / `left` to actually stick. The macro fills `top: 0` only
- * when none of the four is set — `position('sticky').bottom(10)` is
- * a legitimate "stick to the bottom" pattern and the macro must not
- * collide with it.
+ * `bottom` / `left` (or their logical-property equivalents) to actually
+ * stick. The macro fills `top: 0` only when none of those is set —
+ * `position('sticky').bottom(10)` is a legitimate "stick to the bottom"
+ * pattern and the macro must not collide with it. Logical writing-mode
+ * properties (`inset-block-*`, `inset-inline-*`) are included so RTL
+ * and vertical-writing-mode sites are handled symmetrically.
  */
 export const positionStickyMacro: CassPlugin = defineMacro({
   name: 'positionSticky',
   trigger: { property: 'position', value: 'sticky' },
   fills: [{ property: 'top', value: '0' }],
-  skipIfAnyPresent: ['top', 'right', 'bottom', 'left'],
+  skipIfAnyPresent: [
+    'top',
+    'right',
+    'bottom',
+    'left',
+    'inset',
+    'inset-block',
+    'inset-inline',
+    'inset-block-start',
+    'inset-block-end',
+    'inset-inline-start',
+    'inset-inline-end',
+  ],
 });
 
 /**

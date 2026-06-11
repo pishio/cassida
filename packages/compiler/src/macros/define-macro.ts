@@ -1,6 +1,14 @@
-import type { CassPlugin } from '../plugin.js';
+import type { CassPlugin, PluginContext } from '../plugin.js';
 import type { ScopeBag } from '../types.js';
 import type { MacroDefinition } from './macro-types.js';
+
+/**
+ * Prefix the runtime stamps on every macro-produced `CassPlugin`'s
+ * `name` field. `resolveMacros` reads it back out when matching
+ * `config.macros.disable` entries, so the two sides MUST agree.
+ * Exporting the constant means there is only one source of truth.
+ */
+export const MACRO_NAME_PREFIX = 'macro:' as const;
 
 /**
  * Turn a `MacroDefinition` into a `CassPlugin` that fires only on the
@@ -17,14 +25,17 @@ import type { MacroDefinition } from './macro-types.js';
  */
 export function defineMacro(def: MacroDefinition): CassPlugin {
   return {
-    name: `macro:${def.name}`,
-    transform: (tree: ScopeBag): ScopeBag => applyMacroToRoot(tree, def),
+    name: `${MACRO_NAME_PREFIX}${def.name}`,
+    // `ctx` is intentionally unused for built-in macros; resolved
+    // config is encoded entirely in `MacroDefinition` itself.
+    transform: (tree: ScopeBag, _ctx: PluginContext): ScopeBag => applyMacroToRoot(tree, def),
   };
 }
 
 function applyMacroToRoot(tree: ScopeBag, def: MacroDefinition): ScopeBag {
-  // Macros only fire on the root scope in the initial release.
-  // Modifier scope handling (`scope: 'all'`) is reserved.
+  // Macros only fire on the root scope. Modifier scopes (`:hover`,
+  // `@media`, ...) are intentionally not visited; see `MacroDefinition`
+  // docstring for rationale.
   if (tree.scope !== null) return tree;
 
   const bag = tree.bag;

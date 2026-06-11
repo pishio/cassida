@@ -78,12 +78,12 @@ export function compileOps(ops: readonly Op[], options: CompileOptions): Compile
   const ctx: PluginContext = options.pluginContext ?? {
     config: { layer: 'fss', importSource: '@cassida/core' },
   };
-  const pipeline =
-    options.macros && options.plugins
-      ? [...options.macros, ...options.plugins]
-      : options.macros && !options.plugins
-        ? options.macros
-        : options.plugins;
+  // `applyPlugins` is a no-op when handed an empty array, so the
+  // spread pattern degrades cleanly when either side is omitted.
+  const pipeline: readonly CassPlugin[] = [
+    ...(options.macros ?? []),
+    ...(options.plugins ?? []),
+  ];
   const transformedTree = applyPlugins(rawTree, pipeline, ctx);
 
   const canonical = canon.canonicalKey(transformedTree);

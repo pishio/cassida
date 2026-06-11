@@ -8,52 +8,52 @@
  * user did not already write them explicitly.
  *
  * "Explicit user values win" is implemented by checking, for each
- * `fillProperty`, whether the bag already has any value at all for
- * that key. Macros never override existing writes; they only fill in
- * gaps.
+ * fill's `property`, whether the bag already has any value at all
+ * for that key. Macros never override existing writes; they only
+ * fill in gaps.
  *
- * Modifier scopes (`:hover`, `@media`, ...) are intentionally NOT
- * touched in the initial version. A `position('sticky')` written
- * inside `.hover(c => c.position('sticky'))` does not get an
- * automatic `top: 0` — only the root scope receives macro fills.
- * The `scope: 'all'` option is reserved for a future expansion that
- * walks every node in the tree.
+ * Macros fire on the **root scope only**. Modifier scopes (`:hover`,
+ * `@media`, ...) are intentionally not visited. A `position('sticky')`
+ * written inside `.hover(c => c.position('sticky'))` does not get an
+ * automatic `top: 0`. The runtime currently exposes no opt-in for
+ * traversing modifier scopes; if that turns out to be useful, a
+ * future major adds the surface as an explicit field (it is not
+ * declared here today so consumers cannot set a value that the
+ * compiler silently ignores).
  */
 export interface MacroDefinition {
   /** Human-readable identifier — used to disable specific macros via `config.macros.disable`. */
   readonly name: string;
 
   /**
-   * The trigger pattern. When the root `ScopeBag`'s `bag` contains
-   * this property (and, if `triggerValue` is set, that exact value),
-   * the macro fires.
+   * The trigger pattern.
+   *
+   *   - `property` only: macro fires whenever the bag has any value
+   *     for `property`, regardless of what it is.
+   *   - `property` + `value`: macro fires only when the bag's value
+   *     for `property` is exactly `value` (string-equal).
    */
   readonly trigger: { readonly property: string; readonly value?: string };
 
   /**
    * Properties this macro will fill in. Each entry's `property` is
    * checked against the existing bag; only properties that are NOT
-   * already present are written. `value` is the default to write.
+   * already present are written. `value` is the default to write
+   * as a complete CSS value string (no auto-unitisation).
    *
-   * Multiple fills run as a unit: the macro succeeds atomically
-   * (every absent fill is added) or partially (each independent
-   * fill is decided on its own — there is no "all or nothing").
+   * Each fill is decided independently: a fill whose property is
+   * already in the bag is dropped, while a fill whose property is
+   * absent is added. There is no "all or nothing".
    */
   readonly fills: readonly { readonly property: string; readonly value: string }[];
 
   /**
-   * Currently fixed at `'root'`. Reserved for future expansion to
-   * walk modifier scopes as well. The runtime ignores `'all'` for
-   * now; emit no error so future versions can introduce it without
-   * a breaking change.
-   */
-  readonly scope?: 'root' | 'all';
-
-  /**
    * Anti-trigger: when ANY of these properties is already in the
-   * bag, the macro skips entirely. Useful for the `position: sticky`
-   * → `top: 0` case where any of `top` / `right` / `bottom` / `left`
-   * being explicitly set should suppress the macro.
+   * bag, the macro skips entirely. Useful for the
+   * `position: sticky` → `top: 0` case where any of
+   * `top` / `right` / `bottom` / `left` (and their logical-property
+   * equivalents `inset-block-*` / `inset-inline-*`) being set should
+   * suppress the macro.
    */
   readonly skipIfAnyPresent?: readonly string[];
 }
