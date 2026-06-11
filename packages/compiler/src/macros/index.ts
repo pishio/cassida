@@ -25,25 +25,45 @@ function bareMacroName(prefixed: string): string {
 }
 
 /**
+ * Env var that silences the macros.disable typo warning. Used the same
+ * way `CASSIDA_QUIET_RACE_WARNING` silences the cross-compiler bridge
+ * race warning emitted by `CassidaWebpackPlugin` (see
+ * `packages/next-plugin/src/webpack-plugin.ts`).
+ */
+const CASSIDA_QUIET_MACRO_TYPO_WARNING = 'CASSIDA_QUIET_MACRO_TYPO_WARNING';
+
+/**
  * Resolve the macros that should run for this compile. Built-in
  * macros listed in `disabled` are removed; the remainder is returned
- * in `defaultMacros` order. The result is safe to spread directly
- * into the compile-time plugin pipeline.
+ * in `defaultMacros` order. The returned array is `Object.freeze`d
+ * so the result is non-mutable regardless of whether the `disabled`
+ * input was empty (`defaultMacros` is itself frozen) or non-empty
+ * (newly allocated filter result). Consumers that need a mutable
+ * copy should clone explicitly.
+ *
+ * `config.macros.disable` targets built-in macros only — custom
+ * macros (registered through the inline plugin option) are filtered
+ * separately by the caller.
  *
  * Names supplied in `disabled` that do not match any built-in macro
- * are reported via `console.warn` once per call so a config typo
- * (`'zindex'` instead of `'zIndex'`) does not silently no-op.
+ * are reported on `process.stderr` so a config typo
+ * (`'zindex'` instead of `'zIndex'`) does not silently no-op. Set
+ * `CASSIDA_QUIET_MACRO_TYPO_WARNING=1` to silence.
  */
 export function resolveMacros(disabled: readonly string[] = []): readonly CassPlugin[] {
   if (disabled.length === 0) return defaultMacros;
   const known = new Set(defaultMacros.map((p) => bareMacroName(p.name)));
   const skip = new Set(disabled);
-  for (const name of disabled) {
-    if (!known.has(name)) {
-      console.warn(
-        `[cassida] macros.disable: unknown macro "${name}". Known names: ${[...known].sort().join(', ')}.`,
-      );
+  if (!process.env[CASSIDA_QUIET_MACRO_TYPO_WARNING]) {
+    for (const name of disabled) {
+      if (!known.has(name)) {
+        process.stderr.write(
+          `[cassida] macros.disable: unknown macro "${name}". ` +
+            `Known names: ${[...known].sort().join(', ')}. ` +
+            `Silence with ${CASSIDA_QUIET_MACRO_TYPO_WARNING}=1.\n`,
+        );
+      }
     }
   }
-  return defaultMacros.filter((p) => !skip.has(bareMacroName(p.name)));
+  return Object.freeze(defaultMacros.filter((p) => !skip.has(bareMacroName(p.name))));
 }

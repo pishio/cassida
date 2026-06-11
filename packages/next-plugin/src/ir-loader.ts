@@ -41,6 +41,12 @@ export interface IrLoaderOptions {
    * Built-in macros (and any user-defined ones) forwarded to
    * `compileOps`. Run BEFORE `plugins` so the plugin pass sees the
    * macro-filled tree.
+   *
+   * Note: the SWC plugin (Rust → WASM, `@cassida/swc-plugin`) is
+   * macro-agnostic. It emits raw IR comments only; macros are
+   * applied here, in TypeScript, inside `rewriteIrComments`. If a
+   * future iteration moves the macro pass into the SWC plugin for
+   * speed, this contract becomes the boundary to migrate.
    */
   readonly macros?: readonly CassPlugin[];
 }

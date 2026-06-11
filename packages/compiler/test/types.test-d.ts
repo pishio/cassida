@@ -281,6 +281,7 @@ if (_execute) {
     trigger: { property: 'position', value: 'sticky' },
     fills: [{ property: 'top', value: '0' }],
     skipIfAnyPresent: ['top', 'bottom'],
+    skipIfTriggerValueIn: ['auto', 'none'],
   };
   const _macroPlugin: CassPlugin = defineMacro(_macroDef);
   void _macroPlugin;

@@ -54,6 +54,24 @@ export interface MacroDefinition {
    * `top` / `right` / `bottom` / `left` (and their logical-property
    * equivalents `inset-block-*` / `inset-inline-*`) being set should
    * suppress the macro.
+   *
+   * Cassida's typed `cas()` surface blacklists `inset` as a shorthand;
+   * the `inset*` entries here matter only when consumers reach the
+   * macro target through `cas.unsafe({ inset: '...' })`.
    */
   readonly skipIfAnyPresent?: readonly string[];
+
+  /**
+   * Skip the macro when the trigger property's value matches any of
+   * these strings. Useful for opting out of CSS-wide keywords
+   * (`auto` / `none` / `unset` / `initial` / `inherit` / `revert` /
+   * `revert-layer`) that semantically mean "this property has no
+   * effect" — there is no point filling defaults for a no-op.
+   *
+   * `trigger.value` (above) is exact-match for fire-when-equal;
+   * `skipIfTriggerValueIn` is exact-match for skip-when-equal. The
+   * two compose: fire only when `trigger.value` matches AND the
+   * value is not in `skipIfTriggerValueIn`.
+   */
+  readonly skipIfTriggerValueIn?: readonly string[];
 }

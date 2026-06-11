@@ -9,11 +9,17 @@ import { defineMacro } from './define-macro.js';
  *
  * Explicit `position` values (`absolute`, `fixed`, `sticky`, `static`,
  * `relative`) all suppress the macro — the user's intent wins.
+ *
+ * `z-index: auto` and the other CSS-wide keywords are intentionally
+ * skipped: `auto` does not create a stacking context anyway, so the
+ * `position: relative` fill would be a no-op decoration. Same logic
+ * for `unset` / `initial` / `inherit` / `revert` / `revert-layer`.
  */
 export const zIndexMacro: CassPlugin = defineMacro({
   name: 'zIndex',
   trigger: { property: 'z-index' },
   fills: [{ property: 'position', value: 'relative' }],
+  skipIfTriggerValueIn: ['auto', 'unset', 'initial', 'inherit', 'revert', 'revert-layer'],
 });
 
 /**
@@ -36,6 +42,10 @@ export const transformMacro: CassPlugin = defineMacro({
   name: 'transform',
   trigger: { property: 'transform' },
   fills: [{ property: 'will-change', value: 'transform' }],
+  // `transform: none` (and the CSS-wide keywords) is the initial value
+  // or an explicit "no transform here". Promoting to a compositor
+  // layer in those cases is pure waste.
+  skipIfTriggerValueIn: ['none', 'unset', 'initial', 'inherit', 'revert', 'revert-layer'],
 });
 
 /**

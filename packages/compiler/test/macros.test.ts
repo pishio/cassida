@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   Canonicalizer,
+  compileOps,
   defaultRegistry,
   defaultMacros,
   defineMacro,
@@ -170,5 +171,77 @@ describe('defineMacro factory', () => {
 
     const gridTree = collapseAndApply([methodOp('display', 'grid')], [plugin]);
     expect(gridTree.bag['gap']).toBeUndefined();
+  });
+
+  it('throws when the supplied name already starts with the macro: prefix', () => {
+    expect(() =>
+      defineMacro({
+        name: 'macro:custom',
+        trigger: { property: 'opacity' },
+        fills: [{ property: 'transition', value: 'opacity 200ms' }],
+      }),
+    ).toThrow(/must not include the "macro:" prefix/);
+  });
+});
+
+describe('skipIfTriggerValueIn', () => {
+  it('zIndexMacro skips on z-index: auto', () => {
+    const tree = collapseAndApply([methodOp('zIndex', 'auto')], [zIndexMacro]);
+    expect(tree.bag['z-index']).toBe('auto');
+    expect(tree.bag['position']).toBeUndefined();
+  });
+
+  it('transformMacro skips on transform: none', () => {
+    const tree = collapseAndApply([methodOp('transform', 'none')], [transformMacro]);
+    expect(tree.bag['transform']).toBe('none');
+    expect(tree.bag['will-change']).toBeUndefined();
+  });
+
+  it('all CSS-wide keywords suppress zIndexMacro', () => {
+    for (const v of ['unset', 'initial', 'inherit', 'revert', 'revert-layer']) {
+      const tree = collapseAndApply([methodOp('zIndex', v)], [zIndexMacro]);
+      expect(tree.bag['position']).toBeUndefined();
+    }
+  });
+});
+
+describe('canonicalKey order independence under macro fills', () => {
+  it('macro-filled bag has the same canonicalKey as explicit-write bag', () => {
+    // cas.zIndex(10) — macro fills position: relative behind the scenes.
+    const macroResult = compileOps(
+      [methodOp('zIndex', '10')],
+      { registry: defaultRegistry, shorthandPolicy: 'lenient', macros: [zIndexMacro] },
+    );
+    // cas.position('relative').zIndex(10) — user wrote both explicitly.
+    const explicitResult = compileOps(
+      [methodOp('position', 'relative'), methodOp('zIndex', '10')],
+      { registry: defaultRegistry, shorthandPolicy: 'lenient' },
+    );
+    expect(macroResult.canonical).toBe(explicitResult.canonical);
+    expect(macroResult.className).toBe(explicitResult.className);
+  });
+
+  it('insertion order of explicit writes does not change the canonical key', () => {
+    const a = compileOps(
+      [methodOp('position', 'relative'), methodOp('zIndex', '10')],
+      { registry: defaultRegistry, shorthandPolicy: 'lenient' },
+    );
+    const b = compileOps(
+      [methodOp('zIndex', '10'), methodOp('position', 'relative')],
+      { registry: defaultRegistry, shorthandPolicy: 'lenient' },
+    );
+    expect(a.canonical).toBe(b.canonical);
+  });
+});
+
+describe('resolveMacros result freezing', () => {
+  it('returns the frozen defaultMacros when disabled is empty', () => {
+    const r = resolveMacros();
+    expect(Object.isFrozen(r)).toBe(true);
+  });
+
+  it('returns a frozen array when disabled has entries', () => {
+    const r = resolveMacros(['zIndex']);
+    expect(Object.isFrozen(r)).toBe(true);
   });
 });
