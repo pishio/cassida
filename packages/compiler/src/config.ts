@@ -110,7 +110,7 @@ export const defaultConfig: ResolvedCassConfig = Object.freeze({
   css: Object.freeze({
     mode: 'rule-per-class' as const,
     lightningcss: Object.freeze({
-      enabled: false,
+      enabled: true,
       minify: true,
       targets: 'defaults',
     }),

@@ -16,7 +16,7 @@
 import { createRequire } from 'node:module';
 
 import type { NextConfig } from 'next';
-import type { CassConfig, CassPlugin, Registry } from '@cassida/compiler';
+import { mergeConfig, type CassConfig, type CassPlugin, type Registry } from '@cassida/compiler';
 import type { CassParserPlugin, PathAliases } from '@cassida/parser';
 
 import type { IrLoaderOptions } from './ir-loader.js';
@@ -24,7 +24,8 @@ import { CassidaWebpackPlugin } from './webpack-plugin.js';
 export { rewriteIrComments, default as cassidaIrLoader } from './ir-loader.js';
 export type { IrLoaderOptions } from './ir-loader.js';
 export { buildVirtualCss } from './virtual-css.js';
-export type { VirtualCssOptions } from './virtual-css.js';
+import type { VirtualCssOptions } from './virtual-css.js';
+export type { VirtualCssOptions };
 export { CassidaWebpackPlugin } from './webpack-plugin.js';
 export {
   setRulesForFile,
@@ -245,6 +246,12 @@ function applyCassida(
   // (string for custom name, `null` for "no @layer wrap").
   const layer: string | null = options.layer ?? 'cas';
 
+  // Resolve the full config once per `applyCassida` invocation. The
+  // resolved form is what the webpack plugin needs to decide whether
+  // to post-process emitted CSS through lightningcss; passing the
+  // partial `options` would re-merge on every read.
+  const resolved = mergeConfig(options);
+
   // 2. Wrap user's `webpack` hook to inject the IR-comment loader.
   const userWebpack = cfg.webpack;
   const loaderExclude =
@@ -252,7 +259,7 @@ function applyCassida(
   const wrappedWebpack: NextWebpackHook = (config, ctx) => {
     const base =
       typeof userWebpack === 'function' ? userWebpack(config, ctx) : config;
-    return injectIrLoader(base, loaderOptions, loaderExclude, { layer });
+    return injectIrLoader(base, loaderOptions, loaderExclude, { layer, resolved });
   };
 
   return {
@@ -328,7 +335,7 @@ function injectIrLoader(
   config: WebpackConfig,
   options: IrLoaderOptions,
   exclude: RegExp | string | ((path: string) => boolean) | null,
-  webpackPluginOptions: { layer: string | null },
+  webpackPluginOptions: VirtualCssOptions,
 ): WebpackConfig {
   const loaderRule = {
     test: /\.[cm]?[jt]sx?$/,

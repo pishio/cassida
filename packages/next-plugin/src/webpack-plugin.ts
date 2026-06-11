@@ -45,6 +45,7 @@
 
 import { fileURLToPath } from 'node:url';
 
+import { resolveTargets, type Targets } from '@cassida/compiler/internal';
 import VirtualModulesPlugin from 'webpack-virtual-modules';
 
 import {
@@ -94,6 +95,19 @@ export class CassidaWebpackPlugin {
 
     const compilerName = compiler.options?.name ?? null;
 
+    // Resolve lightningcss targets once per compiler instance from the
+    // project root (webpack's `compiler.context`). `resolveTargets`
+    // reads `.browserslistrc` / `package.json#browserslist` / env
+    // defaults; null means "no targets, let lightningcss choose its
+    // own default". Targets resolution is skipped entirely when the
+    // resolved config doesn't ship a lightningcss block, or when
+    // lightningcss is disabled.
+    let cachedTargets: Targets | null = null;
+    if (this.options.resolved?.css.lightningcss.enabled) {
+      const root = compiler.context ?? process.cwd();
+      cachedTargets = resolveTargets(this.options.resolved.css.lightningcss.targets, root);
+    }
+
     // Clear THIS compiler's namespace before its loaders re-run.
     // Without this, `next dev`'s HMR loop accumulates stale rules
     // from since-deleted source files in this compiler — the IR
@@ -127,7 +141,11 @@ export class CassidaWebpackPlugin {
             const content =
               seen.length === 0
                 ? PLACEHOLDER_CONTENT
-                : buildVirtualCss(this.options);
+                : buildVirtualCss({
+                    ...this.options,
+                    filename: VIRTUAL_MODULE_PATH,
+                    targets: cachedTargets,
+                  });
             virtual.writeModule(VIRTUAL_MODULE_PATH, content);
 
             // Real race detection. The v0.8.0 heads-up triggered
@@ -213,6 +231,7 @@ function countIterable<T>(it: Iterable<T>): number {
 // keeps `@cassida/next-plugin` free of a hard `webpack` dep.
 interface WebpackCompiler {
   readonly options?: { readonly name?: string };
+  readonly context?: string;
   readonly hooks: {
     readonly thisCompilation: WebpackSyncHook<[WebpackCompilation]>;
     readonly beforeRun?: WebpackSyncHook<[WebpackCompiler]>;
