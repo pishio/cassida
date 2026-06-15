@@ -5,6 +5,7 @@ import {
   defaultRegistry,
   mergeConfig,
   parseCassConfig,
+  resolveMacros,
   type CompiledRule,
   type CassConfig,
   type CassPlugin,
@@ -188,6 +189,7 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
         crossFileEvaluation: { cache: crossFileCache },
         ...(resolvedAliases ? { pathAliases: resolvedAliases } : {}),
         ...(options.plugins ? { plugins: options.plugins } : {}),
+        macros: resolveMacros(resolved.macros.disable),
         ...(options.parserPlugins
           ? { parserPlugins: options.parserPlugins }
           : {}),

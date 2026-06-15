@@ -36,6 +36,15 @@ export interface CompileOptions extends HashOptions {
    */
   readonly plugins?: readonly CassPlugin[];
   /**
+   * Built-in macros (and any user-defined ones registered through the
+   * inline option). Macros run BEFORE `plugins` in the compile-time
+   * pipeline, so a user plugin sees the macro-filled tree. Defaults
+   * to the resolved set of built-in macros minus those listed in
+   * `config.macros.disable`; pass `[]` explicitly to disable every
+   * macro for this call.
+   */
+  readonly macros?: readonly CassPlugin[];
+  /**
    * Subset of resolved config exposed to plugins through their
    * `PluginContext`. Optional — if omitted, plugins receive a minimal
    * default context.
@@ -61,10 +70,21 @@ export function compileOps(ops: readonly Op[], options: CompileOptions): Compile
   // tree shape change (e.g. wrapping :hover in @media (hover: hover))
   // propagates into the className. This is the FSS bijection
   // contract: same hash ⇔ same final-state CSS.
+  //
+  // Macros run BEFORE user plugins so the plugin pass sees the
+  // macro-filled tree (e.g. `position: relative` already added by
+  // the zIndex macro). The combined sequence is
+  // `[...macros, ...plugins]` to keep this contract explicit.
   const ctx: PluginContext = options.pluginContext ?? {
     config: { layer: 'fss', importSource: '@cassida/core' },
   };
-  const transformedTree = applyPlugins(rawTree, options.plugins, ctx);
+  // `applyPlugins` is a no-op when handed an empty array, so the
+  // spread pattern degrades cleanly when either side is omitted.
+  const pipeline: readonly CassPlugin[] = [
+    ...(options.macros ?? []),
+    ...(options.plugins ?? []),
+  ];
+  const transformedTree = applyPlugins(rawTree, pipeline, ctx);
 
   const canonical = canon.canonicalKey(transformedTree);
   const className = hash(canonical, options);

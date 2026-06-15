@@ -50,6 +50,16 @@ export type { CssEmitterOptions } from './emitter.js';
 export { applyPlugins, mapScopeBag, wrapInMediaScope } from './plugin.js';
 export type { CassPlugin, PluginContext } from './plugin.js';
 export {
+  defineMacro,
+  defaultMacros,
+  resolveMacros,
+  CSS_GLOBAL_KEYWORDS,
+  zIndexMacro,
+  transformMacro,
+  positionStickyMacro,
+} from './macros/index.js';
+export type { CssGlobalKeyword, MacroDefinition } from './macros/index.js';
+export {
   defaultConfig,
   mergeConfig,
   parseCassConfig,

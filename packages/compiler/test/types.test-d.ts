@@ -13,18 +13,26 @@ import {
   applyPlugins,
   canonicalModifiers,
   compileOps,
+  CSS_GLOBAL_KEYWORDS,
   defaultConfig,
+  defaultMacros,
   defaultRegistry,
+  defineMacro,
   extendRegistry,
   isMethodOp,
   isRawOp,
   isScopedOp,
   mergeConfig,
   parseCassConfig,
+  resolveMacros,
+  zIndexMacro,
   type CassConfig,
   type CassPlugin,
   type CompiledRule,
+  type CompileOptions,
   type CssEmitterOptions,
+  type CssGlobalKeyword,
+  type MacroDefinition,
   type MediaSort,
   type MethodOp,
   type Op,
@@ -257,4 +265,106 @@ if (_execute) {
   type _ChildIsScopeBag = _ChildElement extends ScopeBag ? (ScopeBag extends _ChildElement ? true : false) : false;
   const _childAssert: _ChildIsScopeBag = true;
   void _childAssert;
+
+  // ────────────────────────────────────────────────────────────────
+  // 13) Macros surface: `defineMacro` returns a `CassPlugin`,
+  //     `defaultMacros` is a readonly array of those, `resolveMacros`
+  //     accepts a `readonly string[]` and returns the same shape.
+  //     `MacroDefinition` is closed (`.strict()`-style); unknown fields
+  //     fail at the type level, matching the zod schema.
+  // ────────────────────────────────────────────────────────────────
+  const _macroDef: MacroDefinition = {
+    name: 'opacity-transition',
+    trigger: { property: 'opacity' },
+    fills: [{ property: 'transition', value: 'opacity 200ms' }],
+  };
+  const _macroDefWithSkip: MacroDefinition = {
+    name: 'sticky-bottom',
+    trigger: { property: 'position', value: 'sticky' },
+    fills: [{ property: 'top', value: '0' }],
+    skipIfAnyPresent: ['top', 'bottom'],
+    skipIfTriggerValueIn: ['auto', 'none'],
+  };
+  const _macroPlugin: CassPlugin = defineMacro(_macroDef);
+  void _macroPlugin;
+
+  // `CSS_GLOBAL_KEYWORDS` is a readonly array of `CssGlobalKeyword` and
+  // is assignment-compatible with `skipIfTriggerValueIn`.
+  const _globals: readonly CssGlobalKeyword[] = CSS_GLOBAL_KEYWORDS;
+  void _globals;
+  const _macroDefWithGlobals: MacroDefinition = {
+    name: 'globals-seed',
+    trigger: { property: 'z-index' },
+    fills: [{ property: 'position', value: 'relative' }],
+    skipIfTriggerValueIn: [...CSS_GLOBAL_KEYWORDS, 'auto'],
+  };
+  void _macroDefWithGlobals;
+  // @ts-expect-error -- CSS_GLOBAL_KEYWORDS is readonly; cannot push
+  CSS_GLOBAL_KEYWORDS.push('auto');
+  // @ts-expect-error -- 'auto' is not a CSS-wide keyword
+  const _badGlobal: CssGlobalKeyword = 'auto';
+  void _badGlobal;
+
+  // `defaultMacros` is readonly and elements are `CassPlugin`.
+  const _allMacros: readonly CassPlugin[] = defaultMacros;
+  void _allMacros;
+  // @ts-expect-error -- defaultMacros is readonly; cannot push
+  defaultMacros.push(zIndexMacro);
+
+  // `resolveMacros` accepts no args or a readonly string[].
+  const _resolved1: readonly CassPlugin[] = resolveMacros();
+  const _resolved2: readonly CassPlugin[] = resolveMacros(['zIndex']);
+  void _resolved1;
+  void _resolved2;
+  // @ts-expect-error -- numbers are not valid macro names
+  resolveMacros([1]);
+
+  // `MacroDefinition` rejects unknown fields (zod `.strict` parity).
+  const _bad1: MacroDefinition = {
+    name: 'x',
+    trigger: { property: 'y' },
+    fills: [],
+    // @ts-expect-error -- unknown field `whenAbsent`
+    whenAbsent: ['z'],
+  };
+  void _bad1;
+  // The historical `scope` field has been retracted from the surface
+  // (it was reserved for an unimplemented 'all' modifier-scope mode).
+  const _bad2: MacroDefinition = {
+    name: 'x',
+    trigger: { property: 'y' },
+    fills: [],
+    // @ts-expect-error -- scope is not a part of the type
+    scope: 'root',
+  };
+  void _bad2;
+
+  // ────────────────────────────────────────────────────────────────
+  // 14) `CassConfig.macros.disable` is `readonly string[] | undefined`
+  //     and the surrounding `macros` block is itself optional. `.strict`
+  //     means a typo at the leaf level fails the type check.
+  // ────────────────────────────────────────────────────────────────
+  const _cfgMacrosOk: CassConfig = { macros: { disable: ['zIndex'] } };
+  const _cfgMacrosOmittable: CassConfig = { macros: {} };
+  const _cfgMacrosAbsent: CassConfig = {};
+  void _cfgMacrosOk;
+  void _cfgMacrosOmittable;
+  void _cfgMacrosAbsent;
+  // @ts-expect-error -- disable must be string[]
+  const _cfgMacrosBad1: CassConfig = { macros: { disable: [1] } };
+  void _cfgMacrosBad1;
+  // @ts-expect-error -- unknown field on the macros block
+  const _cfgMacrosBad2: CassConfig = { macros: { enableAll: true } };
+  void _cfgMacrosBad2;
+
+  // `ResolvedCassConfig.macros.disable` is a non-optional readonly string[].
+  const _resolvedMacros: ResolvedCassConfig['macros'] = { disable: [] };
+  void _resolvedMacros;
+
+  // `CompileOptions.macros` is optional readonly CassPlugin[].
+  const _compileWithMacros: CompileOptions = {
+    registry: defaultRegistry,
+    macros: defaultMacros,
+  };
+  void _compileWithMacros;
 }
