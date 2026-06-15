@@ -5,6 +5,8 @@ import { defaultRegistry } from '../src/registry.js';
 import type { Op } from '../src/types.js';
 
 const compile = (ops: Op[]) => compileOps(ops, { registry: defaultRegistry });
+const compileLenient = (ops: Op[]) =>
+  compileOps(ops, { registry: defaultRegistry, shorthandPolicy: 'lenient' });
 
 // Tests emit with `layer: null` so assertions match the bare flattened
 // rules without the `@layer cas{...}` wrapper.
@@ -39,6 +41,20 @@ describe('shared-by-declaration: root declaration grouping', () => {
     const e = shared();
     const a = e.add(compile([{ method: 'color', args: ['red'] }]));
     expect(e.emit()).toMatch(new RegExp(`^\\.${a}\\{color:red;?\\}$`));
+  });
+
+  it('emits shorthand before longhand so the longhand still wins', () => {
+    // Regression: sorting the raw "prop:val" keys would place
+    // `padding-top` before `padding` ('-' < ':'), letting the shorthand
+    // override the longhand. The grouped output must keep the same
+    // property order as rule-per-class.
+    const e = shared();
+    e.add(compileLenient([
+      { method: 'padding', args: ['8px'] },
+      { method: 'paddingTop', args: ['4px'] },
+    ]));
+    const css = e.emit();
+    expect(css.indexOf('padding:8px')).toBeLessThan(css.indexOf('padding-top:4px'));
   });
 
   it('is independent of class insertion order', () => {

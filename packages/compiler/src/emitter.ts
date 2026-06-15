@@ -183,7 +183,7 @@ function buildSharedRootRules(rules: ReadonlyMap<string, ScopeBag>): string[] {
   }
 
   const out: string[] = [];
-  for (const decl of [...index.keys()].sort()) {
+  for (const decl of [...index.keys()].sort(compareDeclarations)) {
     const selector = [...index.get(decl)!]
       .sort()
       .map((c) => `.${c}`)
@@ -191,6 +191,27 @@ function buildSharedRootRules(rules: ReadonlyMap<string, ScopeBag>): string[] {
     out.push(`${selector}{${decl}}`);
   }
   return out;
+}
+
+/**
+ * Order two `"property:value"` declaration keys by **property name
+ * first**, value second. Sorting the raw `"prop:val"` string instead
+ * would order by code unit and place `'-'` (0x2D) before `':'` (0x3A),
+ * emitting `padding-top` ahead of `padding` and inverting the
+ * shorthand-before-longhand cascade. Splitting on the property keeps
+ * the grouped output in the exact property order `formatDeclarations`
+ * produces per class, so a class's declarations land in the same
+ * source order under both emit modes.
+ */
+function compareDeclarations(a: string, b: string): number {
+  const ia = a.indexOf(':');
+  const ib = b.indexOf(':');
+  const pa = a.slice(0, ia);
+  const pb = b.slice(0, ib);
+  if (pa !== pb) return pa < pb ? -1 : 1;
+  const va = a.slice(ia + 1);
+  const vb = b.slice(ib + 1);
+  return va < vb ? -1 : va > vb ? 1 : 0;
 }
 
 /**
