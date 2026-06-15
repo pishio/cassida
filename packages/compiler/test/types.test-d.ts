@@ -32,6 +32,7 @@ import {
   type CompileOptions,
   type CssEmitterOptions,
   type CssGlobalKeyword,
+  type CssMode,
   type MacroDefinition,
   type MediaSort,
   type MethodOp,
@@ -102,6 +103,22 @@ if (_execute) {
   // @ts-expect-error -- `layer` does not accept numbers
   const badLayer: CssEmitterOptions = { layer: 42 };
   void badLayer;
+
+  // `CssEmitterOptions.mode` is the `CssMode` enum.
+  const okMode: CssEmitterOptions = { mode: 'shared-by-declaration' };
+  const okModeDefault: CssEmitterOptions = { mode: 'rule-per-class' };
+  void okMode;
+  void okModeDefault;
+  // @ts-expect-error -- `mode` does not accept arbitrary strings
+  const badMode: CssEmitterOptions = { mode: 'grouped' };
+  void badMode;
+  const _cssMode1: CssMode = 'rule-per-class';
+  const _cssMode2: CssMode = 'shared-by-declaration';
+  void _cssMode1;
+  void _cssMode2;
+  // @ts-expect-error -- not a member of the CssMode union
+  const badCssMode: CssMode = 'per-declaration';
+  void badCssMode;
 
   // ────────────────────────────────────────────────────────────────
   // 4) `MediaSort` and `ShorthandPolicy` are string-literal unions.

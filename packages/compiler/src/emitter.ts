@@ -1,5 +1,5 @@
 import { compile, middleware, serialize, stringify } from 'stylis';
-import type { MediaSort } from './config.js';
+import type { CssMode, MediaSort } from './config.js';
 import type {
   CompiledRule,
   DynamicSlot,
@@ -20,6 +20,22 @@ export interface CssEmitterOptions {
    * semantics each direction implies. Defaults to `'mobile-first'`.
    */
   readonly mediaSort?: MediaSort;
+  /**
+   * How class rules are laid out in the output. Defaults to
+   * `'rule-per-class'`.
+   *
+   *   - `'rule-per-class'`: every class emits its own
+   *     `.cls{...}` block (root declarations + nested modifier scopes).
+   *   - `'shared-by-declaration'`: the **root-scope** declarations of
+   *     every class are folded into a `(prop:val) → classes` inverted
+   *     index and emitted as grouped selectors (`.a,.b{color:red}`).
+   *     Modifier scopes (`:hover` / `@media` / ...) stay per-class.
+   *
+   * The mode changes only the emitted CSS shape — the `className`
+   * hash is derived from the canonical bag and is identical across
+   * both modes, so the bijection contract is preserved.
+   */
+  readonly mode?: CssMode;
 }
 
 /**
@@ -75,11 +91,20 @@ export class CssEmitter {
     const propertyBlocks = [...this.properties.values()].join('');
 
     const sortMode: MediaSort = this.options.mediaSort ?? 'mobile-first';
-    const nestedRules: string[] = [];
-    for (const [className, tree] of this.rules.entries()) {
-      const nested = treeToNestedCss(className, tree, sortMode);
-      if (nested !== null) nestedRules.push(nested);
-    }
+    const mode: CssMode = this.options.mode ?? 'rule-per-class';
+
+    // In `shared-by-declaration` the root declarations are grouped by
+    // an inverted index and emitted first; per-class modifier scopes
+    // follow so a class's `:hover` / `@media` still lands after its own
+    // base declarations in source order (equal specificity → cascade by
+    // order). `rule-per-class` keeps each class self-contained.
+    const nestedRules: string[] =
+      mode === 'shared-by-declaration'
+        ? [
+            ...buildSharedRootRules(this.rules),
+            ...buildPerClassChildRules(this.rules, sortMode),
+          ]
+        : buildRulePerClassRules(this.rules, sortMode);
 
     if (nestedRules.length === 0) return propertyBlocks;
 
@@ -104,6 +129,90 @@ export class CssEmitter {
   propertyCount(): number {
     return this.properties.size;
   }
+}
+
+/**
+ * `rule-per-class` layout: each class is one self-contained
+ * `.cls{ <root decls>; <nested modifier scopes> }` block. Classes
+ * whose tree has neither declarations nor child scopes are dropped
+ * (a property-only rule contributes its `@property` block elsewhere).
+ */
+function buildRulePerClassRules(
+  rules: ReadonlyMap<string, ScopeBag>,
+  sort: MediaSort,
+): string[] {
+  const out: string[] = [];
+  for (const [className, tree] of rules) {
+    const nested = treeToNestedCss(className, tree, sort);
+    if (nested !== null) out.push(nested);
+  }
+  return out;
+}
+
+/**
+ * `shared-by-declaration` layout, part 1: fold every class's
+ * **root-scope** declarations into a `"prop:val" → classNames`
+ * inverted index and emit each entry as a grouped selector
+ * (`.a,.b{color:red}`).
+ *
+ * Output is fully insertion-order independent: declaration keys are
+ * emitted in sorted order (which also preserves the alphabetical
+ * property ordering `formatDeclarations` relies on for
+ * shorthand-before-longhand cascade), and the classNames inside each
+ * group are sorted too. A single class can hold at most one value per
+ * property in its root bag, so no class ever appears twice for the
+ * same property — there is no intra-class conflict in the grouped
+ * output.
+ *
+ * Modifier scopes are intentionally ignored here; see
+ * `buildPerClassChildRules`.
+ */
+function buildSharedRootRules(rules: ReadonlyMap<string, ScopeBag>): string[] {
+  const index = new Map<string, Set<string>>();
+  for (const [className, tree] of rules) {
+    const bag = tree.bag;
+    for (const prop of Object.keys(bag).sort()) {
+      const decl = `${prop}:${bag[prop]!}`;
+      let group = index.get(decl);
+      if (group === undefined) {
+        group = new Set<string>();
+        index.set(decl, group);
+      }
+      group.add(className);
+    }
+  }
+
+  const out: string[] = [];
+  for (const decl of [...index.keys()].sort()) {
+    const selector = [...index.get(decl)!]
+      .sort()
+      .map((c) => `.${c}`)
+      .join(',');
+    out.push(`${selector}{${decl}}`);
+  }
+  return out;
+}
+
+/**
+ * `shared-by-declaration` layout, part 2: each class's modifier scopes
+ * (`:hover` / `@media` / ...) stay per-class as
+ * `.cls{ <nested modifier scopes> }`. Root declarations are omitted —
+ * they are handled by `buildSharedRootRules`. Classes with no child
+ * scopes contribute nothing.
+ */
+function buildPerClassChildRules(
+  rules: ReadonlyMap<string, ScopeBag>,
+  sort: MediaSort,
+): string[] {
+  const out: string[] = [];
+  for (const [className, tree] of rules) {
+    const childRules = sortedChildren(tree.children, sort)
+      .map((c) => childToNestedCss(c, sort))
+      .filter((s): s is string => s !== null);
+    if (childRules.length === 0) continue;
+    out.push(`.${className}{${childRules.join('')}}`);
+  }
+  return out;
 }
 
 function treeToNestedCss(

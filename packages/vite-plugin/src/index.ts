@@ -107,6 +107,7 @@ export default function cassida(options: CassPluginOptions = {}): Plugin {
     const emitter = new CssEmitter({
       layer: resolved.layer,
       mediaSort: resolved.media.sort,
+      mode: resolved.css.mode,
     });
     for (const r of rules) emitter.add(r);
     const css = emitter.emit();
