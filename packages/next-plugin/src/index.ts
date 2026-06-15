@@ -261,7 +261,11 @@ function applyCassida(
   const wrappedWebpack: NextWebpackHook = (config, ctx) => {
     const base =
       typeof userWebpack === 'function' ? userWebpack(config, ctx) : config;
-    return injectIrLoader(base, loaderOptions, loaderExclude, { layer, resolved });
+    return injectIrLoader(base, loaderOptions, loaderExclude, {
+      layer,
+      mode: resolved.css.mode,
+      resolved,
+    });
   };
 
   return {
