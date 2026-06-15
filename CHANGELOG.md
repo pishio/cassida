@@ -4,6 +4,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-06-15
+
 ### Added
 
 - **`shared-by-declaration` CSS emit mode** — opt in with `{ css: { mode: 'shared-by-declaration' } }` (default stays `'rule-per-class'`). In this mode every class's **root-scope** declarations are folded into a `(property:value) → classes` inverted index and emitted as grouped selectors (`.a,.b,.c{color:red}`), cutting duplicate declarations when many elements share styling. Modifier scopes (`:hover`, `@media`, ...) stay per-class. The `className` hash is derived from the canonical bag and is identical in both modes, so the bijection contract is preserved — only the emitted CSS shape changes. Exposed on `CssEmitterOptions.mode` and wired through `@cassida/vite-plugin` and `@cassida/next-plugin` from the resolved `css.mode` config.
@@ -146,7 +148,8 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 - Initial public release of `@cassida/core`, `@cassida/compiler`, `@cassida/parser`, `@cassida/vite-plugin`, `@cassida/recommended`, `@cassida/plugin-hover-fix`, `@cassida/plugin-conditional`. Single Class Principle, LIFO collapse, build-time class table, deterministic hashing, mobile-first media sort, `@layer cas` cascade-layer wrapping, csstype-typed canonical chain methods + mdn-data-derived generated chain methods, `cas.unsafe` / `.set` escape paths, `shorthand-policy` guard.
 
-[Unreleased]: https://github.com/pishio/cassida/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/pishio/cassida/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/pishio/cassida/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/pishio/cassida/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/pishio/cassida/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/pishio/cassida/compare/v0.8.0...v0.9.0
