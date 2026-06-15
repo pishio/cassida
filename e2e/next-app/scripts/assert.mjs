@@ -1,7 +1,7 @@
 /**
  * Post-build assertions for the Next.js e2e consumer.
  *
- * Verifies seven contracts of the SWC-port Phase-1 wiring:
+ * Verifies eight contracts of the SWC-port Phase-1 wiring:
  *
  *   1. Build output exists at `.next/static` + `.next/server/app`
  *   2. CSS contains `@layer cas { ... }` + at least one `.cas-XXXXXXXX`
@@ -18,6 +18,10 @@
  *      the IR loader substituted every placeholder
  *   7. Compiler-side runtime didn't leak into the client bundle
  *      (no `compileOps`, `defaultRegistry`, `createHash`, `node:crypto`)
+ *   8. Cross-compiler bridge: the server-only root-layout probe's
+ *      class (compiled by the server compiler) is present in the
+ *      client-shipped `@layer cas` CSS — proves `store.allRules()`
+ *      merges the server namespace into the client output
  *
  * Each failure prints a `✗ msg` and increments a counter; we exit
  * non-zero at the end if any fired. The script runs after
@@ -242,6 +246,35 @@ if (clientJsAll.length > CLIENT_JS_BUDGET) {
   pass(
     `client JS within size budget (${clientJsAll.length}B / ${CLIENT_JS_BUDGET}B)`,
   );
+}
+
+// 8. Cross-compiler bridge. The root layout is a Server Component that
+// never ships to the client bundle, so its `data-cassida-bridge` probe
+// chain is compiled ONLY by the server webpack compiler. Its class must
+// appear in the @layer cas CSS shipped under .next/static/css (built by
+// the client compiler from the virtual.css import) — that round trip is
+// the cross-compiler bridge: store.allRules() merges every compiler's
+// namespace, so a Server-only rule reaches the Client-injected bundle.
+// A bridge regression (one compiler clearing another's namespace) drops
+// the probe's class from the CSS and fails here, instead of hiding
+// behind the Client Components' own classes that assertions 2/3 match.
+const bridgeTag = serverAll.match(/<[^>]*\bdata-cassida-bridge\b[^>]*>/);
+if (!bridgeTag) {
+  fail('cross-compiler bridge: data-cassida-bridge probe element not found in server output');
+} else {
+  const probeClass = bridgeTag[0].match(/\bcas-[0-9a-f]{8}\b/)?.[0];
+  if (!probeClass) {
+    fail('cross-compiler bridge: probe element carried no cas-XXXXXXXX class');
+  } else if (!new RegExp(`\\.${probeClass}\\b`).test(cssAll)) {
+    fail(
+      `cross-compiler bridge: server-only probe class .${probeClass} is absent from the ` +
+        'client-shipped @layer cas CSS — the server compiler rule did not cross the bridge',
+    );
+  } else {
+    pass(
+      `cross-compiler bridge: server-only probe class .${probeClass} present in client-shipped CSS`,
+    );
+  }
 }
 
 if (failures > 0) {
