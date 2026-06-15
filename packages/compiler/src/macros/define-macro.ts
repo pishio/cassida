@@ -86,10 +86,12 @@ function applyMacroToRoot(tree: ScopeBag, def: MacroDefinition): ScopeBag {
 
   if (Object.keys(additions).length === 0) return tree;
 
-  const merged = { ...bag, ...additions };
-  const sortedKeys = Object.keys(merged).sort();
   const sorted: Record<string, string> = {};
-  for (const k of sortedKeys) sorted[k] = merged[k]!;
+  for (const [k, v] of Object.entries({ ...bag, ...additions }).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  )) {
+    sorted[k] = v;
+  }
 
   return {
     ...tree,

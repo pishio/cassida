@@ -1,4 +1,35 @@
 /**
+ * CSS-wide keywords applicable to every property (CSS Cascading L5
+ * §7). Suitable as a hint for `MacroDefinition.skipIfTriggerValueIn`
+ * when the macro author wants to opt out of macro behaviour for all
+ * CSS-wide keyword writes (e.g. `cas.zIndex('initial')` should not
+ * trigger position fill).
+ *
+ * Use as a union: `skipIfTriggerValueIn: [...CSS_GLOBAL_KEYWORDS]`.
+ * The runtime accepts arbitrary strings, so this is purely a typing
+ * convenience.
+ */
+export type CssGlobalKeyword =
+  | 'unset'
+  | 'initial'
+  | 'inherit'
+  | 'revert'
+  | 'revert-layer';
+
+/**
+ * Reified version of `CssGlobalKeyword` — pass as the seed of
+ * `skipIfTriggerValueIn` when the property's `auto` / `none` is
+ * application-specific and you only want to skip CSS-wide keywords.
+ */
+export const CSS_GLOBAL_KEYWORDS: readonly CssGlobalKeyword[] = Object.freeze([
+  'unset',
+  'initial',
+  'inherit',
+  'revert',
+  'revert-layer',
+]);
+
+/**
  * Public type for built-in macros and `defineMacro` consumers.
  *
  * A macro is a tiny `CassPlugin` specialisation: it fires when the

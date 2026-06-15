@@ -13,6 +13,7 @@ import {
   applyPlugins,
   canonicalModifiers,
   compileOps,
+  CSS_GLOBAL_KEYWORDS,
   defaultConfig,
   defaultMacros,
   defaultRegistry,
@@ -30,6 +31,7 @@ import {
   type CompiledRule,
   type CompileOptions,
   type CssEmitterOptions,
+  type CssGlobalKeyword,
   type MacroDefinition,
   type MediaSort,
   type MethodOp,
@@ -285,6 +287,23 @@ if (_execute) {
   };
   const _macroPlugin: CassPlugin = defineMacro(_macroDef);
   void _macroPlugin;
+
+  // `CSS_GLOBAL_KEYWORDS` is a readonly array of `CssGlobalKeyword` and
+  // is assignment-compatible with `skipIfTriggerValueIn`.
+  const _globals: readonly CssGlobalKeyword[] = CSS_GLOBAL_KEYWORDS;
+  void _globals;
+  const _macroDefWithGlobals: MacroDefinition = {
+    name: 'globals-seed',
+    trigger: { property: 'z-index' },
+    fills: [{ property: 'position', value: 'relative' }],
+    skipIfTriggerValueIn: [...CSS_GLOBAL_KEYWORDS, 'auto'],
+  };
+  void _macroDefWithGlobals;
+  // @ts-expect-error -- CSS_GLOBAL_KEYWORDS is readonly; cannot push
+  CSS_GLOBAL_KEYWORDS.push('auto');
+  // @ts-expect-error -- 'auto' is not a CSS-wide keyword
+  const _badGlobal: CssGlobalKeyword = 'auto';
+  void _badGlobal;
 
   // `defaultMacros` is readonly and elements are `CassPlugin`.
   const _allMacros: readonly CassPlugin[] = defaultMacros;

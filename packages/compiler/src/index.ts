@@ -53,11 +53,12 @@ export {
   defineMacro,
   defaultMacros,
   resolveMacros,
+  CSS_GLOBAL_KEYWORDS,
   zIndexMacro,
   transformMacro,
   positionStickyMacro,
 } from './macros/index.js';
-export type { MacroDefinition } from './macros/index.js';
+export type { CssGlobalKeyword, MacroDefinition } from './macros/index.js';
 export {
   defaultConfig,
   mergeConfig,
