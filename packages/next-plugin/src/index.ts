@@ -25,6 +25,7 @@ export { rewriteIrComments, default as cassidaIrLoader } from './ir-loader.js';
 export type { IrLoaderOptions } from './ir-loader.js';
 export { buildVirtualCss } from './virtual-css.js';
 import type { VirtualCssOptions } from './virtual-css.js';
+import { resolveWebpackPluginOptions } from './webpack-options.js';
 export type { VirtualCssOptions };
 export { CassidaWebpackPlugin } from './webpack-plugin.js';
 export {
@@ -261,11 +262,12 @@ function applyCassida(
   const wrappedWebpack: NextWebpackHook = (config, ctx) => {
     const base =
       typeof userWebpack === 'function' ? userWebpack(config, ctx) : config;
-    return injectIrLoader(base, loaderOptions, loaderExclude, {
-      layer,
-      mode: resolved.css.mode,
-      resolved,
-    });
+    return injectIrLoader(
+      base,
+      loaderOptions,
+      loaderExclude,
+      resolveWebpackPluginOptions(resolved, layer),
+    );
   };
 
   return {

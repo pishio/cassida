@@ -17,6 +17,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 - **`lightningcss` post-processing ported to `@cassida/next-plugin`** — the implementation was previously bound to `@cassida/vite-plugin`. It now lives in `@cassida/compiler/internal` (`postProcessLightningCss` / `resolveTargets`) and both plugins consume it from there. The Next.js webpack plugin (`CassidaWebpackPlugin`) runs the same pass on the emitted `virtual.css`, resolving browserslist targets from the webpack `compiler.context` (project root).
 - **`@cassida/compiler` peer deps for `lightningcss` + `browserslist`** — both are declared as optional peer dependencies on `@cassida/compiler`. The vite-plugin / next-plugin pull them in as runtime deps; standalone CLI consumers can opt out (lightningcss is skipped when the peer is absent, the emitter still produces unprocessed CSS).
 
+### Fixed
+
+- **`@cassida/next-plugin` now honours `media.sort`** — the Next.js plugin was always emitting media queries mobile-first, ignoring a configured `{ media: { sort: 'desktop-first' } }` (it never forwarded `resolved.media.sort` to the emitter, unlike `@cassida/vite-plugin`). The setting now propagates correctly.
+
 ## [0.11.0] — 2026-06-11
 
 ### Added
