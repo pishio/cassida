@@ -1,6 +1,6 @@
 {
   "name": "@cassida/compiler",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Cassida build-time CSS resolver: registry, canonicalizer, hasher, emitter.",
   "license": "MIT",
   "sideEffects": false,
