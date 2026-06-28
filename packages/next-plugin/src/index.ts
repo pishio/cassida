@@ -202,10 +202,39 @@ function getWasmPath(): string {
   return (cachedWasmPath ??= resolveWasmPath());
 }
 
+/**
+ * Cassida's CSS bridge is webpack-only: it emits `virtual.css` through a
+ * `CassidaWebpackPlugin` tap. Under Turbopack (the default bundler for
+ * `next dev` / `next build` since Next.js 15) the webpack config is never
+ * consulted, so the bridge never runs and the page ships with no Cassida
+ * CSS. Detect that at config time and fail loud with the remedy, rather
+ * than letting the styles silently vanish.
+ *
+ * `process.env.TURBOPACK === '1'` is the signal Next sets when running
+ * Turbopack. It is a Next internal, so this guard is best-effort: it
+ * never false-positives on a real webpack run (the var is only set under
+ * Turbopack), and if Next ever stops setting it the guard simply goes
+ * quiet and we fall back to today's behaviour. Set
+ * `CASSIDA_ALLOW_TURBOPACK=1` to bypass (e.g. you supply the CSS another
+ * way). Full Turbopack support is tracked for a later release.
+ */
+function assertWebpackBundler(): void {
+  if (process.env.CASSIDA_ALLOW_TURBOPACK === '1') return;
+  if (process.env.TURBOPACK === '1') {
+    throw new Error(
+      '[cassida/next-plugin] Cassida needs the webpack bundler, but Turbopack is active. ' +
+        'Turbopack does not run the webpack plugin that emits Cassida CSS, so styling would silently be missing. ' +
+        'Run `next dev --webpack` / `next build --webpack` (full Turbopack support is planned for a later release), ' +
+        'or set CASSIDA_ALLOW_TURBOPACK=1 to bypass this check.',
+    );
+  }
+}
+
 function applyCassida(
   cfg: NextConfig,
   options: NextCassidaOptions,
 ): NextConfig {
+  assertWebpackBundler();
   // `options.plugins` is the declarative form (`{ hoverFix: true, ... }`);
   // resolve each enabled flag into the actual `CassPlugin` instance and
   // merge with the inline `options.cssPlugins` list. Without this the
