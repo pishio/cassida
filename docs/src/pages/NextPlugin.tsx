@@ -24,7 +24,7 @@ export default function NextPlugin(): React.JSX.Element {
     },
     ja: {
       title: '@cassida/next-plugin',
-      lead: 'ビルドパイプラインの Next.js 側を受け持つパッケージ。@cassida/swc-plugin が emit したマーカーを読む IR コメントローダー、webpack-virtual-modules を介して @cassida/next-plugin/virtual.css を配信する webpack プラグイン、そして Server Component だけで書かれたスタイルが Client コンパイラの stylesheet に届くようにするクロスコンパイラブリッジ — この 3 つを束ねている。',
+      lead: 'ビルドパイプラインの Next.js 側を受け持つパッケージ。@cassida/swc-plugin が emit したマーカーを読む IR コメントローダー、webpack-virtual-modules を介して @cassida/next-plugin/virtual.css を配信する webpack プラグイン、そして Server Component だけで書かれたスタイルが Client コンパイラの stylesheet に届くようにするクロスコンパイラブリッジ。この 3 つを束ねている。',
       configHeading: 'withCassida()',
       configCopy: 'エントリポイント。next config を渡すと、SWC プラグイン (@cassida/swc-plugin の "./next" エントリ) を experimental.swcPlugins に登録し、webpack プラグインを config.webpack に登録した config を返す。プレーンなオブジェクト config と関数型 config の両方に対応する。',
       virtualHeading: '/virtual.css',

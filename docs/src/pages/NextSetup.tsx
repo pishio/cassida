@@ -45,7 +45,7 @@ export default function NextSetup(): React.JSX.Element {
       verifyHeading: '動作確認',
       verifyCopy: 'production ビルドを走らせて、表示されたページを DevTools で開く。スタイル付き要素には cas- クラスが 1 つだけ、.next/static/css にある stylesheet には @layer cas が含まれ、レンダリングされた HTML と RSC payload は同じ class ハッシュを参照しているはずだ。クライアント JS チャンクには cas() の呼び出しは残らない。',
       deeperHeading: 'さらに深く知る',
-      deeperCopy: '上の Quick Start で 95% のユーザーは十分。SWC プラグインが何をしているか、webpack プラグインが何を emit しているか、サーバ側だけで書かれたスタイルがどうクライアント bundle に届くか — これらが知りたいときは @cassida/swc-plugin と @cassida/next-plugin のページに internals が書いてある。',
+      deeperCopy: '上の Quick Start で 95% のユーザーは十分。SWC プラグインが何をしているか、webpack プラグインが何を emit しているか、サーバ側だけで書かれたスタイルがどうクライアント bundle に届くか。これらが知りたいときは @cassida/swc-plugin と @cassida/next-plugin のページに internals が書いてある。',
       monorepoHeading: 'monorepo + output: \'standalone\' の組み合わせ',
       monorepoCopy: 'Next.js アプリが monorepo の中にあって output: \'standalone\' を使う場合、outputFileTracingRoot は monorepo のルートに設定する。アプリのディレクトリに設定すると Next.js 15 の "multiple lockfiles" 警告は消えるが、standalone bundle の node_modules ツリーから @cassida/* が黙って落ちる。',
     },

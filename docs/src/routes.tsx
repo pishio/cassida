@@ -5,6 +5,9 @@ import Landing from './pages/Landing.js';
 import Philosophy from './pages/Philosophy.js';
 import Glossary from './pages/Glossary.js';
 import Install from './pages/Install.js';
+import Responsive from './pages/Responsive.js';
+import Theming from './pages/Theming.js';
+import ExistingCss from './pages/ExistingCss.js';
 import Cas from './pages/Cas.js';
 import Modifiers from './pages/Modifiers.js';
 import Registry from './pages/Registry.js';
@@ -42,6 +45,9 @@ export const routes: RouteRecord[] = [
       { index: true, Component: Landing },
       { path: 'philosophy', Component: Philosophy },
       { path: 'install', Component: Install },
+      { path: 'guides/responsive', Component: Responsive },
+      { path: 'guides/theming', Component: Theming },
+      { path: 'guides/existing-css', Component: ExistingCss },
       { path: 'glossary', Component: Glossary },
       { path: 'api/cas', Component: Cas },
       { path: 'api/modifiers', Component: Modifiers },

@@ -27,9 +27,9 @@ export default function Recommended(): React.JSX.Element {
         'メンテナーがデフォルトで有効にしているプラグインのまとまりを、import 1 行で取り込むためのバンドル。recommended() は vite.config.ts の cassida(...) にそのまま spread できるオブジェクトを返す。中身のプラグインは依存として一緒に入るので、このパッケージ 1 つで既定のセットが揃う。',
       contents: '同梱されるもの',
       hoverFix:
-        '@cassida/plugin-hover-fix — すべての :hover スコープを @media (hover: hover) で包む。iOS Safari でタップした要素が :hover 状態のまま残り続ける問題を回避する。',
+        '@cassida/plugin-hover-fix：すべての :hover スコープを @media (hover: hover) で包む。iOS Safari でタップした要素が :hover 状態のまま残り続ける問題を回避する。',
       conditional:
-        '@cassida/plugin-conditional — 三項式や短絡 (&&) で書かれた JSX spread を、ビルド時のクラス選択に書き換える。動的な値を含む分岐も、対応する style を選ぶ三項式と組み合わせることでビルド時の経路に残り続ける。',
+        '@cassida/plugin-conditional：三項式や短絡 (&&) で書かれた JSX spread を、ビルド時のクラス選択に書き換える。動的な値を含む分岐も、対応する style を選ぶ三項式と組み合わせることでビルド時の経路に残り続ける。',
       surface: 'API',
       surfaceCopy:
         'recommended(options?) はプラグインごとのオプションを受け取る。false を渡すとそのプラグインを完全に外せる。オブジェクトを渡した場合は、その中身が各プラグインのオプションとしてそのまま渡される。',

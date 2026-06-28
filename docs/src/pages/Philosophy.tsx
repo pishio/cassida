@@ -1,6 +1,7 @@
 import type React from 'react';
+import { Link } from 'react-router-dom';
 import { cas } from '@cassida/core';
-import { useT } from '../lib/locale.js';
+import { useT, useLocale } from '../lib/locale.js';
 import { Code } from '../components/Code.js';
 
 export default function Philosophy(): React.JSX.Element {
@@ -11,10 +12,10 @@ export default function Philosophy(): React.JSX.Element {
       principlesHeading: 'Five principles',
       singleClassTitle: '1. Single Class Principle',
       singleClassBody:
-        'One element, one class. No long strings of utility tokens on the class attribute. The compiler walks the chain, hashes the resolved bag, and emits a single cas-XXXXXXXX that covers every property the chain wrote.',
+        "One element, one class — so the browser never weighs one Cassida rule against another, and an element's appearance does not depend on how many rules loaded or in what order. The cost is chosen on purpose: utility-style composition, where classes pile up on a single element, is not available.",
       zeroRuntimeTitle: '2. Zero-runtime',
       zeroRuntimeBody:
-        'Chains that resolve statically vanish from the client bundle, cas() call and all. No styling logic runs in the browser. What ships is the class string and the CSS rule — nothing else.',
+        'A chain resolved at build time disappears from the client, cas() call and all — so in production no code runs in the browser to decide a style.',
       lifoTitle: '3. LIFO Collapse',
       lifoBody:
         'When the same property is written twice in a chain — .color("red").color("blue") — the last write wins at build time. The earlier red is dropped by the compiler; it never reaches CSS. There is no cascade fight to resolve at runtime because the conflict was eliminated when the IR collapsed.',
@@ -24,6 +25,9 @@ export default function Philosophy(): React.JSX.Element {
       shorthandTitle: '5. Shorthand Policy',
       shorthandBody:
         'Shorthand properties like background and margin quietly reset siblings you did not name. Cassida rejects them at the type level and accepts only the explicit longhands — backgroundColor, marginTop. The CSS that ships is deterministic; properties never reset out from under you.',
+      glossaryRefPre: 'Each principle has a one-line definition in the ',
+      glossaryRefLink: 'Glossary',
+      glossaryRefPost: '.',
       sampleHeading: 'A chain, in and out',
       sampleNote: 'Author the chain on the JSX spread; the browser receives one class and one rule.',
       nameHeading: 'Why "Cassida"',
@@ -38,28 +42,32 @@ export default function Philosophy(): React.JSX.Element {
       principlesHeading: '5 つの原則',
       singleClassTitle: '1. 単一クラスの原則 (Single Class Principle)',
       singleClassBody:
-        '1 つの要素には 1 つのクラスだけ。ユーティリティのトークンを長く連ねるような書き方はしない。コンパイラはチェーンを解析し、その要素のスタイルすべてを表す cas-XXXXXXXX を 1 つだけ出力する。',
+        '1 要素に 1 クラス。だからブラウザは Cassida のルール同士を詳細度で比べる必要がなく、要素の見た目はルールの個数や読み込み順に左右されない。この代償は意図して選んでいる。1 要素にクラスを積み上げるユーティリティ流の合成は採れない。',
       zeroRuntimeTitle: '2. ゼロランタイム (Zero-runtime)',
       zeroRuntimeBody:
-        '静的に解決できるチェーンは、ブラウザに送る JS バンドルから cas() 呼び出しごと消える。スタイル生成のコードがクライアントで動くことは無い。出力されるのは class 名と CSS ルールだけだ。',
+        'ビルド時に解決できたチェーンは、cas() 呼び出しごとクライアントから消える。だから本番のブラウザでは、スタイルを決めるコードが動かない。',
       lifoTitle: '3. LIFO 畳み込み (LIFO Collapse)',
       lifoBody:
         'cas().color("red").color("blue") のように同じプロパティが二度書かれたとき、後勝ち (Last-In wins) でビルド時に解決される。先に書いた red はコンパイラが消し、CSS には届かない。詳細度の競合が発生する余地そのものが無い。',
       bijectionTitle: '4. 全単射 (Bijection)',
       bijectionBody:
-        'チェーンの形状、出力される CSS ルール、class 名のハッシュ — この三つが一対一に対応する。同じ形のチェーンはコードベースのどこに書いても同じ class を生む。変数名を変えても、ファイルを移してもハッシュは変わらない。DevTools に表示される class からソース上のチェーンへ、一意に辿り直せる。',
+        'チェーンの形状、出力される CSS ルール、class 名のハッシュの三つが、一対一に対応する。同じ形のチェーンはコードベースのどこに書いても同じ class を生む。変数名を変えても、ファイルを移してもハッシュは変わらない。DevTools に表示される class からソース上のチェーンへ、一意に辿り直せる。',
       shorthandTitle: '5. ショートハンド制限 (Shorthand Policy)',
       shorthandBody:
         'background や margin のような複合プロパティは、書いていない兄弟プロパティを黙ってリセットする。Cassida はこれらを型レベルで排除し、backgroundColor や marginTop など明示的な longhand のみを受け付ける。出力 CSS は決定論的になり、書いていないプロパティが勝手に戻ることは起こらない。',
+      glossaryRefPre: '各原則の簡潔な定義は',
+      glossaryRefLink: '用語集',
+      glossaryRefPost: ' にまとめてある。',
       sampleHeading: 'チェーンを入れ、クラスを得る',
       sampleNote: 'JSX spread にチェーンを書けば、ブラウザは class 1 つと CSS ルール 1 つだけを受け取る。',
       nameHeading: 'なぜ "Cassida" なのか',
       nameBodyPara1:
-        '名前は「トゲアリトゲナシトゲトゲ」という昆虫への返答だ。「トゲのある、トゲの無い、トゲトゲ」 — 二度自分を否定する自己矛盾の名。CSS の世界も同じ名前を自分につけてきた。要素に三十のトークンを並べる utility クラス文字列と、ランタイムでスタイルを毎度組み立てる CSS-in-JS エンジン — どちらも「相手の欠点の治療薬」を名乗ってきた。',
+        '名前は「トゲアリトゲナシトゲトゲ」という昆虫への返答だ。「トゲのある、トゲの無い、トゲトゲ」。二度自分を否定する自己矛盾の名だ。CSS の世界も同じ名前を自分につけてきた。要素に三十のトークンを並べる utility クラス文字列と、ランタイムでスタイルを毎度組み立てる CSS-in-JS エンジン。どちらも「相手の欠点の治療薬」を名乗ってきた。',
       nameBodyPara2:
         'Cassida はラテン語 cassis (兜) に由来し、カメノコハムシ亜科 (Cassidinae) に属する一属の名でもある。どちらの側にも与しない。コンパイラがビルド時にチェーンを 1 クラスへ畳む。要素はそれを 1 枚だけ身につけ、ランタイムにスタイル生成のエンジンは残らず、盾は静的だから軽い。',
     },
   });
+  const locale = useLocale();
 
   return (
     <article {...cas().display('flex').flexDirection('column').gap(16).props}>
@@ -101,6 +109,14 @@ cas().margin(8)
 cas().backgroundColor('#fff')
 cas().marginTop(8).marginRight(8).marginBottom(8).marginLeft(8)`} />
       </section>
+
+      <p {...cas().fontSize(14).color('#6b7280').marginTop(8).props}>
+        {copy.glossaryRefPre}
+        <Link to={`/${locale}/glossary`} {...cas().color('#1e3a8a').props}>
+          {copy.glossaryRefLink}
+        </Link>
+        {copy.glossaryRefPost}
+      </p>
 
       <h2 {...cas().fontSize(24).marginTop(32).props}>{copy.sampleHeading}</h2>
       <p {...cas().color('#6b7280').fontSize(14).props}>{copy.sampleNote}</p>
