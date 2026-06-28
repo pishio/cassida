@@ -405,10 +405,9 @@ function injectIrLoader(
  *     CSS pipeline, not via `compileOps`.
  *   - `globalCss` is a Vite plugin; the Next.js equivalent is a
  *     separate webpack integration that lands in a follow-up.
- * For now those three are recognised but no-op; a console warning
- * surfaces when the user enables them so the misconfiguration is
- * visible. Removing the warning is the signal that Phase 1.x has
- * caught up.
+ * Until each lands, enabling its flag throws at config time rather
+ * than silently no-op'ing: a recognised-but-inert option is a semver
+ * trap. Each throw is removed as its feature is wired.
  */
 function resolveDeclarativeCssPlugins(
   flags: NextCassidaOptions['plugins'],
@@ -431,12 +430,18 @@ function resolveDeclarativeCssPlugins(
       );
     }
   }
+  const STUB_REASONS = {
+    conditional:
+      'conditional JSX-spread lifting needs the SWC-side parser-plugin API, which the Next.js path does not expose yet',
+    print:
+      'print preflight is a CSS-string factory; serve printPreflight() through your global CSS instead of this flag',
+    globalCss:
+      'global CSS injection is a Vite-only plugin; the Next.js equivalent is not implemented yet',
+  } as const;
   for (const stubKey of ['conditional', 'print', 'globalCss'] as const) {
     if (flags[stubKey]) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[cassida/next-plugin] options.plugins.${stubKey} is recognised but not yet wired in the Next.js path. ` +
-          `Tracking issue: https://github.com/pishio/cassida/issues — disable this flag to silence the warning.`,
+      throw new Error(
+        `[cassida/next-plugin] options.plugins.${stubKey} is not supported in the Next.js path: ${STUB_REASONS[stubKey]}. Remove the flag to proceed.`,
       );
     }
   }
