@@ -4,6 +4,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Changed
+
+- **`@cassida/next-plugin` now rejects the unimplemented `options.plugins.{conditional,print,globalCss}` flags at config time** instead of logging a warning and silently doing nothing. Each flag was recognised but inert in the Next.js path (the `conditional` parser-plugin API, `print` preflight wiring, and the `globalCss` webpack integration are still follow-ups), and a recognised-but-inert option is a semver trap. Enabling one now throws a clear, actionable error naming the reason. `options.plugins.hoverFix` is unaffected; if you set one of the three, remove it — it was not doing anything.
+
 ## [0.12.0] — 2026-06-15
 
 ### Added
