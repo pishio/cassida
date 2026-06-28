@@ -17,6 +17,9 @@ export default function Theming(): React.JSX.Element {
       flipHeading: 'Flip the tokens in dark mode',
       flipBody:
         'In that same global stylesheet, define the light tokens on `:root` and override them under the dark media query. Every element that reads `var(--fg)` follows automatically. The class count stays flat because the value moves, not the class — this is how Cassida carries dynamic values without exploding cardinality.',
+      colorSchemeHeading: 'Make native UI follow the theme',
+      colorSchemeBody:
+        'Tokens change your colors, but the browser still paints form controls, scrollbars, and date pickers with the light UA theme. Declare `color-scheme` so the native UI follows too: `:root { color-scheme: light dark }`, or `<meta name="color-scheme" content="light dark">`.',
       toggleHeading: 'A manual theme switch',
       toggleBody:
         'For a switch the user controls, instead of the OS setting, key the override on an attribute and flip it on the root element. Override the tokens under `[data-theme="dark"]` in the same stylesheet, then set `document.documentElement.dataset.theme`.',
@@ -36,6 +39,9 @@ export default function Theming(): React.JSX.Element {
       flipHeading: 'ダークモードでトークンを差し替える',
       flipBody:
         '同じグローバル CSS の中で、ライトのトークンを `:root` に書き、ダークのメディアクエリで上書きする。`var(--fg)` を読む要素は自動で追従する。動くのは値であってクラスではないので、クラスの数は増えない。Cassida がクラスの種類を増やさずに動的な値を運べるのは、この仕組みのためだ。',
+      colorSchemeHeading: 'ネイティブ UI もテーマに追従させる',
+      colorSchemeBody:
+        'トークンは自分の色を変えるが、ブラウザはフォームコントロール、スクロールバー、日付ピッカーを UA のライトテーマで描いたままになる。`color-scheme` を宣言すると、これらネイティブ UI も追従する。`:root { color-scheme: light dark }`、または `<meta name="color-scheme" content="light dark">`。',
       toggleHeading: '手動のテーマ切り替え',
       toggleBody:
         'OS 設定ではなくユーザー操作で切り替えるなら、上書きを属性に紐づけてルート要素で切り替える。同じ CSS の中で `[data-theme="dark"]` の下にトークンを上書きし、`document.documentElement.dataset.theme` で値を変える。',
@@ -70,6 +76,10 @@ cas().color('var(--fg)').backgroundColor('var(--bg)')`} />
 @media (prefers-color-scheme: dark) {
   :root { --fg: #e8eaed; --bg: #111317; --brand: #8ab4f8 }
 }`} />
+
+      <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.colorSchemeHeading}</h2>
+      <p><Prose>{copy.colorSchemeBody}</Prose></p>
+      <Code source={`:root { color-scheme: light dark }`} />
 
       <h2 {...cas().fontSize(24).marginTop(24).props}>{copy.toggleHeading}</h2>
       <p><Prose>{copy.toggleBody}</Prose></p>
