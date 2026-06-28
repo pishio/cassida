@@ -48,7 +48,7 @@ export default function Unsafe(): React.JSX.Element {
     ja: {
       title: 'unsafe な API',
       intro:
-        '型付きの cas() の API は、特定の CSS shorthand と標準セット外のプロパティを意図的に拒否する。それでも本当に必要な場面 — ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、暗黙のリセットを承知した上で shorthand を使いたい場合 — には、名前付きの脱出経路を用意してある。命名は Rust に倣った。cas.unsafe (および .set) は、レジストリを迂回するというコストを呼び出し側に対して明示している。',
+        '型付きの cas() の API は、特定の CSS shorthand と標準セット外のプロパティを意図的に拒否する。それでも本当に必要な場面（ベンダープレフィックス、CSS カスタムプロパティ (--brand-*)、暗黙のリセットを承知した上で shorthand を使いたい場合）には、名前付きの脱出経路を用意してある。命名は Rust に倣った。cas.unsafe (および .set) は、レジストリを迂回するというコストを呼び出し側に対して明示している。',
       whyHeading: 'なぜ unsafe なのか',
       whyCopy:
         'background や font のような shorthand には暗黙のリセットがある。1 つ書き込むと、その shorthand が覆うサブプロパティはすべて (書いていないものも含めて) リセットされる。"padding: 8px" の後に "padding-top: 16px" を書いた場合、どちらが勝つかはソース上の出現順に依存する。Cassida のデフォルトである strict な shorthand-policy は、その同居を拒否することで LIFO の結果とカスケードの結果を一致させている。cas.unsafe や .set は、それらのチェックを明示的に外すための入口だ。設計上そういう役割を持っていて、名前にもその意図が反映されている。',

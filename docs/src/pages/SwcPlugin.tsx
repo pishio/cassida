@@ -34,9 +34,9 @@ export default function SwcPlugin(): React.JSX.Element {
       dualHeading: 'dual-WASM ビルド',
       dualCopy: 'プラグインは 2 つの WASM artefact を並べて配布している。SWC プラグインの ABI はバージョン束縛で、swc_core X.Y を前提にコンパイルされたプラグインは、swc_core が X.Y のホストでないと読み込めない。2 つの artefact は、それが効くホストの 2 系列をカバーしている。',
       dualModern:
-        'cassida_swc_plugin.wasm — swc_core 66.x を前提にビルド。Rspack、@swc/core、@vitejs/plugin-react-swc などが対象。',
+        'cassida_swc_plugin.wasm：swc_core 66.x を前提にビルド。Rspack、@swc/core、@vitejs/plugin-react-swc などが対象。',
       dualNext:
-        'cassida_swc_plugin.next.wasm — swc_core 35.0.0 を前提にビルド。@next/swc 15.x (Next.js 15 LTS) が対象。',
+        'cassida_swc_plugin.next.wasm：swc_core 35.0.0 を前提にビルド。@next/swc 15.x (Next.js 15 LTS) が対象。',
       dualEntry:
         'exports map ("." → modern、"./next" → next 向け) を @cassida/next-plugin が config 時に正しい方を選び取る材料にしている。Rspack や @swc/core から直接読む場合は "@cassida/swc-plugin" を import すれば modern 版になる。',
       driftHeading: 'ABI drift ポリシー',

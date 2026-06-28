@@ -66,11 +66,17 @@ export default function Layout(): React.JSX.Element {
 function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
   const labels = useT({
     en: {
+      gettingStarted: 'Getting started',
       home: 'Home',
-      philosophy: 'Philosophy',
       install: 'Install',
+      guides: 'Guides',
+      responsive: 'Responsive design',
+      theming: 'Theming & dark mode',
+      existingCss: 'Working with existing CSS',
+      concepts: 'Concepts',
+      philosophy: 'Philosophy',
       glossary: 'Glossary',
-      api: 'API',
+      api: 'API reference',
       cas: 'cas() chain',
       modifiers: 'Modifiers',
       registry: 'Property registry',
@@ -88,11 +94,17 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
       print: '@cassida/plugin-print',
     },
     ja: {
+      gettingStarted: 'はじめに',
       home: 'ホーム',
-      philosophy: '設計思想',
       install: 'インストール',
+      guides: 'ガイド',
+      responsive: 'レスポンシブ対応',
+      theming: 'テーマとダークモード',
+      existingCss: '既存 CSS との共存',
+      concepts: 'コンセプト',
+      philosophy: '設計思想',
       glossary: '用語集',
-      api: 'API',
+      api: 'API リファレンス',
       cas: 'cas() チェーン',
       modifiers: '修飾子',
       registry: 'プロパティレジストリ',
@@ -115,10 +127,17 @@ function SidebarNav({ locale }: SidebarNavProps): React.JSX.Element {
   return (
     <nav {...cas().fontSize(14).props}>
       <h2 {...cas().fontSize(18).marginBottom(16).props}>Cassida</h2>
-      <NavSection title={labels.home}>
+      <NavSection title={labels.gettingStarted}>
         <NavItem to={`${base}/`} label={labels.home} end />
-        <NavItem to={`${base}/philosophy`} label={labels.philosophy} />
         <NavItem to={`${base}/install`} label={labels.install} />
+      </NavSection>
+      <NavSection title={labels.guides}>
+        <NavItem to={`${base}/guides/responsive`} label={labels.responsive} />
+        <NavItem to={`${base}/guides/theming`} label={labels.theming} />
+        <NavItem to={`${base}/guides/existing-css`} label={labels.existingCss} />
+      </NavSection>
+      <NavSection title={labels.concepts}>
+        <NavItem to={`${base}/philosophy`} label={labels.philosophy} />
         <NavItem to={`${base}/glossary`} label={labels.glossary} />
       </NavSection>
       <NavSection title={labels.api}>

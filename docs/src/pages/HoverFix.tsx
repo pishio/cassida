@@ -21,7 +21,7 @@ export default function HoverFix(): React.JSX.Element {
     ja: {
       title: '@cassida/plugin-hover-fix',
       intro:
-        ':hover スコープをすべて @media (hover: hover) で包む CSS 側のプラグイン。実際にホバーできる入力装置 (マウスやトラックパッド) でだけ hover スタイルが適用されるようになる。iOS Safari の長年の挙動 — 要素を一度タップした後、別の場所をタップするまで :hover が残り続ける — を回避できる。',
+        ':hover スコープをすべて @media (hover: hover) で包む CSS 側のプラグイン。実際にホバーできる入力装置 (マウスやトラックパッド) でだけ hover スタイルが適用されるようになる。iOS Safari の長年の挙動（要素を一度タップした後、別の場所をタップするまで :hover が残り続ける）を回避できる。',
       effectHeading: 'Before / After',
       withoutHeading: 'プラグインなし',
       withHeading: 'プラグインあり',

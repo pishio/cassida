@@ -37,7 +37,7 @@ export default function Print(): React.JSX.Element {
         'printPreflight() は CSS 文字列を返すだけで、配信機構は持たない。@cassida/plugin-global-css と組み合わせ、別の virtualId を渡せば、スクリーン用と印刷用のスタイルシートを別の virtual module として併存させられる。',
       siteSpecific: 'サイト固有の拡張',
       siteSpecificCopy:
-        'nav / footer / 操作 UI を印刷時に隠す類の判断 — ライブラリの既定が意図的にユーザーに委ねている部分 — は、プリフライトの CSS 文字列に自分の CSS を足し合わせて渡せばよい。',
+        'nav / footer / 操作 UI を印刷時に隠す類の判断（ライブラリの既定が意図的にユーザーに委ねている部分）は、プリフライトの CSS 文字列に自分の CSS を足し合わせて渡せばよい。',
     },
   });
 
