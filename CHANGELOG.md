@@ -4,6 +4,10 @@ All notable changes to Cassida are documented here. The format is based on [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **`@cassida/next-plugin` now fails fast under Turbopack** instead of silently shipping a page with no Cassida CSS. Cassida's CSS bridge is webpack-only, and Turbopack (the default bundler for `next dev` / `next build` since Next.js 15) never runs the webpack plugin that emits the styles. When Turbopack is detected at config time (via `process.env.TURBOPACK`), `withCassida` throws a clear error pointing at `next dev --webpack` / `next build --webpack`. The guard is best-effort and never false-positives on a real webpack run; set `CASSIDA_ALLOW_TURBOPACK=1` to bypass it. Full Turbopack support is tracked for a later release.
+
 ### Changed
 
 - **`@cassida/next-plugin` now rejects the unimplemented `options.plugins.{conditional,print,globalCss}` flags at config time** instead of logging a warning and silently doing nothing. Each flag was recognised but inert in the Next.js path (the `conditional` parser-plugin API, `print` preflight wiring, and the `globalCss` webpack integration are still follow-ups), and a recognised-but-inert option is a semver trap. Enabling one now throws a clear, actionable error naming the reason. `options.plugins.hoverFix` is unaffected; if you set one of the three, remove it — it was not doing anything.
