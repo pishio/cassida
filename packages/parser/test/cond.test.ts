@@ -490,5 +490,53 @@ describe('chain `.cond(test, truthy, falsy?)`', () => {
         inline.rules.map((rule) => rule.className).sort(),
       );
     });
+
+    it('expands `.cond()` in the argument and the mixin body simultaneously', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withState = (c) => c.cond(b, x => x.color('red'), y => y.color('blue'));
+        export const App = ({ a, b }: { a: boolean; b: boolean }) =>
+          <div {...withState(cas().cond(a, x => x.padding(8), y => y.padding(16))).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      // 2 (argument cond) × 2 (body cond) = 4 Cartesian leaves.
+      expect(r.rules).toHaveLength(4);
+      const shapes = r.rules
+        .map((rule) => `${rule.tree.bag.padding}/${rule.tree.bag.color}`)
+        .sort();
+      expect(shapes).toEqual(['16px/blue', '16px/red', '8px/blue', '8px/red']);
+      // The argument's test `a` is the outer ternary, the body's `b` inner
+      // (argument ops precede body ops in the composed list).
+      expect(r.code).toMatch(
+        /className=\{a \? b \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}" : b \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}/,
+      );
+    });
+
+    it('propagates a `.cond()` up through nested composition', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withBranch = (c) => c.cond(a, x => x.color('red'), y => y.color('blue'));
+        const withPad = (c) => c.padding(8);
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...withPad(withBranch(cas())).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      // withPad's padding layers onto both leaves surfaced by the inner
+      // composition's cond.
+      for (const rule of r.rules) {
+        expect(rule.tree.bag.padding).toBe('8px');
+      }
+      expect(r.rules.map((rule) => rule.tree.bag.color).sort()).toEqual([
+        'blue',
+        'red',
+      ]);
+    });
   });
 });
