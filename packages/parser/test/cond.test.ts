@@ -397,4 +397,146 @@ describe('chain `.cond(test, truthy, falsy?)`', () => {
       expect(redClasses.size).toBe(1);
     });
   });
+
+  describe('`.cond()` inside function composition', () => {
+    it('lifts a `.cond()` in the mixin body into Cartesian leaves', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withState = (c) => c.cond(a, x => x.color('red'), y => y.color('blue'));
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...withState(cas().padding(8)).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      // The fed-in padding threads through both leaves; only color differs.
+      for (const rule of r.rules) {
+        expect(rule.tree.bag.padding).toBe('8px');
+      }
+      expect(r.rules.map((rule) => rule.tree.bag.color).sort()).toEqual([
+        'blue',
+        'red',
+      ]);
+      expect(r.code).toMatch(
+        /className=\{a \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}/,
+      );
+    });
+
+    it('expands a `.cond()` carried in the fed-in argument', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withRadius = (c) => c.borderRadius(8);
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...withRadius(cas().cond(a, x => x.color('red'), y => y.color('blue'))).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      // The mixin's borderRadius layers onto every leaf.
+      for (const rule of r.rules) {
+        expect(rule.tree.bag['border-radius']).toBe('8px');
+      }
+      expect(r.rules.map((rule) => rule.tree.bag.color).sort()).toEqual([
+        'blue',
+        'red',
+      ]);
+    });
+
+    it('supports a `.cond()` nested inside a modifier scope in the mixin body', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withHoverState = (c) =>
+          c.hover(h => h.cond(a, x => x.color('red'), y => y.color('blue')));
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...withHoverState(cas().padding(8)).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      const hoverColors = r.rules.map((rule) => {
+        const hoverChild = rule.tree.children.find(
+          (c) => c.scope?.kind === 'pseudo' && c.scope.selector === ':hover',
+        );
+        return hoverChild?.bag.color;
+      });
+      expect(hoverColors.sort()).toEqual(['blue', 'red']);
+      // The fed-in padding is on the base of every leaf.
+      for (const rule of r.rules) {
+        expect(rule.tree.bag.padding).toBe('8px');
+      }
+    });
+
+    it('produces the same classes inline vs composed for a cond chain', () => {
+      const inline = transform(
+        `import { cas } from '@cassida/core';
+         export const A = ({ a }: { a: boolean }) =>
+           <div {...cas().padding(8).cond(a, c => c.color('red'), c => c.color('blue')).props} />;`,
+        opts,
+      );
+      const composed = transform(
+        `import { cas } from '@cassida/core';
+         const withState = (c) => c.cond(a, x => x.color('red'), y => y.color('blue'));
+         export const A = ({ a }: { a: boolean }) =>
+           <div {...withState(cas().padding(8)).props} />;`,
+        opts,
+      );
+      expect(composed.rules.map((rule) => rule.className).sort()).toEqual(
+        inline.rules.map((rule) => rule.className).sort(),
+      );
+    });
+
+    it('expands `.cond()` in the argument and the mixin body simultaneously', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withState = (c) => c.cond(b, x => x.color('red'), y => y.color('blue'));
+        export const App = ({ a, b }: { a: boolean; b: boolean }) =>
+          <div {...withState(cas().cond(a, x => x.padding(8), y => y.padding(16))).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      // 2 (argument cond) × 2 (body cond) = 4 Cartesian leaves.
+      expect(r.rules).toHaveLength(4);
+      const shapes = r.rules
+        .map((rule) => `${rule.tree.bag.padding}/${rule.tree.bag.color}`)
+        .sort();
+      expect(shapes).toEqual(['16px/blue', '16px/red', '8px/blue', '8px/red']);
+      // The argument's test `a` is the outer ternary, the body's `b` inner
+      // (argument ops precede body ops in the composed list).
+      expect(r.code).toMatch(
+        /className=\{a \? b \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}" : b \? "cas-[0-9a-f]{8}" : "cas-[0-9a-f]{8}"\}/,
+      );
+    });
+
+    it('propagates a `.cond()` up through nested composition', () => {
+      const r = transform(
+        `
+        import { cas } from '@cassida/core';
+        const withBranch = (c) => c.cond(a, x => x.color('red'), y => y.color('blue'));
+        const withPad = (c) => c.padding(8);
+        export const App = ({ a }: { a: boolean }) =>
+          <div {...withPad(withBranch(cas())).props} />;
+      `,
+        opts,
+      );
+      expect(r.transformed).toBe(true);
+      expect(r.rules).toHaveLength(2);
+      // withPad's padding layers onto both leaves surfaced by the inner
+      // composition's cond.
+      for (const rule of r.rules) {
+        expect(rule.tree.bag.padding).toBe('8px');
+      }
+      expect(r.rules.map((rule) => rule.tree.bag.color).sort()).toEqual([
+        'blue',
+        'red',
+      ]);
+    });
+  });
 });

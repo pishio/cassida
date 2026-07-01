@@ -339,8 +339,8 @@ function isExtendedScopedOp(op: ExtendedOp): op is ExtendedScopedOp {
 /**
  * DFS check: does any node in this ExtendedOp tree carry a
  * `BranchPlaceholder`? Used by code paths that don't (yet) support
- * cond-expanded chains — parser plugins, function composition — so
- * they can bail on chains whose branches live anywhere in the tree,
+ * cond-expanded chains — the legacy parser-plugin `walkChain` helper —
+ * so they can bail on chains whose branches live anywhere in the tree,
  * not just at the top level.
  */
 function hasAnyBranchPlaceholder(ops: readonly ExtendedOp[]): boolean {
@@ -1206,15 +1206,18 @@ function walkChain(
  * composed source-ordered Op list or null if the call doesn't fit
  * the supported pattern.
  *
- * Phase 6c-2 supports:
+ * Supports:
  *   - `const f = (c) => c.chain()` (ArrowFunctionExpression, 1 param)
  *   - `const f = (c) => { c.chain(); }` or `{ return c.chain(); }`
  *   - `function f(c) { ... }` (FunctionDeclaration, 1 param)
+ *   - `.cond()` branches in the body or the fed-in argument: the
+ *     placeholders ride along in the returned ExtendedOp[] and the
+ *     JSX handler expands them into the Cartesian leaves.
  *
- * Phase 7 will tackle: multi-param functions, conditional bodies,
- * loops, and cross-file imports (Linaria-class static evaluation).
- * Anything outside the simple pattern returns null and the caller
- * lets the chain fall through to runtime fallback.
+ * Still unsupported: multi-param functions, imperative control flow
+ * (`if`/loops), and cross-file imports (Linaria-class static
+ * evaluation). Anything outside the pattern returns null and the
+ * caller lets the chain fall through to runtime fallback.
  */
 function tryFunctionComposition(
   callPath: NodePath<t.CallExpression>,
@@ -1263,12 +1266,13 @@ function tryFunctionComposition(
     ? collectFromBlock(blockPath, innerRoots, ctx)
     : walkChain(bodyPath, innerRoots, ctx);
   if (fnBodyOps === null) return null;
-  // `.cond()` is not yet permitted anywhere inside a function
-  // composition's body or argument. The mixin idiom `withCard(cas())`
-  // is meant for static layering; branched chains here would force
-  // the composition to fan out too. Check deep, so a cond inside a
-  // modifier scope inside the body also bails.
-  if (hasAnyBranchPlaceholder(fnBodyOps)) return null;
+  // `.cond()` inside the mixin body (or its argument, below) is fine:
+  // the returned ExtendedOp[] keeps its BranchPlaceholders and the
+  // top-level JSX handler runs `expandBranches` on the composed list,
+  // fanning the composition out into one class per Cartesian leaf —
+  // exactly as the equivalent inline chain would. Placeholders nested
+  // inside a modifier scope survive too, since `expandBranches`
+  // recurses into scope ops.
 
   // The argument MUST be exactly 1 (the chain to feed in).
   const argPaths = callPath.get('arguments');
@@ -1279,7 +1283,6 @@ function tryFunctionComposition(
   // sometimes a recursive composition's own scope.
   const argExt = walkChain(argPath, chainRoots, ctx);
   if (argExt === null) return null;
-  if (hasAnyBranchPlaceholder(argExt)) return null;
 
   // Compose: argument ops first (the input chain), then function body
   // ops (the mixin layered on top). LIFO inside the merged op list
