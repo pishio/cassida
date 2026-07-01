@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { defaultConfig } from '../src/config.js';
 import {
   postProcessLightningCss,
@@ -99,16 +99,26 @@ describe('resolveTargets', () => {
 // against an explicit, prefix-forcing browserslist — the case that actually
 // stresses `@layer` / `@property` preservation, since lightningcss rewrites
 // far more when it has real targets to prefix for.
+//
+// The inline snapshot below is expected to move when lightningcss is bumped;
+// regenerate it with:
+//   pnpm --filter @cassida/compiler exec vitest run -u lightningcss-postprocess
 describe('lightningcss survival across real browserslist targets (#67)', () => {
-  it('preserves @layer cas and @property while prefixing for an old target', () => {
+  // Resolve targets + post-process once; all three assertions read this same
+  // output (lightningcss is deterministic for a fixed input + target set).
+  let out: string;
+  beforeAll(() => {
     const targets = resolveTargets(OLD_TARGETS_QUERY, '/');
     expect(targets).not.toBeNull();
-    const out = postProcessLightningCss(
+    out = postProcessLightningCss(
       CASSIDA_SHAPED_CSS,
       '/virtual.css',
       defaultConfig,
       targets,
     );
+  });
+
+  it('preserves @layer cas and @property while prefixing for an old target', () => {
     // Cascade layer + Houdini @property both survive the prefixing pass.
     expect(out).toMatch(/@layer cas\{/);
     expect(out).toMatch(/@property --cas-fg\{/);
@@ -121,13 +131,6 @@ describe('lightningcss survival across real browserslist targets (#67)', () => {
   });
 
   it('emits the vendor prefixes the old target requires, with unprefixed fallbacks', () => {
-    const targets = resolveTargets(OLD_TARGETS_QUERY, '/');
-    const out = postProcessLightningCss(
-      CASSIDA_SHAPED_CSS,
-      '/virtual.css',
-      defaultConfig,
-      targets,
-    );
     expect(out).toContain('-webkit-user-select:none');
     expect(out).toContain('-moz-user-select:none');
     expect(out).toContain('-webkit-backdrop-filter:blur(4px)');
@@ -139,13 +142,6 @@ describe('lightningcss survival across real browserslist targets (#67)', () => {
   });
 
   it('pins the exact post-lightningcss shape for the old target', () => {
-    const targets = resolveTargets(OLD_TARGETS_QUERY, '/');
-    const out = postProcessLightningCss(
-      CASSIDA_SHAPED_CSS,
-      '/virtual.css',
-      defaultConfig,
-      targets,
-    );
     expect(out).toMatchInlineSnapshot(`"@property --cas-fg{syntax:"<color>";inherits:false;initial-value:#000}@layer cas{.cas-11111111{-webkit-user-select:none;-moz-user-select:none;user-select:none;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);color:var(--cas-fg);position:-webkit-sticky;position:sticky;top:0}}"`);
   });
 });
